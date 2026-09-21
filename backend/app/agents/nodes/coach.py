@@ -31,7 +31,7 @@ async def coach_node(state: AgentState) -> dict[str, Any]:
             f"stateful workflows or high-concurrency services using {core_tech}?"
         )
         response_msg = {"role": "assistant", "content": question}
-        history.append({"turn": 1, "question": question, "answer": None})
+        new_turn = {"turn": 1, "question": question, "answer": None}
     else:
         # Subsequent turns: Provide technical critique and follow-up question
         critique = (
@@ -45,16 +45,14 @@ async def coach_node(state: AgentState) -> dict[str, Any]:
         )
         combined_response = f"{critique}\n\n{follow_up}"
         response_msg = {"role": "assistant", "content": combined_response}
-        history.append(
-            {
-                "turn": len(history) + 1,
-                "question": follow_up,
-                "last_answer": last_user_msg,
-            }
-        )
+        new_turn = {
+            "turn": len(history) + 1,
+            "question": follow_up,
+            "last_answer": last_user_msg,
+        }
 
     return {
-        "interview_history": history,
+        "interview_history": [new_turn],
         "messages": [response_msg],
         "status": "interview_active",
     }
