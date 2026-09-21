@@ -7,6 +7,9 @@ from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app.api.cv import router as cv_router
+from app.api.feedback import router as feedback_router
+from app.api.jobs import router as jobs_router
 from app.core.config import settings
 from app.core.database import engine, init_vector_extension
 
@@ -40,6 +43,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount API routes
+app.include_router(jobs_router)
+app.include_router(cv_router)
+app.include_router(feedback_router)
 
 
 @app.get("/health", status_code=status.HTTP_200_OK)
