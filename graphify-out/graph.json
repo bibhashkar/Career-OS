@@ -1,0 +1,702 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {
+    "hyperedges": [
+      {
+        "id": "langgraph_agent_pipeline",
+        "label": "Multi-Agent Workflow",
+        "nodes": [
+          "master_spec_profiler_node",
+          "master_spec_hunter_node",
+          "master_spec_intel_node",
+          "master_spec_tailor_node",
+          "master_spec_ats_node",
+          "master_spec_coach_node",
+          "master_spec_reflector_node"
+        ],
+        "relation": "participate_in",
+        "confidence": "EXTRACTED",
+        "confidence_score": 1.0,
+        "source_file": "MASTER_SPEC.md"
+      },
+      {
+        "id": "presentation_layer_components",
+        "label": "Frontend Presentation Architecture",
+        "nodes": [
+          "master_spec_dashboard_component",
+          "master_spec_ats_card_component",
+          "master_spec_interview_simulator_component"
+        ],
+        "relation": "form",
+        "confidence": "EXTRACTED",
+        "confidence_score": 1.0,
+        "source_file": "MASTER_SPEC.md"
+      },
+      {
+        "id": "state_and_persistence_tier",
+        "label": "Persistence and State Tiers",
+        "nodes": [
+          "master_spec_postgres_saver",
+          "master_spec_postgresql_database",
+          "master_spec_pgvector_extension"
+        ],
+        "relation": "implement",
+        "confidence": "EXTRACTED",
+        "confidence_score": 1.0,
+        "source_file": "MASTER_SPEC.md"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "master_spec_coach_node",
+      "label": "Coach Node",
+      "author": null,
+      "captured_at": null,
+      "community": 0,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "coach node",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_hunter_node",
+      "label": "Hunter Node",
+      "author": null,
+      "captured_at": null,
+      "community": 0,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "hunter node",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_intel_node",
+      "label": "Intel Node",
+      "author": null,
+      "captured_at": null,
+      "community": 0,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "intel node",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_langgraph_orchestrator",
+      "label": "LangGraph Orchestrator",
+      "author": null,
+      "captured_at": null,
+      "community": 0,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "langgraph orchestrator",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_postgres_saver",
+      "label": "PostgresSaver Checkpointing",
+      "author": null,
+      "captured_at": null,
+      "community": 0,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "postgressaver checkpointing",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_profiler_node",
+      "label": "Profiler Node",
+      "author": null,
+      "captured_at": null,
+      "community": 0,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "profiler node",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_reflector_node",
+      "label": "Reflector Node",
+      "author": null,
+      "captured_at": null,
+      "community": 0,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "reflector node",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_ats_card_component",
+      "label": "ATSCard Component",
+      "author": null,
+      "captured_at": null,
+      "community": 1,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "atscard component",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_ats_feedback_loop",
+      "label": "ATS Cyclic Feedback Loop",
+      "author": null,
+      "captured_at": null,
+      "community": 1,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "ats cyclic feedback loop",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_ats_node",
+      "label": "ATS Node",
+      "author": null,
+      "captured_at": null,
+      "community": 1,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "ats node",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_cv_block_model",
+      "label": "CVBlock Model",
+      "author": null,
+      "captured_at": null,
+      "community": 1,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "cvblock model",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_pgvector_extension",
+      "label": "pgvector Semantic Storage",
+      "author": null,
+      "captured_at": null,
+      "community": 1,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "pgvector semantic storage",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_tailor_node",
+      "label": "Tailor Node",
+      "author": null,
+      "captured_at": null,
+      "community": 1,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "tailor node",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_company_dossier_model",
+      "label": "CompanyDossier Model",
+      "author": null,
+      "captured_at": null,
+      "community": 2,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "companydossier model",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_dashboard_component",
+      "label": "Dashboard Component",
+      "author": null,
+      "captured_at": null,
+      "community": 2,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "dashboard component",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_interview_simulator_component",
+      "label": "InterviewSimulator Component",
+      "author": null,
+      "captured_at": null,
+      "community": 2,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "interviewsimulator component",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_mock_interview_websocket",
+      "label": "Interview Simulator WebSocket",
+      "author": null,
+      "captured_at": null,
+      "community": 2,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "interview simulator websocket",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_react_frontend",
+      "label": "React Frontend",
+      "author": null,
+      "captured_at": null,
+      "community": 2,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "react frontend",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_api_first_architecture",
+      "label": "API-First Decoupled Architecture",
+      "author": null,
+      "captured_at": null,
+      "community": 3,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "api-first decoupled architecture",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_fastapi_backend",
+      "label": "FastAPI Backend",
+      "author": null,
+      "captured_at": null,
+      "community": 3,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "fastapi backend",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_career_os",
+      "label": "Stateful Career Operating System",
+      "author": null,
+      "captured_at": null,
+      "community": 3,
+      "contributor": null,
+      "file_type": "document",
+      "norm_label": "stateful career operating system",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_job_listing_model",
+      "label": "JobListing Model",
+      "author": null,
+      "captured_at": null,
+      "community": 4,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "joblisting model",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_postgresql_database",
+      "label": "PostgreSQL Relational Storage",
+      "author": null,
+      "captured_at": null,
+      "community": 4,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "postgresql relational storage",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "id": "master_spec_user_profile_model",
+      "label": "UserProfile Model",
+      "author": null,
+      "captured_at": null,
+      "community": 4,
+      "contributor": null,
+      "file_type": "concept",
+      "norm_label": "userprofile model",
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "source_url": null
+    }
+  ],
+  "links": [
+    {
+      "source": "master_spec_career_os",
+      "target": "master_spec_api_first_architecture",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_api_first_architecture",
+      "target": "master_spec_fastapi_backend",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_api_first_architecture",
+      "target": "master_spec_react_frontend",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_ats_card_component",
+      "target": "master_spec_ats_feedback_loop",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_ats_feedback_loop",
+      "target": "master_spec_tailor_node",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_ats_node",
+      "target": "master_spec_ats_feedback_loop",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_coach_node",
+      "target": "master_spec_mock_interview_websocket",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_coach_node",
+      "target": "master_spec_postgres_saver",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_dashboard_component",
+      "target": "master_spec_company_dossier_model",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_fastapi_backend",
+      "target": "master_spec_langgraph_orchestrator",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_interview_simulator_component",
+      "target": "master_spec_mock_interview_websocket",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_langgraph_orchestrator",
+      "target": "master_spec_ats_node",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_langgraph_orchestrator",
+      "target": "master_spec_coach_node",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_langgraph_orchestrator",
+      "target": "master_spec_hunter_node",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_langgraph_orchestrator",
+      "target": "master_spec_intel_node",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_langgraph_orchestrator",
+      "target": "master_spec_postgres_saver",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_langgraph_orchestrator",
+      "target": "master_spec_profiler_node",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_langgraph_orchestrator",
+      "target": "master_spec_reflector_node",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_langgraph_orchestrator",
+      "target": "master_spec_tailor_node",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_pgvector_extension",
+      "target": "master_spec_cv_block_model",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_postgres_saver",
+      "target": "master_spec_postgresql_database",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_postgresql_database",
+      "target": "master_spec_company_dossier_model",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_postgresql_database",
+      "target": "master_spec_job_listing_model",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_postgresql_database",
+      "target": "master_spec_pgvector_extension",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_postgresql_database",
+      "target": "master_spec_user_profile_model",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_react_frontend",
+      "target": "master_spec_ats_card_component",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_react_frontend",
+      "target": "master_spec_dashboard_component",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_react_frontend",
+      "target": "master_spec_interview_simulator_component",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "master_spec_tailor_node",
+      "target": "master_spec_cv_block_model",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md",
+      "source_location": null,
+      "weight": 1.0
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "langgraph_agent_pipeline",
+      "label": "Multi-Agent Workflow",
+      "nodes": [
+        "master_spec_profiler_node",
+        "master_spec_hunter_node",
+        "master_spec_intel_node",
+        "master_spec_tailor_node",
+        "master_spec_ats_node",
+        "master_spec_coach_node",
+        "master_spec_reflector_node"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md"
+    },
+    {
+      "id": "presentation_layer_components",
+      "label": "Frontend Presentation Architecture",
+      "nodes": [
+        "master_spec_dashboard_component",
+        "master_spec_ats_card_component",
+        "master_spec_interview_simulator_component"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md"
+    },
+    {
+      "id": "state_and_persistence_tier",
+      "label": "Persistence and State Tiers",
+      "nodes": [
+        "master_spec_postgres_saver",
+        "master_spec_postgresql_database",
+        "master_spec_pgvector_extension"
+      ],
+      "relation": "implement",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "MASTER_SPEC.md"
+    }
+  ]
+}
