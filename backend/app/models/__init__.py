@@ -1,4 +1,12 @@
-"""Models package exposing all SQLAlchemy domain models."""
+"""
+SQLAlchemy ORM model declarations for long-term relational persistence.
+
+Each model maps one PostgreSQL table (singular naming: user_profile, job_listing,
+cv_block, company_dossier, feedback_log). Models contain only schema definitions
+and relationship declarations — no business logic, no LLM calls. The separation
+guarantees that the data layer can be migrated independently via Alembic without
+touching agent or API code.
+"""
 
 from app.models.base import Base
 from app.models.company_dossier import CompanyDossier

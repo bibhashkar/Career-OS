@@ -1,19 +1,9 @@
-"""Core multi-agent workflow nodes."""
+"""
+Agent node function implementations.
 
-from app.agents.nodes.ats import ats_node
-from app.agents.nodes.coach import coach_node
-from app.agents.nodes.hunter import hunter_node
-from app.agents.nodes.intel import intel_node
-from app.agents.nodes.profiler import profiler_node
-from app.agents.nodes.reflector import reflector_node
-from app.agents.nodes.tailor import tailor_node
-
-__all__ = [
-    "ats_node",
-    "coach_node",
-    "hunter_node",
-    "intel_node",
-    "profiler_node",
-    "reflector_node",
-    "tailor_node",
-]
+Each module in this package exports a single async node function that reads
+from AgentState, performs its unit of work (job search, CV tailoring, ATS
+scoring, interview simulation, etc.), and returns a partial state update dict.
+Nodes are composable and stateless between invocations — all continuity lives
+in the LangGraph checkpoint stored by PostgresSaver or MemorySaver.
+"""
