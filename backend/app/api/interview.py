@@ -3,6 +3,7 @@
 import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.graph import interview_app
 from app.agents.state import AgentState
@@ -17,7 +18,7 @@ async def interview_websocket_endpoint(
 ) -> None:
     """Stream messages bi-directionally to coach_node keyed on thread_id checkpoint."""
     await websocket.accept()
-    config = {"configurable": {"thread_id": thread_id}}
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
     try:
         # Check current state or send initial question if new session

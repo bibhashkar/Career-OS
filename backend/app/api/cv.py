@@ -4,6 +4,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, status
+from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
 from app.agents.graph import pipeline_app
@@ -62,7 +63,7 @@ async def generate_tailored_cv(
     }
 
     thread_id = f"cv_gen_{request.job_id}_{uuid.uuid4().hex[:8]}"
-    config = {"configurable": {"thread_id": thread_id}}
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
     final_state = await pipeline_app.ainvoke(initial_state, config=config)
 

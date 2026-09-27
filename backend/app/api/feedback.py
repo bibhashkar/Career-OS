@@ -3,6 +3,7 @@
 from typing import Any
 
 from fastapi import APIRouter, status
+from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
 from app.agents.graph import reflector_app
@@ -46,7 +47,7 @@ async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:
         ]
     }
 
-    config = {"configurable": {"thread_id": request.thread_id}}
+    config: RunnableConfig = {"configurable": {"thread_id": request.thread_id}}
     result = await reflector_app.ainvoke(state, config=config)
 
     logs = result.get("feedback_logs", [])

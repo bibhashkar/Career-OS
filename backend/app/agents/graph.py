@@ -5,6 +5,7 @@ from typing import Literal
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.nodes.ats import ats_node
 from app.agents.nodes.coach import coach_node
@@ -32,7 +33,7 @@ def route_ats(state: AgentState) -> Literal["tailor", "__end__"]:
 
 def create_pipeline_graph(
     checkpointer: BaseCheckpointSaver | None = None,
-) -> StateGraph:
+) -> CompiledStateGraph:
     """Build the end-to-end CV discovery, intelligence, tailoring, and ATS graph."""
     builder = StateGraph(AgentState)
 
@@ -62,7 +63,7 @@ def create_pipeline_graph(
 
 def create_interview_graph(
     checkpointer: BaseCheckpointSaver | None = None,
-) -> StateGraph:
+) -> CompiledStateGraph:
     """Build the stateful mock interview coaching graph keyed on thread_id."""
     builder = StateGraph(AgentState)
     builder.add_node("coach", coach_node)
@@ -73,7 +74,7 @@ def create_interview_graph(
 
 def create_reflector_graph(
     checkpointer: BaseCheckpointSaver | None = None,
-) -> StateGraph:
+) -> CompiledStateGraph:
     """Build the feedback synthesis and prompt directive reflection graph."""
     builder = StateGraph(AgentState)
     builder.add_node("reflector", reflector_node)
