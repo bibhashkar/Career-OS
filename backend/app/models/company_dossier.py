@@ -1,4 +1,17 @@
-"""CompanyDossier model storing researched intelligence on target employers."""
+"""
+CompanyDossier model storing researched intelligence on target employers.
+
+To ground CV tailoring and interview coaching in real-world facts rather than
+hallucinations, Career-OS persists synthesized employer dossiers. This model
+captures the company's verified tech stack, recent news milestones, business
+model, and engineering culture notes.
+
+Design Decisions:
+  - Unique Index on ``company_name``: Prevents duplicate dossier rows when
+    multiple job postings originate from the same employer.
+  - JSON Fields: Tech stacks (list of strings) and recent news items (list of dicts)
+    are stored as structured JSON to accommodate evolving external schemas.
+"""
 
 from typing import TYPE_CHECKING, Any
 
@@ -12,7 +25,19 @@ if TYPE_CHECKING:
 
 
 class CompanyDossier(Base, UUIDMixin, TimestampMixin):
-    """Stores deep intelligence on company tech stacks, news, and business models."""
+    """
+    Stores deep intelligence on company tech stacks, news, and business models.
+
+    Attributes:
+        company_name: Unique, indexed name of the employer.
+        domain: Primary web domain (e.g. "nexusai.com").
+        industry: Primary sector (e.g. "Artificial Intelligence").
+        tech_stack: JSON array of identified languages, frameworks, and databases.
+        recent_news: JSON array of headlines, dates, and publication sources.
+        business_model: Text description of how the company generates revenue.
+        culture_notes: Text observations on engineering practices and values.
+        job_listings: One-to-many relationship to associated job postings.
+    """
 
     __tablename__ = "company_dossier"
 

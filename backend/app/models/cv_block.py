@@ -1,4 +1,24 @@
-"""CVBlock model storing chunked user career achievements and embeddings."""
+"""
+CVBlock model storing chunked user career achievements and embeddings.
+
+Career-OS does not treat a resume as an immutable text document. Instead, a
+candidate's career history is decomposed into modular, semantic "blocks"
+representing distinct projects, leadership achievements, technical roles, or
+publications.
+
+Semantic Retrieval Architecture:
+  - Each block stores a 1536-dimensional vector embedding (matching OpenAI
+    text-embedding-3-small or Ada-002 dimensions) using the PostgreSQL
+    ``pgvector`` extension.
+  - When tailoring a CV for a target job, the system retrieves only the blocks
+    whose embeddings most closely match the job requirements, dynamically
+    assembling a bespoke resume.
+
+Foreign Key Safety:
+  - ``user_profile_id`` uses ``ondelete="RESTRICT"`` per project rules,
+    preventing cascade deletion of career blocks unless the user profile is
+    explicitly archived or purged.
+"""
 
 import uuid
 from typing import TYPE_CHECKING, Any
@@ -15,7 +35,20 @@ if TYPE_CHECKING:
 
 
 class CVBlock(Base, UUIDMixin, TimestampMixin):
-    """Stores granular career achievement blocks with pgvector embeddings."""
+    """
+    Stores granular career achievement blocks with pgvector embeddings.
+
+    Attributes:
+        user_profile_id: Foreign key to owning user profile (ON DELETE RESTRICT).
+        category: Taxonomy type (e.g. 'experience', 'project', 'education').
+        title: Position or project title.
+        organization: Sponsoring company, institution, or open-source org.
+        content: Narrative description of the achievement with quantified impact.
+        metrics: Quantified business results (e.g. {'latency': '-40%', 'scale': '10M'}).
+        skills: List of technical competencies demonstrated in this achievement.
+        embedding: 1536-dimensional vector embedding for pgvector cosine search.
+        user_profile: Relationship back to the parent UserProfile entity.
+    """
 
     __tablename__ = "cv_block"
 
@@ -34,7 +67,7 @@ class CVBlock(Base, UUIDMixin, TimestampMixin):
     metrics: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     skills: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
 
-    # 1536-dimensional vector embedding for semantic search
+    # 1536-dimensional vector embedding for pgvector semantic search
     embedding = mapped_column(Vector(1536), nullable=True)
 
     # Relationships

@@ -1,4 +1,18 @@
-"""User review and prompt weight reflection API endpoints."""
+"""
+User review and prompt weight reflection API endpoints.
+
+This router manages candidate feedback ingestion. When a user completes a mock
+interview or reviews a generated CV, they can provide qualitative input (e.g.
+"ask harder questions", "be more concise").
+
+Reflection Workflow:
+  1. Frontend submits ``POST /api/feedback`` with ``thread_id`` and feedback text.
+  2. The router structures an ``AgentState`` payload and invokes ``reflector_app``.
+  3. The reflector node analyzes sentiment and keywords to tune hyperparameters
+     (technical_depth, brevity, conversational style).
+  4. The updated weights are returned and persisted, immediately influencing
+     subsequent agent invocations within the thread.
+"""
 
 from typing import Any
 
@@ -13,7 +27,13 @@ router = APIRouter(prefix="/api/feedback", tags=["Feedback"])
 
 
 class FeedbackRequest(BaseModel):
-    """Payload for submitting user interview and coaching feedback."""
+    """
+    Payload for submitting user interview and coaching feedback.
+
+    Attributes:
+        thread_id: Conversational thread session to update.
+        user_feedback: Qualitative critique or guidance from the candidate.
+    """
 
     thread_id: str = Field(..., examples=["thread_interview_123"])
     user_feedback: str = Field(
@@ -24,7 +44,14 @@ class FeedbackRequest(BaseModel):
 
 
 class FeedbackResponse(BaseModel):
-    """Response confirming synthesized prompt weight adjustments."""
+    """
+    Response confirming synthesized prompt weight adjustments.
+
+    Attributes:
+        thread_id: Thread session where adjustments were applied.
+        prompt_weight_adjustments: Map of updated directive weights.
+        status: Operation confirmation status string.
+    """
 
     thread_id: str
     prompt_weight_adjustments: dict[str, Any]
@@ -37,7 +64,18 @@ class FeedbackResponse(BaseModel):
     status_code=status.HTTP_200_OK,
 )
 async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:
-    """Synthesize candidate feedback into updated agent prompt weights."""
+    """
+    Synthesize candidate feedback into updated agent prompt weights.
+
+    Passes candidate review text to ``reflector_app``, which computes updated
+    numeric weights for technical depth, brevity, and tone style.
+
+    Args:
+        request: Validated feedback payload with thread_id and text.
+
+    Returns:
+        FeedbackResponse containing the active weight adjustments.
+    """
     state: AgentState = {
         "feedback_logs": [
             {

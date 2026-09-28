@@ -1,4 +1,27 @@
-"""Bi-directional WebSocket endpoint for stateful mock interview coaching."""
+"""
+Bi-directional WebSocket endpoint for stateful mock interview coaching.
+
+This endpoint powers the interactive conversational interview simulator. It
+maintains a continuous streaming session between the React chat window and the
+LangGraph ``interview_app``.
+
+Resumable Session Checkpointing:
+The WebSocket connection URL incorporates a unique ``{thread_id}`` path parameter.
+All turns, questions, and evaluations are checkpointed under this key:
+  1. On connection: the endpoint queries ``aget_state(config)`` to inspect
+     whether prior conversation exists for this ``thread_id``.
+  2. If new session: the coach generates an opening technical challenge.
+  3. If existing session: prior turns are preserved; new answers append to
+     the active thread.
+  4. On disconnect: the checkpoint remains persisted in PostgreSQL (or
+     in-memory MemorySaver), allowing candidates to refresh or return later.
+
+WebSocket Framing Protocol:
+  - Client -> Server: ``{"type": "message", "content": "My answer..."}``
+  - Heartbeat: ``{"type": "ping"}`` -> ``{"type": "pong"}``
+  - Server -> Client: ``{"type": "message", "sender": "coach", "turn": 2}``
+  - Errors: ``{"type": "error", "message": "..."}``
+"""
 
 import json
 
@@ -16,7 +39,17 @@ async def interview_websocket_endpoint(
     websocket: WebSocket,
     thread_id: str,
 ) -> None:
-    """Stream messages bi-directionally to coach_node keyed on thread_id checkpoint."""
+    """
+    Stream interview dialogue bi-directionally keyed on thread_id checkpoint.
+
+    Accepts incoming WebSocket connections, resolves thread state from the
+    LangGraph checkpointer, handles ping/pong liveness heartbeats, and
+    advances the coaching dialogue with each candidate answer.
+
+    Args:
+        websocket: The active FastAPI WebSocket connection.
+        thread_id: Unique conversational session identifier.
+    """
     await websocket.accept()
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 

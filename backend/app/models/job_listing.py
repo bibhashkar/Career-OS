@@ -1,4 +1,18 @@
-"""JobListing model storing raw descriptions, requirements, and metadata."""
+"""
+JobListing model storing raw descriptions, requirements, and metadata.
+
+This table records job postings discovered by the Hunter agent or manually
+imported by the user. It stores raw job descriptions alongside parsed ATS
+requirements (required skills, preferred skills, min experience, visa policy).
+
+Relational Foreign Key Safety:
+  - ``company_dossier_id`` is nullable, allowing job listings to be captured
+    immediately upon discovery before the deep-dive research conducted by
+    the Intel agent completes.
+  - Foreign key uses ``ondelete="RESTRICT"`` per project architectural rules,
+    preventing employer dossiers from being dropped while active job listings
+    still reference them.
+"""
 
 import uuid
 from typing import TYPE_CHECKING, Any
@@ -14,7 +28,20 @@ if TYPE_CHECKING:
 
 
 class JobListing(Base, UUIDMixin, TimestampMixin):
-    """Stores discovered job listings, raw job descriptions, and ATS criteria."""
+    """
+    Stores discovered job listings, raw job descriptions, and ATS criteria.
+
+    Attributes:
+        title: Position title (e.g. 'Senior AI Systems Engineer').
+        company_name: Hiring organization name, indexed for fast lookup.
+        url: External application or posting URL.
+        location: Geographic location or 'Remote'.
+        salary_range: Compensation range string if disclosed.
+        raw_description: Full text of the posting for keyword extraction.
+        ats_requirements: JSON dictionary of parsed skills and visa policies.
+        company_dossier_id: Optional foreign key to associated CompanyDossier.
+        company_dossier: Relationship to the employer's researched intelligence.
+    """
 
     __tablename__ = "job_listing"
 

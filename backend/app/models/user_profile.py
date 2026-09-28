@@ -1,4 +1,19 @@
-"""UserProfile model storing constraints, visa status, and tone directives."""
+"""
+UserProfile model storing constraints, visa status, and tone directives.
+
+This table represents the central candidate profile in Career-OS. It anchors
+the user's identity, work authorization constraints, target career aspirations,
+and stylistic tone directives.
+
+Constraint Modeling:
+  - Work Authorization: ``visa_status`` (e.g. 'H-1B', 'F-1 OPT', 'Citizen')
+    is evaluated by the Hunter agent to filter out job listings that do not offer
+    sponsorship.
+  - Tone Directives: Stored as JSON, capturing preferences like brevity,
+    assertiveness, and technical depth synthesized by the Reflector agent.
+  - Cascade Policy: Deleting a user profile removes its associated ``cv_blocks``
+    via ``cascade="all, delete-orphan"`` to ensure GDPR/privacy compliance.
+"""
 
 from typing import TYPE_CHECKING, Any
 
@@ -12,7 +27,19 @@ if TYPE_CHECKING:
 
 
 class UserProfile(Base, UUIDMixin, TimestampMixin):
-    """Stores user career profile, work authorization constraints, and preferences."""
+    """
+    Stores user career profile, work authorization constraints, and preferences.
+
+    Attributes:
+        full_name: Candidate full legal or professional name.
+        email: Unique, indexed contact email address.
+        visa_status: Work authorization category (e.g. 'None', 'H-1B', 'OPT').
+        remote_preference: Workplace policy preference (e.g. 'Remote', 'Hybrid').
+        tone_directives: JSON dictionary of stylistic and tone hyperparameters.
+        target_roles: JSON list of job titles sought (e.g. ['Senior AI Engineer']).
+        target_locations: JSON list of target cities or 'Remote'.
+        cv_blocks: One-to-many relationship to career achievement chunks.
+    """
 
     __tablename__ = "user_profile"
 
