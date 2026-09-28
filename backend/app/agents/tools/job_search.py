@@ -1,4 +1,18 @@
-"""Job search tool integration using JSearch API with hermetic offline fallbacks."""
+"""
+Job search tool integration using JSearch API with hermetic offline fallbacks.
+
+This tool interfaces with the JSearch API (via RapidAPI) to query live job board
+aggregations across LinkedIn, Indeed, ZipRecruiter, and company careers pages.
+It extracts job titles, employer names, raw descriptions, salary ranges, and
+inferred ATS requirements.
+
+Hermetic Offline Fallback:
+To allow hermetic testing and local offline development, this module maintains
+a deterministic set of realistic job listings in ``MOCK_JOBS``. When no
+``JSEARCH_API_KEY`` is configured or when the remote API fails/times out, search
+queries fall back to keyword filtering over this local dataset. This guarantees
+that tests never fail due to third-party network outages or exhausted API quotas.
+"""
 
 import uuid
 from typing import Any
@@ -7,7 +21,7 @@ import httpx
 
 from app.core.config import settings
 
-# Deterministic mock dataset for hermetic test execution
+# Deterministic mock dataset for hermetic test execution and offline development
 MOCK_JOBS: list[dict[str, Any]] = [
     {
         "id": "job-ai-001",
@@ -93,7 +107,22 @@ async def search_jobs(
     location: str = "Remote",
     visa_sponsorship_required: bool = False,
 ) -> list[dict[str, Any]]:
-    """Search for relevant job postings with JSearch or return fixtures."""
+    """
+    Search for matching job listings using JSearch API or local fixtures.
+
+    Queries JSearch if ``JSEARCH_API_KEY`` is configured; otherwise filters
+    the local ``MOCK_JOBS`` dataset by title and description keywords. If
+    ``visa_sponsorship_required`` is True, listings that explicitly do not
+    provide sponsorship are excluded.
+
+    Args:
+        query: Search keywords or target job title (e.g. "Senior AI Engineer").
+        location: Geographic location or "Remote".
+        visa_sponsorship_required: When True, filters out listings lacking sponsorship.
+
+    Returns:
+        List of matching job listing dictionaries.
+    """
     if settings.JSEARCH_API_KEY:
         try:
             url = "https://jsearch.p.rapidapi.com/search"

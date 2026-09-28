@@ -1,4 +1,18 @@
-"""Company research tool integration with hermetic fallbacks."""
+"""
+Company intelligence gathering tool with Exa neural search and offline fallbacks.
+
+This tool extracts architectural and business intelligence on prospective employers.
+When an ``EXA_API_KEY`` is configured in Settings, it queries the Exa neural search
+API to retrieve live engineering blog posts, tech stack disclosures, and press
+releases.
+
+Hermetic Offline Fallback:
+In CI environments or during local development without paid API keys, network calls
+to external search engines are either unconfigured or prone to rate limiting.
+This module maintains a deterministic in-memory knowledge base (``MOCK_DOSSIERS``)
+of canonical tech companies. If live search is unavailable or fails, it falls back
+to these fixtures to ensure tests remain fast, reproducible, and isolated.
+"""
 
 from typing import Any
 
@@ -66,7 +80,20 @@ MOCK_DOSSIERS: dict[str, dict[str, Any]] = {
 async def fetch_company_intel(
     company_name: str, domain: str | None = None
 ) -> dict[str, Any]:
-    """Fetch intelligence on target company (tech stack, news, model)."""
+    """
+    Fetch architectural intelligence and background for a target employer.
+
+    Tries Exa neural search if ``EXA_API_KEY`` is set in environment;
+    otherwise returns matching fixtures from ``MOCK_DOSSIERS`` or generates
+    a structured profile based on common modern engineering standards.
+
+    Args:
+        company_name: Name of the employer (e.g. "NexusAI Labs").
+        domain: Optional company web domain (e.g. "nexusai.com").
+
+    Returns:
+        Dictionary containing tech_stack, recent_news, business_model, and culture.
+    """
     normalized_name = company_name.lower().strip()
 
     # If Exa API key is provided, perform live search

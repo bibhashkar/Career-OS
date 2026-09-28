@@ -1,4 +1,18 @@
-"""Profiler agent node evaluating constraints, visa status, and tone directives."""
+"""
+Profiler agent node establishing user constraints and stylistic directives.
+
+As the entry point for the pipeline graph (START -> profiler), this node
+evaluates baseline candidate parameters:
+  - User identity and profile persistence.
+  - Work authorization / visa constraints (H-1B, OPT, etc.).
+  - Stylistic tone directives (brevity, confidence, technical depth).
+
+Continuous Personalization:
+If previous coaching or review feedback exists in ``feedback_logs``, the profiler
+re-applies synthesized prompt weight adjustments. This ensures that user
+preferences (such as "be more concise" or "ask more system design questions")
+persist into new job applications and coaching sessions without manual re-entry.
+"""
 
 from typing import Any
 
@@ -6,7 +20,26 @@ from app.agents.state import AgentState
 
 
 async def profiler_node(state: AgentState) -> dict[str, Any]:
-    """Evaluate baseline user constraints and establish initial profile context."""
+    """
+    Evaluate baseline user constraints and establish initial profile context.
+
+    Reads:
+      - ``user_id``: Candidate profile identifier.
+      - ``job_details``: Initial job query context.
+      - ``feedback_logs``: Prior reflected prompt weight adjustments.
+
+    Writes:
+      - ``user_id``: Validated candidate identifier.
+      - ``job_details``: Standardized job parameters for downstream nodes.
+      - ``status``: Set to ``"profile_evaluated"``.
+      - ``messages``: System log documenting evaluated constraints and tone.
+
+    Args:
+        state: Current LangGraph execution state.
+
+    Returns:
+        Partial state update establishing the initial execution profile.
+    """
     user_id = state.get("user_id")
     job_details = state.get("job_details") or {}
 

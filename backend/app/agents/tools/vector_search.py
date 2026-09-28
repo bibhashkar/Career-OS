@@ -1,4 +1,22 @@
-"""Semantic vector search helper for CVBlock achievements using pgvector."""
+"""
+Semantic vector search helper for CVBlock achievements using pgvector.
+
+Candidate resumes are not monolithic text documents in Career-OS; they are
+decomposed into granular, categorized achievement chunks (``CVBlock``). Each
+chunk represents a distinct project, role achievement, or publication, paired
+with metrics, skills, and a 1536-dimensional vector embedding.
+
+Vector Retrieval Strategy:
+When an active database session and query embedding are available, this tool
+executes an approximate nearest-neighbour query using pgvector's cosine distance
+operator (``<=>``). It returns the top-k blocks most semantically relevant to
+the target job requirements.
+
+Hermetic Offline Fallback:
+When running unit tests or in environments without pre-seeded database rows,
+this module falls back to keyword intersection ranking across ``DEFAULT_CV_BLOCKS``,
+ensuring the tailor agent receives structured achievement data in all testing modes.
+"""
 
 import uuid
 from typing import Any
@@ -78,7 +96,24 @@ async def search_cv_blocks(
     limit: int = 5,
     session: AsyncSession | None = None,
 ) -> list[dict[str, Any]]:
-    """Retrieve top-k matching CV blocks using pgvector or keyword matching."""
+    """
+    Retrieve top-k matching CV blocks using pgvector or keyword matching.
+
+    If an active SQLAlchemy session is provided, queries the ``cv_block`` table
+    filtered by ``user_profile_id``, optionally ordered by cosine distance to
+    ``query_embedding``. Otherwise, ranks ``DEFAULT_CV_BLOCKS`` by overlap with
+    ``required_skills``.
+
+    Args:
+        user_id: Target candidate profile UUID.
+        query_embedding: Optional 1536-dimensional embedding vector.
+        required_skills: List of skills to prioritize during keyword ranking.
+        limit: Maximum number of blocks to return (default 5).
+        session: Optional async SQLAlchemy session.
+
+    Returns:
+        List of serialized CV block dictionaries.
+    """
     if session is not None and user_id is not None:
         try:
             parsed_uuid = (
