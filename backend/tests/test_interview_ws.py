@@ -53,3 +53,33 @@ def test_interview_websocket_streaming_and_resumption() -> None:
         resumed_reply = ws_resumed.receive_json()
         assert resumed_reply["type"] == "message"
         assert resumed_reply["turn"] >= 2
+
+
+def test_interview_websocket_initializes_with_target_job() -> None:
+    """Verify WebSocket initializes coaching grounded in target job and company."""
+    client = TestClient(app)
+    thread_id = "test_ws_thread_session_target_job"
+
+    with client.websocket_connect(
+        f"/api/interview/{thread_id}?company_name=NexusAI+Labs&title=Senior+Agentic+Engineer"
+    ) as ws:
+        initial_msg = ws.receive_json()
+        assert initial_msg["type"] == "message"
+        assert initial_msg["sender"] == "coach"
+        assert initial_msg["turn"] == 1
+        assert "Senior Agentic Engineer at NexusAI Labs" in initial_msg["content"]
+        assert "Python" in initial_msg["content"]
+
+
+def test_interview_websocket_resolves_job_by_id() -> None:
+    """Verify WebSocket looks up job title and company when given job_id."""
+    client = TestClient(app)
+    thread_id = "test_ws_thread_session_job_id"
+
+    with client.websocket_connect(
+        f"/api/interview/{thread_id}?job_id=job-ai-001"
+    ) as ws:
+        initial_msg = ws.receive_json()
+        assert initial_msg["type"] == "message"
+        assert initial_msg["sender"] == "coach"
+        assert "NexusAI Labs" in initial_msg["content"]

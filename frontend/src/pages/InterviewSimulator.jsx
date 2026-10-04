@@ -60,6 +60,11 @@ export function InterviewSimulator({ job, onBack }) {
       },
       (status) => {
         setConnectionStatus(status);
+      },
+      {
+        jobId: job?.id,
+        companyName: job?.company_name,
+        title: job?.title,
       }
     );
 

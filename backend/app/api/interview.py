@@ -30,6 +30,8 @@ from langchain_core.runnables import RunnableConfig
 
 from app.agents.graph import interview_app
 from app.agents.state import AgentState
+from app.agents.tools.company_intel import fetch_company_intel
+from app.agents.tools.job_search import search_jobs
 
 router = APIRouter(tags=["Interview"])
 
@@ -38,6 +40,9 @@ router = APIRouter(tags=["Interview"])
 async def interview_websocket_endpoint(
     websocket: WebSocket,
     thread_id: str,
+    job_id: str | None = None,
+    company_name: str | None = None,
+    title: str | None = None,
 ) -> None:
     """
     Stream interview dialogue bi-directionally keyed on thread_id checkpoint.
@@ -49,6 +54,9 @@ async def interview_websocket_endpoint(
     Args:
         websocket: The active FastAPI WebSocket connection.
         thread_id: Unique conversational session identifier.
+        job_id: Optional target job listing ID to ground company tech stack prep.
+        company_name: Optional target employer name.
+        title: Optional target position title.
     """
     await websocket.accept()
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
@@ -57,12 +65,31 @@ async def interview_websocket_endpoint(
         # Check current state or send initial question if new session
         current_state = await interview_app.aget_state(config)
         if not current_state or not current_state.values.get("interview_history"):
+            resolved_company = company_name or "Target Company"
+            resolved_title = title or "Software Engineer"
+
+            # If job_id is provided, look up listing if title/company are unspecific
+            if job_id and (
+                resolved_company == "Target Company"
+                or resolved_title == "Software Engineer"
+            ):
+                jobs = await search_jobs(query="")
+                matched_job = next((j for j in jobs if j.get("id") == job_id), None)
+                if matched_job:
+                    resolved_company = matched_job.get("company_name", resolved_company)
+                    resolved_title = matched_job.get("title", resolved_title)
+
+            # Fetch researched company dossier to ground technical questions
+            dossier = await fetch_company_intel(resolved_company)
+
             init_state: AgentState = {
-                "company_dossier": {
-                    "company_name": "Target Company",
-                    "tech_stack": ["Python", "FastAPI", "PostgreSQL"],
+                "current_job_id": job_id,
+                "company_dossier": dossier,
+                "job_details": {
+                    "id": job_id,
+                    "title": resolved_title,
+                    "company_name": resolved_company,
                 },
-                "job_details": {"title": "Software Engineer"},
                 "messages": [],
             }
             res = await interview_app.ainvoke(init_state, config=config)

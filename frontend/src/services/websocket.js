@@ -2,10 +2,11 @@
  * Resilient WebSocket manager for stateful mock interview coaching sessions.
  */
 export class InterviewWebSocket {
-  constructor(threadId, onMessage, onStatusChange) {
+  constructor(threadId, onMessage, onStatusChange, options = {}) {
     this.threadId = threadId;
     this.onMessage = onMessage;
     this.onStatusChange = onStatusChange;
+    this.options = options;
     this.socket = null;
     this.pingInterval = null;
     this.isManualClose = false;
@@ -15,7 +16,12 @@ export class InterviewWebSocket {
     this.isManualClose = false;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/api/interview/${this.threadId}`;
+    const query = new URLSearchParams();
+    if (this.options.jobId) query.set("job_id", this.options.jobId);
+    if (this.options.companyName) query.set("company_name", this.options.companyName);
+    if (this.options.title) query.set("title", this.options.title);
+    const queryString = query.toString() ? `?${query.toString()}` : "";
+    const wsUrl = `${protocol}//${host}/api/interview/${this.threadId}${queryString}`;
 
     if (this.onStatusChange) this.onStatusChange("connecting");
 
