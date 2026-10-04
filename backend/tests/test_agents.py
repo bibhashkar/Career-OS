@@ -8,6 +8,7 @@ from app.agents.graph import (
     reflector_app,
     route_ats,
 )
+from app.agents.nodes.hunter import hunter_node
 from app.agents.state import AgentState
 
 
@@ -100,3 +101,52 @@ async def test_reflector_agent_updates_weights() -> None:
     assert result["status"] == "feedback_reflected"
     last_log = result["feedback_logs"][-1]
     assert last_log["prompt_weight_adjustments"]["technical_depth"] == 0.95
+
+
+@pytest.mark.asyncio
+async def test_hunter_preserves_caller_job_details() -> None:
+    """Verify hunter_node retains caller-provided target job and ID."""
+    # Arrange
+    target_job = {
+        "id": "job-ai-003",
+        "title": "Full-Stack AI Application Developer",
+        "company_name": "CareerCloud Systems",
+        "ats_requirements": {"required_skills": ["React", "FastAPI"]},
+    }
+    state: AgentState = {
+        "current_job_id": "job-ai-003",
+        "job_details": target_job,
+    }
+
+    # Act
+    result = await hunter_node(state)
+
+    # Assert
+    assert result["current_job_id"] == "job-ai-003"
+    assert result["job_details"]["company_name"] == "CareerCloud Systems"
+    assert result["job_details"]["id"] == "job-ai-003"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_preserves_target_job_end_to_end() -> None:
+    """Verify pipeline crafts CV and dossier for the requested job, not default."""
+    # Arrange
+    initial_state: AgentState = {
+        "user_id": "user-custom-456",
+        "current_job_id": "job-ai-003",
+        "job_details": {
+            "id": "job-ai-003",
+            "title": "Full-Stack AI Application Developer",
+            "company_name": "CareerCloud Systems",
+            "ats_requirements": {"required_skills": ["React", "FastAPI"]},
+        },
+    }
+    config = {"configurable": {"thread_id": "thread_preserve_target_001"}}
+
+    # Act
+    final_state = await pipeline_app.ainvoke(initial_state, config=config)
+
+    # Assert
+    assert final_state["current_job_id"] == "job-ai-003"
+    assert final_state["cv_draft"]["target_company"] == "CareerCloud Systems"
+    assert final_state["company_dossier"]["company_name"] == "CareerCloud Systems"
