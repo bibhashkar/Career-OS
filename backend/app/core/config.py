@@ -15,7 +15,7 @@ silently at the first request that needs the value.
 import json
 from typing import Any
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,24 +41,26 @@ class Settings(BaseSettings):
     # ---- Application identity ----
     APP_NAME: str = "Career-OS"
     APP_ENV: str = "development"
-    # When True, SQLAlchemy echoes every SQL statement — disable in production.
-    APP_DEBUG: bool = True
+    # When True, SQLAlchemy echoes every SQL statement — disabled by default
+    # to avoid leaking query structure or sensitive data into application logs.
+    APP_DEBUG: bool = False
     PORT: int = 8000
     HOST: str = "0.0.0.0"
 
+    # ---- Workflow & ATS Thresholds ----
+    ATS_PASS_THRESHOLD: float = 75.0
+    MAX_REVISIONS: int = 3
+
     # ---- PostgreSQL connection ----
-    # DATABASE_URL is the primary connection string used by SQLAlchemy.
-    # The individual POSTGRES_* fields are provided as a convenience for
-    # operators who prefer constructing connection strings from parts via
-    # docker-compose environment blocks.
+    # The individual POSTGRES_* fields configure discrete connection parameters.
+    # DATABASE_URL is automatically derived from these components unless
+    # an explicit custom connection string is provided.
     POSTGRES_DB: str = "career_os"
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
-    DATABASE_URL: str = (
-        "postgresql+psycopg://postgres:postgres@localhost:5432/career_os"
-    )
+    DATABASE_URL: str = ""
 
     # ---- CORS allowed origins ----
     # Defaults to the two ports used by the local Vite dev server.
@@ -94,6 +96,27 @@ class Settings(BaseSettings):
                 return json.loads(v)
             return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
+
+    @model_validator(mode="after")
+    def assemble_and_validate_settings(self) -> "Settings":
+        """
+        Derive DATABASE_URL from POSTGRES_* and validate production constraints.
+        """
+        if not self.DATABASE_URL:
+            self.DATABASE_URL = (
+                f"postgresql+psycopg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@"
+                f"{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            )
+
+        if self.APP_ENV == "production":
+            if "localhost" in self.DATABASE_URL or "127.0.0.1" in self.DATABASE_URL:
+                raise ValueError(
+                    "DATABASE_URL cannot point to localhost in production environment."
+                )
+            if self.APP_DEBUG:
+                raise ValueError("APP_DEBUG must be False in production.")
+
+        return self
 
 
 # Module-level singleton — imported throughout the app as:
