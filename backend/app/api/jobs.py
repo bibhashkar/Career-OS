@@ -11,6 +11,7 @@ an enriched discovery sequence:
   3. Returns unified listings ready for immediate dashboard rendering.
 """
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, status
@@ -75,10 +76,13 @@ async def search_and_intel(request: JobSearchRequest) -> JobSearchResponse:
         visa_sponsorship_required=request.visa_required,
     )
 
+    top_jobs = jobs[:5]
+    dossiers = await asyncio.gather(
+        *(fetch_company_intel(job.get("company_name", "Unknown")) for job in top_jobs)
+    )
+
     enriched_jobs: list[dict[str, Any]] = []
-    for job in jobs[:5]:
-        company_name = job.get("company_name", "Unknown")
-        dossier = await fetch_company_intel(company_name)
+    for job, dossier in zip(top_jobs, dossiers, strict=True):
         job_copy = dict(job)
         job_copy["company_dossier"] = dossier
         enriched_jobs.append(job_copy)
