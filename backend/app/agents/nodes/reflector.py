@@ -41,9 +41,17 @@ async def reflector_node(state: AgentState) -> dict[str, Any]:
     Returns:
         Partial state update containing the synthesized prompt adjustments.
     """
-    feedback_logs = state.get("feedback_logs", [])
-    recent_feedback = feedback_logs[-1] if feedback_logs else {}
-    feedback_text = recent_feedback.get("user_feedback", "").lower()
+    raw_input = state.get("user_feedback")
+    thread_id = ""
+    if raw_input:
+        original_feedback = raw_input
+    else:
+        feedback_logs = state.get("feedback_logs", [])
+        recent_feedback = feedback_logs[-1] if feedback_logs else {}
+        original_feedback = recent_feedback.get("user_feedback", "")
+        thread_id = recent_feedback.get("thread_id", "")
+
+    feedback_text = original_feedback.lower()
 
     # Determine prompt adjustments based on candidate feedback themes
     adjustments: dict[str, Any] = {
@@ -61,7 +69,8 @@ async def reflector_node(state: AgentState) -> dict[str, Any]:
         adjustments["technical_depth"] = 0.70
 
     updated_log = {
-        "user_feedback": recent_feedback.get("user_feedback", ""),
+        "thread_id": thread_id,
+        "user_feedback": original_feedback,
         "prompt_weight_adjustments": adjustments,
         "applied": True,
     }

@@ -116,7 +116,7 @@ def create_pipeline_graph(
         {"tailor": "tailor", "__end__": END},
     )
 
-    return builder.compile(checkpointer=checkpointer or default_checkpointer)
+    return builder.compile(checkpointer=checkpointer or MemorySaver())
 
 
 def create_interview_graph(
@@ -141,7 +141,7 @@ def create_interview_graph(
     builder.add_node("coach", coach_node)
     builder.add_edge(START, "coach")
     builder.add_edge("coach", END)
-    return builder.compile(checkpointer=checkpointer or default_checkpointer)
+    return builder.compile(checkpointer=checkpointer or MemorySaver())
 
 
 def create_reflector_graph(
@@ -164,7 +164,7 @@ def create_reflector_graph(
     builder.add_node("reflector", reflector_node)
     builder.add_edge(START, "reflector")
     builder.add_edge("reflector", END)
-    return builder.compile(checkpointer=checkpointer or default_checkpointer)
+    return builder.compile(checkpointer=checkpointer or MemorySaver())
 
 
 # Pre-compiled application graph instances for global use across API routers.

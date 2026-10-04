@@ -3,6 +3,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.agents.graph import interview_app
 from app.main import app
 
 
@@ -64,3 +65,36 @@ async def test_feedback_endpoint() -> None:
     assert data["thread_id"] == "test_thread_api_feedback"
     assert data["status"] == "weights_updated"
     assert data["prompt_weight_adjustments"].get("technical_depth") == 0.95
+
+
+@pytest.mark.asyncio
+async def test_feedback_does_not_pollute_interview_thread_state() -> None:
+    """Verify feedback submissions never overwrite or corrupt interview state."""
+    thread_id = "test_thread_isolation_ws_999"
+    int_config = {"configurable": {"thread_id": thread_id}}
+
+    # Initialize an active interview session
+    await interview_app.ainvoke(
+        {
+            "company_dossier": {"company_name": "NexusAI Labs"},
+            "messages": [],
+        },
+        config=int_config,
+    )
+
+    # Submit feedback referencing the same thread_id
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        payload = {
+            "thread_id": thread_id,
+            "user_feedback": "Make responses shorter and more concise.",
+        }
+        resp = await client.post("/api/feedback", json=payload)
+    assert resp.status_code == 200
+
+    # Ensure interview checkpoint is unchanged and not overwritten by reflector
+    state = await interview_app.aget_state(int_config)
+    assert state is not None
+    assert len(state.values.get("interview_history", [])) == 1
+    # Status should remain interview_active, not feedback_reflected
+    assert state.values.get("status") == "interview_active"

@@ -77,15 +77,12 @@ async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:
         FeedbackResponse containing the active weight adjustments.
     """
     state: AgentState = {
-        "feedback_logs": [
-            {
-                "thread_id": request.thread_id,
-                "user_feedback": request.user_feedback,
-            }
-        ]
+        "user_feedback": request.user_feedback,
     }
 
-    config: RunnableConfig = {"configurable": {"thread_id": request.thread_id}}
+    # Namespace the thread to isolate reflector checkpoints from interview messages
+    thread_id = f"reflector_{request.thread_id}"
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
     result = await reflector_app.ainvoke(state, config=config)
 
     logs = result.get("feedback_logs", [])

@@ -89,6 +89,8 @@ class AgentState(TypedDict, total=False):
     interview_history: Annotated[list[dict[str, Any]], merge_list]
     # Historical user feedback and synthesized prompt weight adjustments.
     feedback_logs: Annotated[list[dict[str, Any]], merge_list]
+    # Raw candidate feedback currently being synthesized by reflector_node.
+    user_feedback: str | None
     # Conversational messages stream passed to LLMs and WebSocket clients.
     messages: Annotated[list[dict[str, Any]], merge_list]
 
