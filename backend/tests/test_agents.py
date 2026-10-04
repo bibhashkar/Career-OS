@@ -8,7 +8,9 @@ from app.agents.graph import (
     reflector_app,
     route_ats,
 )
+from app.agents.nodes.ats import ats_node
 from app.agents.nodes.hunter import hunter_node
+from app.agents.nodes.tailor import tailor_node
 from app.agents.state import AgentState
 
 
@@ -150,3 +152,84 @@ async def test_pipeline_preserves_target_job_end_to_end() -> None:
     assert final_state["current_job_id"] == "job-ai-003"
     assert final_state["cv_draft"]["target_company"] == "CareerCloud Systems"
     assert final_state["company_dossier"]["company_name"] == "CareerCloud Systems"
+
+
+@pytest.mark.asyncio
+async def test_tailor_highlights_only_candidate_proven_skills() -> None:
+    """Verify tailor_node never fabricates unproven skills in CV draft."""
+    # Arrange
+    state: AgentState = {
+        "job_details": {
+            "title": "Mainframe Specialist",
+            "company_name": "LegacyBank",
+            "ats_requirements": {"required_skills": ["COBOL", "JCL", "DB2"]},
+        },
+        "revision_count": 0,
+    }
+
+    # Act
+    result = await tailor_node(state)
+    highlighted = result["cv_draft"]["skills_highlighted"]
+
+    # Assert: none of the unproven required skills should be claimed
+    assert "COBOL" not in highlighted
+    assert "JCL" not in highlighted
+    assert "DB2" not in highlighted
+    # Candidate's real skills from default blocks should be present instead
+    assert len(highlighted) > 0
+
+
+@pytest.mark.asyncio
+async def test_unmatched_job_enforces_loop_guard_and_fails_ats() -> None:
+    """Verify missing qualifications trigger loop guard and conclude with fail score."""
+    # Arrange: candidate has no COBOL or JCL in default blocks
+    initial_state: AgentState = {
+        "user_id": "user-unqualified-789",
+        "current_job_id": "job-cobol-999",
+        "job_details": {
+            "id": "job-cobol-999",
+            "title": "COBOL Mainframe Engineer",
+            "company_name": "LegacyBank",
+            "ats_requirements": {"required_skills": ["COBOL", "JCL", "DB2"]},
+        },
+    }
+    config = {"configurable": {"thread_id": "thread_loop_guard_test_001"}}
+
+    # Act
+    final_state = await pipeline_app.ainvoke(initial_state, config=config)
+
+    # Assert: loop guard must cap revisions at 3, score must be below 75
+    assert final_state["revision_count"] == 3
+    assert final_state["ats_score"] < 75.0
+    assert set(final_state["ats_feedback"]["missing_keywords"]) == {
+        "COBOL",
+        "JCL",
+        "DB2",
+    }
+    assert route_ats(final_state) == "__end__"
+
+
+@pytest.mark.asyncio
+async def test_ats_node_keyword_scoring_diagnostics() -> None:
+    """Verify ats_node accurately identifies missing keywords and computes scores."""
+    # Arrange
+    state: AgentState = {
+        "cv_draft": {
+            "skills_highlighted": ["Python", "FastAPI"],
+        },
+        "job_details": {
+            "ats_requirements": {
+                "required_skills": ["Python", "FastAPI", "Kubernetes", "gRPC"],
+            }
+        },
+        "revision_count": 1,
+    }
+
+    # Act
+    result = await ats_node(state)
+
+    # Assert
+    assert result["ats_feedback"]["matched_keywords"] == ["Python", "FastAPI"]
+    assert result["ats_feedback"]["missing_keywords"] == ["Kubernetes", "gRPC"]
+    assert result["ats_score"] == 50.0  # 2/4 = 50% * 70 = 35 + 15 baseline = 50.0
+    assert result["status"] == "ats_evaluated"

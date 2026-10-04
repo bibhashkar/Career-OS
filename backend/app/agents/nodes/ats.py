@@ -55,17 +55,21 @@ async def ats_node(state: AgentState) -> dict[str, Any]:
 
     revision = state.get("revision_count", 1)
 
-    # Calculate weighted ATS score based on skill match and revisions
+    # Calculate weighted ATS score based on true evidence match ratio
     base_match_ratio = len(matched) / max(len(required_skills), 1)
 
-    if revision == 1 and missing:
-        # First pass score under threshold if items are missing to trigger cyclic loop
-        calculated_score = round(min(70.0, base_match_ratio * 75.0), 1)
-    else:
-        # Subsequent revisions or full match passes the >= 75.0% threshold
-        calculated_score = round(
-            min(95.0, 75.0 + (base_match_ratio * 20.0) + (revision * 5.0)), 1
-        )
+    # Realistic ATS model:
+    # - Keyword Match (up to 70 points): based on candidate's proven skills
+    # - Formatting & Structure (15 points baseline): layout and parseability
+    # - Revision Polish (up to 15 points): awarded on subsequent revisions
+    #   if candidate has demonstrated baseline qualifications (>= 50% match)
+    keyword_score = base_match_ratio * 70.0
+    formatting_score = 15.0
+    revision_bonus = min(15.0, (revision - 1) * 7.5) if base_match_ratio >= 0.5 else 0.0
+
+    calculated_score = round(
+        min(100.0, keyword_score + formatting_score + revision_bonus), 1
+    )
 
     feedback = {
         "matched_keywords": matched,

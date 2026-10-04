@@ -60,6 +60,23 @@ async def tailor_node(state: AgentState) -> dict[str, Any]:
         limit=4,
     )
 
+    # Aggregate skills actually demonstrated across retrieved achievement blocks
+    candidate_skills: set[str] = set()
+    for block in matched_blocks:
+        for skill in block.get("skills", []):
+            candidate_skills.add(skill)
+
+    # Highlight proven skills that match the target role requirements
+    target_skills_lower = {s.lower(): s for s in combined_search_skills}
+    proven_matching_skills = [
+        target_skills_lower[s.lower()]
+        for s in candidate_skills
+        if s.lower() in target_skills_lower
+    ]
+    # Highlight proven matching skills, falling back to top candidate skills
+    highlighted_skills = proven_matching_skills or sorted(candidate_skills)[:5]
+    summary_skills = highlighted_skills[:3] or ["Software Engineering"]
+
     current_revision = state.get("revision_count", 0) + 1
 
     # Format CV draft incorporating company context and matched blocks
@@ -68,11 +85,11 @@ async def tailor_node(state: AgentState) -> dict[str, Any]:
         "target_company": job.get("company_name", "Target Company"),
         "professional_summary": (
             f"Results-oriented {job.get('title', 'Engineer')} with proven mastery "
-            f"in {', '.join(combined_search_skills[:3])}. Specialized in stateful "
+            f"in {', '.join(summary_skills)}. Specialized in stateful "
             f"systems, scalable backend APIs, and distributed architectures."
         ),
         "experience_blocks": matched_blocks,
-        "skills_highlighted": combined_search_skills,
+        "skills_highlighted": highlighted_skills,
         "revision_version": current_revision,
     }
 
