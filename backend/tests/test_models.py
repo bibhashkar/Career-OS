@@ -93,3 +93,10 @@ def test_feedback_log_instantiation() -> None:
     )
     assert log.thread_id == "thread_mock_123"
     assert log.prompt_weight_adjustments["technical_depth"] == 0.85
+
+
+def test_user_profile_cv_blocks_strict_restrict_cascade() -> None:
+    """Verify user_profile.cv_blocks enforces strict RESTRICT without delete-orphan."""
+    cascade_options = UserProfile.cv_blocks.property.cascade
+    assert "delete-orphan" not in cascade_options
+    assert "delete" not in cascade_options

@@ -11,8 +11,10 @@ Constraint Modeling:
     sponsorship.
   - Tone Directives: Stored as JSON, capturing preferences like brevity,
     assertiveness, and technical depth synthesized by the Reflector agent.
-  - Cascade Policy: Deleting a user profile removes its associated ``cv_blocks``
-    via ``cascade="all, delete-orphan"`` to ensure GDPR/privacy compliance.
+  - Foreign Key Constraint Policy: The ``cv_blocks`` relationship enforces
+    strict ``ON DELETE RESTRICT`` semantics per project rules. A user profile
+    cannot be dropped while associated achievement blocks exist, preventing
+    accidental cascading data loss of verified candidate history.
 """
 
 from typing import TYPE_CHECKING, Any
@@ -65,5 +67,4 @@ class UserProfile(Base, UUIDMixin, TimestampMixin):
     cv_blocks: Mapped[list["CVBlock"]] = relationship(
         "CVBlock",
         back_populates="user_profile",
-        cascade="all, delete-orphan",
     )
