@@ -79,17 +79,31 @@ async def tailor_node(state: AgentState) -> dict[str, Any]:
 
     current_revision = state.get("revision_count", 0) + 1
 
-    # Format CV draft incorporating company context and matched blocks
+    # Format CV draft incorporating company context, tone directives, and blocks
+    tone = state.get("tone_directives") or {}
+    style = tone.get("style", "confident")
+    brevity = tone.get("brevity", "high")
+
+    if brevity == "high":
+        summary_intro = f"Focused, results-driven {job.get('title', 'Engineer')}"
+    elif style == "executive":
+        summary_intro = (
+            f"Strategic, high-impact {job.get('title', 'Engineering Leader')}"
+        )
+    else:
+        summary_intro = f"Results-oriented {job.get('title', 'Engineer')}"
+
     cv_draft = {
         "candidate_title": job.get("title", "Senior AI Engineer"),
         "target_company": job.get("company_name", "Target Company"),
         "professional_summary": (
-            f"Results-oriented {job.get('title', 'Engineer')} with proven mastery "
-            f"in {', '.join(summary_skills)}. Specialized in stateful "
-            f"systems, scalable backend APIs, and distributed architectures."
+            f"{summary_intro} with proven mastery in {', '.join(summary_skills)}. "
+            f"Specialized in stateful systems, scalable backend APIs, "
+            f"and distributed architectures."
         ),
         "experience_blocks": matched_blocks,
         "skills_highlighted": highlighted_skills,
+        "tone": tone,
         "revision_version": current_revision,
     }
 

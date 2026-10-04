@@ -44,8 +44,14 @@ async def profiler_node(state: AgentState) -> dict[str, Any]:
     job_details = state.get("job_details") or {}
 
     # Extract or provide sensible defaults for user constraints
-    visa_required = False
-    tone = {"style": "confident", "brevity": "high", "technical_depth": 0.85}
+    visa_required = state.get("visa_required", job_details.get("visa_required", False))
+    tone: dict[str, Any] = {
+        "style": "confident",
+        "brevity": "high",
+        "technical_depth": 0.85,
+    }
+    if state.get("tone_directives"):
+        tone.update(state["tone_directives"])
 
     if state.get("feedback_logs"):
         # Apply any reflected weights from previous sessions
@@ -57,6 +63,8 @@ async def profiler_node(state: AgentState) -> dict[str, Any]:
         "user_id": user_id,
         "status": "profile_evaluated",
         "job_details": job_details,
+        "visa_required": visa_required,
+        "tone_directives": tone,
         "messages": [
             {
                 "role": "system",

@@ -47,6 +47,10 @@ class CVGenerateRequest(BaseModel):
     required_skills: list[str] = Field(
         default_factory=lambda: ["Python", "FastAPI", "LangGraph", "pgvector"]
     )
+    visa_required: bool | None = Field(None, examples=[True])
+    tone_directives: dict[str, Any] | None = Field(
+        None, examples=[{"style": "executive", "brevity": "high"}]
+    )
 
 
 class CVGenerateResponse(BaseModel):
@@ -106,6 +110,10 @@ async def generate_tailored_cv(
         },
         "revision_count": 0,
     }
+    if request.visa_required is not None:
+        initial_state["visa_required"] = request.visa_required
+    if request.tone_directives is not None:
+        initial_state["tone_directives"] = request.tone_directives
 
     # Isolated thread identifier ensures state checkpoints do not collide
     thread_id = f"cv_gen_{request.job_id}_{uuid.uuid4().hex[:8]}"

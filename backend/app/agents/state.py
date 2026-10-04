@@ -70,6 +70,12 @@ class AgentState(TypedDict, total=False):
     # Researched intelligence: tech stack, business model, recent news.
     company_dossier: dict[str, Any] | None
 
+    # ---- Candidate Constraints & Directives ----
+    # Candidate work authorization constraint (True if requiring sponsorship).
+    visa_required: bool
+    # Stylistic guidelines: e.g. style, brevity, technical_depth, formality.
+    tone_directives: dict[str, Any]
+
     # ---- CV Tailoring & Retrieval ----
     # Achievement chunks retrieved from pgvector by semantic similarity.
     matched_cv_blocks: list[dict[str, Any]]

@@ -72,7 +72,7 @@ async def hunter_node(state: AgentState) -> dict[str, Any]:
 
     query = job_details.get("title", "Senior AI Engineer")
     location = job_details.get("location", "Remote")
-    visa_req = job_details.get("visa_required", False)
+    visa_req = state.get("visa_required", job_details.get("visa_required", False))
 
     # Query external job board or hermetic local fixtures
     matched_jobs = await search_jobs(

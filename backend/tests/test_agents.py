@@ -10,6 +10,7 @@ from app.agents.graph import (
 )
 from app.agents.nodes.ats import ats_node
 from app.agents.nodes.hunter import hunter_node
+from app.agents.nodes.profiler import profiler_node
 from app.agents.nodes.tailor import tailor_node
 from app.agents.state import AgentState
 
@@ -233,3 +234,52 @@ async def test_ats_node_keyword_scoring_diagnostics() -> None:
     assert result["ats_feedback"]["missing_keywords"] == ["Kubernetes", "gRPC"]
     assert result["ats_score"] == 50.0  # 2/4 = 50% * 70 = 35 + 15 baseline = 50.0
     assert result["status"] == "ats_evaluated"
+
+
+@pytest.mark.asyncio
+async def test_profiler_persists_tone_and_visa_directives() -> None:
+    """Verify profiler_node outputs visa_required and tone_directives."""
+    # Arrange
+    state: AgentState = {
+        "user_id": "user-cand-001",
+        "visa_required": True,
+        "tone_directives": {"style": "executive", "brevity": "high"},
+    }
+
+    # Act
+    result = await profiler_node(state)
+
+    # Assert
+    assert result["visa_required"] is True
+    assert result["tone_directives"]["style"] == "executive"
+    assert result["tone_directives"]["brevity"] == "high"
+    assert result["tone_directives"]["technical_depth"] == 0.85
+
+
+@pytest.mark.asyncio
+async def test_pipeline_propagates_tone_and_visa_directives() -> None:
+    """Verify full pipeline propagates candidate directives to tailor and state."""
+    # Arrange
+    initial_state: AgentState = {
+        "user_id": "user-cand-002",
+        "visa_required": True,
+        "tone_directives": {"style": "executive", "brevity": "high"},
+        "job_details": {
+            "id": "job-ai-001",
+            "title": "Senior AI Systems Engineer",
+            "company_name": "NexusAI Labs",
+            "ats_requirements": {
+                "required_skills": ["Python", "FastAPI", "LangGraph"],
+            },
+        },
+    }
+    config = {"configurable": {"thread_id": "thread_tone_prop_001"}}
+
+    # Act
+    final_state = await pipeline_app.ainvoke(initial_state, config=config)
+
+    # Assert
+    assert final_state["visa_required"] is True
+    assert final_state["tone_directives"]["style"] == "executive"
+    assert final_state["cv_draft"]["tone"]["style"] == "executive"
+    assert "Focused, results-driven" in final_state["cv_draft"]["professional_summary"]
