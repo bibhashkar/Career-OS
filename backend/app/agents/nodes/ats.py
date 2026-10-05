@@ -3,24 +3,39 @@ Applicant Tracking System (ATS) agent node and keyword gap evaluation.
 
 In modern recruiting, ATS software parses incoming resumes and scores them
 against job posting requirements before human review. Resumes scoring below
-industry thresholds (commonly 70–80%) are automatically discarded.
+industry thresholds (configured via ``settings.ATS_PASS_THRESHOLD``) are
+automatically routed for revision or discarded.
 
-This node simulates that parsing and scoring process. It compares the
-candidate's highlighted skills in the CV draft against the job's required
-technical competencies, computes a weighted compatibility percentage, and
-generates actionable keyword recommendations for the tailor node.
+This node evaluates the candidate's highlighted skills and tailored summary
+against job requirements using both keyword coverage and LLM-assisted evaluation.
+It produces an objective compatibility score and actionable recommendations.
 
 Cyclic Evaluation Strategy:
-  - Revision 1: If critical keywords are missing, the score is capped at 70.0%
-    specifically to trip the ``route_ats`` loop guard (< 75.0%), routing the
+  - Revision 1: If critical keywords are missing, the score is penalized to trip
+    the ``route_ats`` loop guard (< ``settings.ATS_PASS_THRESHOLD``), routing the
     draft back to ``tailor_node`` for automated remediation.
   - Revision >= 2: Incorporates revision progression bonuses, rewarding
     targeted keyword additions and ensuring convergence toward passing scores.
 """
 
+import asyncio
+import json
 from typing import Any
 
+from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
+
+from app.agents.llm import get_llm
 from app.agents.state import AgentState
+from app.core.config import settings
+
+
+class ATSAnalysisSchema(BaseModel):
+    """Structured ATS evaluation produced via LLM."""
+
+    keyword_match_score: float = Field(default=70.0)
+    formatting_score: float = Field(default=92.0)
+    recommendation: str = Field(default="Ready for application submission.")
 
 
 async def ats_node(state: AgentState) -> dict[str, Any]:
@@ -58,7 +73,7 @@ async def ats_node(state: AgentState) -> dict[str, Any]:
     # Calculate weighted ATS score based on true evidence match ratio
     base_match_ratio = len(matched) / max(len(required_skills), 1)
 
-    # Realistic ATS model:
+    # Realistic ATS model baseline:
     # - Keyword Match (up to 70 points): based on candidate's proven skills
     # - Formatting & Structure (15 points baseline): layout and parseability
     # - Revision Polish (up to 15 points): awarded on subsequent revisions
@@ -67,20 +82,72 @@ async def ats_node(state: AgentState) -> dict[str, Any]:
     formatting_score = 15.0
     revision_bonus = min(15.0, (revision - 1) * 7.5) if base_match_ratio >= 0.5 else 0.0
 
-    calculated_score = round(
+    fallback_score = round(
         min(100.0, keyword_score + formatting_score + revision_bonus), 1
     )
+    fallback_recommendation = (
+        "Ready for application submission."
+        if fallback_score >= settings.ATS_PASS_THRESHOLD
+        else f"Incorporate missing critical keywords: {', '.join(missing)}."
+    )
 
+    mock_json = json.dumps(
+        {
+            "keyword_match_score": fallback_score,
+            "formatting_score": 92.0,
+            "recommendation": fallback_recommendation,
+        }
+    )
+
+    llm = get_llm(
+        temperature=0.1,
+        default_mock_responses=[mock_json],
+    )
+
+    system_prompt = (
+        "You are an automated Applicant Tracking System (ATS) evaluation engine. "
+        "Score the candidate's resume draft against required technical competencies "
+        "and provide actionable keyword recommendations."
+    )
+    user_prompt = (
+        f"Target Role: {job.get('title', 'Engineer')} at "
+        f"{job.get('company_name', 'Company')}\n"
+        f"Required Skills: {', '.join(required_skills)}\n"
+        f"Highlighted Skills: {', '.join(cv_draft.get('skills_highlighted', []))}\n"
+        f"Matched Skills: {', '.join(matched)}\n"
+        f"Missing Skills: {', '.join(missing)}\n"
+        f"Professional Summary: {cv_draft.get('professional_summary', '')}\n"
+        f"Revision: {revision}\n"
+    )
+
+    calculated_score = fallback_score
+    recommendation = fallback_recommendation
+
+    try:
+        chain = llm.with_structured_output(ATSAnalysisSchema)
+        res = await asyncio.wait_for(
+            chain.ainvoke(
+                [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_prompt),
+                ]
+            ),
+            timeout=10.0,
+        )
+        if isinstance(res, ATSAnalysisSchema) and res.keyword_match_score > 0:
+            calculated_score = round(res.keyword_match_score, 1)
+            recommendation = res.recommendation or fallback_recommendation
+    except Exception:
+        calculated_score = fallback_score
+        recommendation = fallback_recommendation
+
+    is_pass = calculated_score >= settings.ATS_PASS_THRESHOLD
     feedback = {
         "matched_keywords": matched,
         "missing_keywords": missing,
         "formatting_score": 92.0,
         "keyword_match_score": calculated_score,
-        "recommendation": (
-            "Ready for application submission."
-            if calculated_score >= 75.0
-            else f"Incorporate missing critical keywords: {', '.join(missing)}."
-        ),
+        "recommendation": recommendation,
     }
 
     return {
@@ -92,7 +159,7 @@ async def ats_node(state: AgentState) -> dict[str, Any]:
                 "role": "system",
                 "content": (
                     f"ATS evaluation completed. Score: {calculated_score}%. "
-                    f"Status: {'PASS' if calculated_score >= 75.0 else 'RETRY'}."
+                    f"Status: {'PASS' if is_pass else 'RETRY'}."
                 ),
             }
         ],

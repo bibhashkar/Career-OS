@@ -74,8 +74,8 @@ def route_ats(state: AgentState) -> Literal["tailor", "__end__"]:
     score = state.get("ats_score", 0.0)
     revisions = state.get("revision_count", 0)
 
-    # Loop guard: bounded limit to max 3 revisions to prevent runaway recursion
-    if score < 75.0 and revisions < 3:
+    # Loop guard: bounded limit to max revisions preventing runaway recursion
+    if score < settings.ATS_PASS_THRESHOLD and revisions < settings.MAX_REVISIONS:
         return "tailor"
     return "__end__"
 
