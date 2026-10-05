@@ -114,7 +114,7 @@ async def interview_websocket_endpoint(
             raw_text = await websocket.receive_text()
             try:
                 data = json.loads(raw_text)
-            except Exception:
+            except json.JSONDecodeError:
                 data = {"content": raw_text}
 
             msg_type = data.get("type", "message")
@@ -161,5 +161,8 @@ async def interview_websocket_endpoint(
                     "correlation_id": cid,
                 }
             )
-        except Exception:
-            pass
+        except Exception as ws_send_exc:
+            logger.debug(
+                f"Failed to send error frame over closed/broken WebSocket: "
+                f"{ws_send_exc}"
+            )

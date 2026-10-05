@@ -20,6 +20,7 @@ Feedback Reflection Cycle & Structured Output:
 
 import asyncio
 import json
+import logging
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -27,6 +28,8 @@ from pydantic import BaseModel, Field
 
 from app.agents.llm import get_llm
 from app.agents.state import AgentState
+
+logger = logging.getLogger("career_os.nodes.reflector")
 
 
 class ReflectorDirectiveSchema(BaseModel):
@@ -135,7 +138,8 @@ async def reflector_node(state: AgentState) -> dict[str, Any]:
             resolved_depth = round(max(0.0, min(1.0, res.technical_depth)), 2)
             resolved_brevity = round(max(0.0, min(1.0, res.brevity)), 2)
             resolved_style = res.style or fallback_style
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"LLM reflector directive fallback: {exc}")
         resolved_depth = fallback_depth
         resolved_brevity = fallback_brevity
         resolved_style = fallback_style

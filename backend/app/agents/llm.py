@@ -27,7 +27,7 @@ from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import BaseMessage
 from langchain_core.runnables import Runnable, RunnableLambda
 from langchain_google_genai import ChatGoogleGenerativeAI
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.core.config import settings
 
@@ -101,7 +101,7 @@ class MockChatModel(FakeListChatModel):
                     )
                 else:
                     parsed = data
-            except Exception:
+            except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
                 if isinstance(schema, type) and issubclass(schema, BaseModel):
                     parsed = schema.model_construct()
                 else:

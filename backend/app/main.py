@@ -14,6 +14,7 @@ initialisation is placed here — not inside a router or model module — to ens
 it runs exactly once before any request is processed.
 """
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -30,6 +31,8 @@ from app.core.config import settings
 from app.core.database import engine, init_vector_extension
 from app.core.errors import setup_exception_handlers
 from app.core.logging import CorrelationIdMiddleware, setup_logging
+
+logger = logging.getLogger("career_os.main")
 
 
 @asynccontextmanager
@@ -50,9 +53,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     setup_logging()
     try:
         await init_vector_extension()
-    except Exception:
-        # Database may still be starting up in Docker; proceed without blocking.
-        pass
+    except Exception as exc:
+        # Database may still be starting up in Docker; proceed with logged warning.
+        logger.warning(f"Vector extension bootstrap deferred during startup: {exc}")
 
     if settings.APP_ENV != "test":
         await init_postgres_saver()

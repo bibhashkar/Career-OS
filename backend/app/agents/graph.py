@@ -24,6 +24,7 @@ conditions: score must be below 75.0% AND revision_count must be strictly
 less than 3.
 """
 
+import logging
 from typing import Literal
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -51,6 +52,7 @@ from app.core.config import settings
 default_checkpointer = MemorySaver()
 _postgres_pool: AsyncConnectionPool[AsyncConnection[DictRow]] | None = None
 _postgres_saver: AsyncPostgresSaver | None = None
+logger = logging.getLogger("career_os.agents.graph")
 
 
 def route_ats(state: AgentState) -> Literal["tailor", "__end__"]:
@@ -226,13 +228,18 @@ async def init_postgres_saver(
         interview_app.checkpointer = _postgres_saver
         reflector_app.checkpointer = _postgres_saver
         return _postgres_saver
-    except Exception:
-        # Fall back cleanly to default MemorySaver if database is unreachable
+    except Exception as exc:
+        logger.warning(
+            f"Failed to initialize AsyncPostgresSaver; "
+            f"using MemorySaver fallback: {exc}"
+        )
         if _postgres_pool:
             try:
                 await _postgres_pool.close()
-            except Exception:
-                pass
+            except Exception as pool_exc:
+                logger.debug(
+                    f"Error closing PostgreSQL pool on init failure: {pool_exc}"
+                )
             _postgres_pool = None
         _postgres_saver = None
         return None
@@ -244,7 +251,7 @@ async def close_postgres_saver() -> None:
     if _postgres_pool:
         try:
             await _postgres_pool.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"Error closing AsyncPostgresSaver connection pool: {exc}")
         _postgres_pool = None
     _postgres_saver = None

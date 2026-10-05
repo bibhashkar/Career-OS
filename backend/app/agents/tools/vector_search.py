@@ -18,6 +18,7 @@ this module falls back to keyword intersection ranking across ``DEFAULT_CV_BLOCK
 ensuring the tailor agent receives structured achievement data in all testing modes.
 """
 
+import logging
 import uuid
 from typing import Any
 
@@ -26,6 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session_context
 from app.models.cv_block import CVBlock
+
+logger = logging.getLogger("career_os.tools.vector_search")
 
 # Fallback deterministic blocks for hermetic testing without live database seed
 DEFAULT_CV_BLOCKS: list[dict[str, Any]] = [
@@ -128,8 +131,11 @@ async def search_cv_blocks(
                 # If database returned actual blocks for this user, return them
                 if persisted_blocks and persisted_blocks != DEFAULT_CV_BLOCKS[:limit]:
                     return persisted_blocks
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(
+                f"Auto-session CV block vector search failed; "
+                f"falling back to default blocks: {exc}"
+            )
 
     if session is not None and user_id is not None:
         try:
@@ -158,9 +164,11 @@ async def search_cv_blocks(
                     }
                     for b in db_records
                 ]
-        except Exception:
+        except Exception as exc:
             # Fall back hermetically on any database connectivity issue
-            pass
+            logger.debug(
+                f"Database CV block retrieval failed; using hermetic fallback: {exc}"
+            )
 
     # Hermetic fallback scoring based on matching skills
     if required_skills:

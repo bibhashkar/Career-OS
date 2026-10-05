@@ -12,6 +12,7 @@ an enriched discovery sequence:
 """
 
 import asyncio
+import logging
 import uuid
 from typing import Any
 
@@ -22,6 +23,8 @@ from app.agents.tools.company_intel import fetch_company_intel
 from app.agents.tools.job_search import search_jobs
 from app.core.database import get_session_context
 from app.models.job_listing import JobListing
+
+logger = logging.getLogger("career_os.jobs")
 
 router = APIRouter(prefix="/api/jobs", tags=["Jobs"])
 
@@ -99,7 +102,7 @@ async def search_and_intel(request: JobSearchRequest) -> JobSearchResponse:
                 if dossier_meta and dossier_meta.get("id"):
                     try:
                         dossier_id = uuid.UUID(str(dossier_meta["id"]))
-                    except Exception:
+                    except (ValueError, TypeError):
                         dossier_id = None
 
                 job_record = JobListing(
@@ -113,7 +116,7 @@ async def search_and_intel(request: JobSearchRequest) -> JobSearchResponse:
                     company_dossier_id=dossier_id,
                 )
                 session.add(job_record)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(f"Failed to persist discovered job listings: {exc}")
 
     return JobSearchResponse(count=len(enriched_jobs), jobs=enriched_jobs)

@@ -20,12 +20,15 @@ Multi-Turn Conversational Architecture:
 """
 
 import asyncio
+import logging
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agents.llm import get_llm
 from app.agents.state import AgentState
+
+logger = logging.getLogger("career_os.nodes.coach")
 
 
 async def coach_node(state: AgentState) -> dict[str, Any]:
@@ -117,7 +120,8 @@ async def coach_node(state: AgentState) -> dict[str, Any]:
             ).strip()
             if not content:
                 content = fallback_opening
-        except Exception:
+        except Exception as exc:
+            logger.debug(f"LLM interview coach opening question fallback: {exc}")
             content = fallback_opening
 
         response_msg = {"role": "assistant", "content": content}
@@ -144,7 +148,8 @@ async def coach_node(state: AgentState) -> dict[str, Any]:
             ).strip()
             if not content:
                 content = fallback_subsequent
-        except Exception:
+        except Exception as exc:
+            logger.debug(f"LLM interview coach critique fallback: {exc}")
             content = fallback_subsequent
 
         response_msg = {"role": "assistant", "content": content}

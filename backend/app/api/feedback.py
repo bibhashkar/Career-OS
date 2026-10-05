@@ -14,6 +14,7 @@ Reflection Workflow:
      subsequent agent invocations within the thread.
 """
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, status
@@ -24,6 +25,8 @@ from app.agents.graph import reflector_app
 from app.agents.state import AgentState
 from app.core.database import get_session_context
 from app.models.feedback_log import FeedbackLog
+
+logger = logging.getLogger("career_os.feedback")
 
 router = APIRouter(prefix="/api/feedback", tags=["Feedback"])
 
@@ -100,8 +103,10 @@ async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:
                 prompt_weight_adjustments=adjustments,
             )
             session.add(log_record)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            f"Failed to persist feedback log for thread '{request.thread_id}': {exc}"
+        )
 
     return FeedbackResponse(
         thread_id=request.thread_id,

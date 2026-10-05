@@ -20,6 +20,7 @@ Cyclic Evaluation Strategy:
 
 import asyncio
 import json
+import logging
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -28,6 +29,8 @@ from pydantic import BaseModel, Field
 from app.agents.llm import get_llm
 from app.agents.state import AgentState
 from app.core.config import settings
+
+logger = logging.getLogger("career_os.nodes.ats")
 
 
 class ATSAnalysisSchema(BaseModel):
@@ -137,7 +140,8 @@ async def ats_node(state: AgentState) -> dict[str, Any]:
         if isinstance(res, ATSAnalysisSchema) and res.keyword_match_score > 0:
             calculated_score = round(res.keyword_match_score, 1)
             recommendation = res.recommendation or fallback_recommendation
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"LLM ATS evaluation fallback: {exc}")
         calculated_score = fallback_score
         recommendation = fallback_recommendation
 

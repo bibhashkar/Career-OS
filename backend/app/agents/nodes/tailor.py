@@ -17,6 +17,7 @@ Adaptive Revision Loop & Grounded LLM Synthesis:
 """
 
 import asyncio
+import logging
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -24,6 +25,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from app.agents.llm import get_llm
 from app.agents.state import AgentState
 from app.agents.tools.vector_search import search_cv_blocks
+
+logger = logging.getLogger("career_os.nodes.tailor")
 
 
 async def tailor_node(state: AgentState) -> dict[str, Any]:
@@ -146,7 +149,8 @@ async def tailor_node(state: AgentState) -> dict[str, Any]:
         ).strip()
         if not summary_content:
             summary_content = fallback_summary
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"LLM CV summary synthesis fallback: {exc}")
         summary_content = fallback_summary
 
     cv_draft = {

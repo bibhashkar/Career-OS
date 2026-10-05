@@ -16,6 +16,7 @@ to these fixtures to ensure tests remain fast, reproducible, and isolated.
 
 import asyncio
 import json
+import logging
 from typing import Any
 
 import httpx
@@ -27,6 +28,8 @@ from app.agents.llm import get_llm
 from app.core.config import settings
 from app.core.database import get_session_context
 from app.models.company_dossier import CompanyDossier
+
+logger = logging.getLogger("career_os.tools.company_intel")
 
 # Pre-seeded company intelligence knowledge base for reliable offline testing
 MOCK_DOSSIERS: dict[str, dict[str, Any]] = {
@@ -138,8 +141,8 @@ async def fetch_company_intel(
                     "business_model": cached.business_model,
                     "culture_notes": cached.culture_notes,
                 }
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug(f"Cache lookup failed for company '{company_name}': {exc}")
 
     resolved: dict[str, Any] | None = None
 
@@ -180,8 +183,10 @@ async def fetch_company_intel(
                             "Data gathered via live web intelligence search."
                         ),
                     }
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                f"Exa search failed for company '{company_name}'; falling back: {exc}"
+            )
 
     # 3. Match hermetic fixtures or synthesize structured intel via LLM
     if not resolved:
@@ -233,8 +238,10 @@ async def fetch_company_intel(
                     res_stack = llm_output.tech_stack
                     res_model = llm_output.business_model or default_model
                     res_culture = llm_output.culture_notes or default_culture
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(
+                    f"LLM company intel extraction fallback for '{company_name}': {exc}"
+                )
 
             resolved = {
                 "company_name": company_name,
@@ -267,7 +274,10 @@ async def fetch_company_intel(
             session.add(record)
             await session.flush()
             resolved["id"] = str(record.id)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            f"Failed to persist company dossier for "
+            f"'{resolved.get('company_name')}': {exc}"
+        )
 
     return resolved

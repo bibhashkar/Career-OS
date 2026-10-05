@@ -14,12 +14,15 @@ queries fall back to keyword filtering over this local dataset. This guarantees
 that tests never fail due to third-party network outages or exhausted API quotas.
 """
 
+import logging
 import uuid
 from typing import Any
 
 import httpx
 
 from app.core.config import settings
+
+logger = logging.getLogger("career_os.tools.job_search")
 
 # Deterministic mock dataset for hermetic test execution and offline development
 MOCK_JOBS: list[dict[str, Any]] = [
@@ -161,9 +164,12 @@ async def search_jobs(
                         )
                     if results:
                         return results
-        except Exception:
+        except Exception as exc:
             # Fall back hermetically to mock dataset on any API failure
-            pass
+            logger.warning(
+                f"JSearch API request failed for query '{query}'; "
+                f"falling back to mock dataset: {exc}"
+            )
 
     # Hermetic filtering over local dataset
     query_lower = query.lower()

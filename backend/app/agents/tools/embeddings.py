@@ -20,6 +20,7 @@ Embedding Strategy:
 
 import hashlib
 import json
+import logging
 import math
 import os
 import uuid
@@ -37,6 +38,8 @@ from app.core.config import settings
 from app.core.database import get_session_context
 from app.models.cv_block import CVBlock
 from app.models.user_profile import UserProfile
+
+logger = logging.getLogger("career_os.tools.embeddings")
 
 
 class ParsedCVChunkSchema(BaseModel):
@@ -115,7 +118,11 @@ async def embed_text(text: str) -> list[float]:
             raw_vec = (raw_vec + [0.0] * (1536 - len(raw_vec)))[:1536]
         norm = math.sqrt(sum(x * x for x in raw_vec)) or 1.0
         return [round(x / norm, 6) for x in raw_vec[:1536]]
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            f"Google Gemini embeddings API call failed; "
+            f"falling back to deterministic embedding: {exc}"
+        )
         return generate_deterministic_embedding(text, dim=1536)
 
 
@@ -211,8 +218,8 @@ async def chunk_cv_text(raw_text: str) -> list[dict[str, Any]]:
         )
         if isinstance(res, ParsedCVDocumentSchema) and res.blocks:
             return [b.model_dump() for b in res.blocks]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug(f"LLM CV chunking parsing fallback: {exc}")
 
     return fallback_blocks
 
@@ -298,8 +305,12 @@ async def ingest_cv_blocks(
     try:
         async with get_session_context() as auto_session:
             return await _persist_with_session(auto_session)
-    except Exception:
+    except Exception as exc:
         # Fallback hermetically returning blocks with generated IDs
+        logger.warning(
+            f"Failed to persist CV blocks to database for user '{parsed_uid}'; "
+            f"using in-memory fallback: {exc}"
+        )
         return [
             {
                 "id": str(uuid.uuid4()),
