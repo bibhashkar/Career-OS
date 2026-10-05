@@ -1,7 +1,11 @@
 import axios from "axios";
 
+const apiBase = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL.replace(/\/$/, "")}/api`
+  : "/api";
+
 const apiClient = axios.create({
-  baseURL: "/api",
+  baseURL: apiBase,
   timeout: 30000,
   headers: {
     "Content-Type": "application/json",
@@ -48,7 +52,10 @@ export async function submitFeedback(threadId, userFeedback) {
  * Query backend health status.
  */
 export async function checkHealth() {
-  const response = await axios.get("/health");
+  const healthUrl = import.meta.env.VITE_API_URL
+    ? `${import.meta.env.VITE_API_URL.replace(/\/$/, "")}/health`
+    : "/health";
+  const response = await axios.get(healthUrl);
   return response.data;
 }
 

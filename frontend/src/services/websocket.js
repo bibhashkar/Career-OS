@@ -16,12 +16,17 @@ export class InterviewWebSocket {
     this.isManualClose = false;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
+    const baseWs = import.meta.env.VITE_WS_URL
+      ? import.meta.env.VITE_WS_URL.replace(/\/$/, "")
+      : `${protocol}//${host}`;
+
     const query = new URLSearchParams();
     if (this.options.jobId) query.set("job_id", this.options.jobId);
     if (this.options.companyName) query.set("company_name", this.options.companyName);
     if (this.options.title) query.set("title", this.options.title);
+    if (this.options.token) query.set("token", this.options.token);
     const queryString = query.toString() ? `?${query.toString()}` : "";
-    const wsUrl = `${protocol}//${host}/api/interview/${this.threadId}${queryString}`;
+    const wsUrl = `${baseWs}/api/interview/${this.threadId}${queryString}`;
 
     if (this.onStatusChange) this.onStatusChange("connecting");
 
