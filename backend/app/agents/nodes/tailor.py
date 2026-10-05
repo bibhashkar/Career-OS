@@ -6,16 +6,22 @@ dynamically constructs a targeted CV draft. It performs semantic vector
 similarity search over the candidate's career achievement chunks (stored in
 PostgreSQL via ``pgvector``) and selects the most relevant evidence blocks.
 
-Adaptive Revision Loop:
+Adaptive Revision Loop & Grounded LLM Synthesis:
   - On first pass: queries for blocks matching the job's stated required skills.
   - On retry pass (when routed from ``ats_node``): inspects ``ats_feedback`` for
     any identified ``missing_keywords``, merges them into the retrieval query,
     and pulls achievement blocks demonstrating those missing skills.
+  - LLM Grounding: Synthesizes a factual professional summary grounded strictly
+    in proven candidate skills and retrieved evidence blocks, avoiding fabrication.
   - Increments ``revision_count`` to advance loop guard bounds.
 """
 
+import asyncio
 from typing import Any
 
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from app.agents.llm import get_llm
 from app.agents.state import AgentState
 from app.agents.tools.vector_search import search_cv_blocks
 
@@ -29,6 +35,7 @@ async def tailor_node(state: AgentState) -> dict[str, Any]:
       - ``job_details``: Target job title, company name, and required skills.
       - ``ats_feedback``: Missing keywords flagged during prior ATS evaluations.
       - ``revision_count``: Current revision index.
+      - ``tone_directives``: Style preferences (confident, executive, technical).
 
     Writes:
       - ``matched_cv_blocks``: Top matching achievement blocks from pgvector.
@@ -84,23 +91,68 @@ async def tailor_node(state: AgentState) -> dict[str, Any]:
     style = tone.get("style", "confident")
     brevity = tone.get("brevity", "high")
 
+    target_title = job.get("title", "Senior AI Engineer")
+    target_company = job.get("company_name", "Target Company")
+
     if brevity == "high":
-        summary_intro = f"Focused, results-driven {job.get('title', 'Engineer')}"
+        summary_intro = f"Focused, results-driven {target_title}"
     elif style == "executive":
-        summary_intro = (
-            f"Strategic, high-impact {job.get('title', 'Engineering Leader')}"
-        )
+        summary_intro = f"Strategic, high-impact {target_title}"
     else:
-        summary_intro = f"Results-oriented {job.get('title', 'Engineer')}"
+        summary_intro = f"Results-oriented {target_title}"
+
+    fallback_summary = (
+        f"{summary_intro} with proven mastery in {', '.join(summary_skills)}. "
+        f"Specialized in stateful systems, scalable backend APIs, "
+        f"and distributed architectures."
+    )
+
+    # Synthesize tailored professional summary via LLM grounded in evidence
+    llm = get_llm(
+        temperature=0.2,
+        default_mock_responses=[fallback_summary],
+    )
+
+    evidence_titles = [b.get("title", "") for b in matched_blocks if b.get("title")]
+    evidence_desc = ", ".join(evidence_titles[:3])
+
+    system_prompt = (
+        "You are an executive CV tailoring specialist. You craft factual, high-impact "
+        "professional summaries strictly grounded in the candidate's demonstrated "
+        "career blocks. Never hallucinate skills or qualifications not in the evidence."
+    )
+    user_prompt = (
+        f"Target Role: {target_title} at {target_company}\n"
+        f"Required Skills: {', '.join(required_skills)}\n"
+        f"Proven Skills: {', '.join(highlighted_skills)}\n"
+        f"Career Evidence: {evidence_desc}\n"
+        f"Tone Directives: style={style}, brevity={brevity}\n\n"
+        "Generate a factual, 2-sentence professional summary highlighting proven "
+        "alignment with the target role."
+    )
+
+    try:
+        res = await asyncio.wait_for(
+            llm.ainvoke(
+                [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_prompt),
+                ]
+            ),
+            timeout=10.0,
+        )
+        summary_content = (
+            res.content if isinstance(res.content, str) else str(res.content)
+        ).strip()
+        if not summary_content:
+            summary_content = fallback_summary
+    except Exception:
+        summary_content = fallback_summary
 
     cv_draft = {
-        "candidate_title": job.get("title", "Senior AI Engineer"),
-        "target_company": job.get("company_name", "Target Company"),
-        "professional_summary": (
-            f"{summary_intro} with proven mastery in {', '.join(summary_skills)}. "
-            f"Specialized in stateful systems, scalable backend APIs, "
-            f"and distributed architectures."
-        ),
+        "candidate_title": target_title,
+        "target_company": target_company,
+        "professional_summary": summary_content,
         "experience_blocks": matched_blocks,
         "skills_highlighted": highlighted_skills,
         "tone": tone,
