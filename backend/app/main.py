@@ -21,6 +21,7 @@ from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app.agents.graph import close_postgres_saver, init_postgres_saver
 from app.api.cv import router as cv_router
 from app.api.feedback import router as feedback_router
 from app.api.interview import router as interview_router
@@ -34,21 +35,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Manage application startup and teardown sequences.
 
-    On startup: attempts to create the pgvector extension in PostgreSQL.
-    The attempt is wrapped in a broad exception guard so that a cold-start
-    race condition (database container not yet ready) does not crash the
-    server process — the extension will be created on the next successful
-    restart or migration run instead.
+    On startup:
+      - Attempts to create the pgvector extension in PostgreSQL.
+      - In non-test environments, initializes AsyncPostgresSaver for persistent
+        LangGraph checkpointing across server restarts.
 
-    On shutdown: disposes the SQLAlchemy async engine, which closes all
-    pooled psycopg connections gracefully before the process exits.
+    On shutdown:
+      - Closes the AsyncPostgresSaver connection pool.
+      - Disposes the SQLAlchemy async engine, closing all pooled psycopg
+        connections gracefully before process exit.
     """
     try:
         await init_vector_extension()
     except Exception:
         # Database may still be starting up in Docker; proceed without blocking.
         pass
+
+    if settings.APP_ENV != "test":
+        await init_postgres_saver()
+
     yield
+
+    await close_postgres_saver()
     # Release all connections back to the OS on graceful shutdown.
     await engine.dispose()
 

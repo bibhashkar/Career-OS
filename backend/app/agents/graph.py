@@ -28,8 +28,12 @@ from typing import Literal
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from psycopg import AsyncConnection
+from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from app.agents.nodes.ats import ats_node
 from app.agents.nodes.coach import coach_node
@@ -39,11 +43,14 @@ from app.agents.nodes.profiler import profiler_node
 from app.agents.nodes.reflector import reflector_node
 from app.agents.nodes.tailor import tailor_node
 from app.agents.state import AgentState
+from app.core.config import settings
 
 # Default in-memory checkpointer for hermetic test isolation and fast local execution.
 # In production, pass an instance of ``PostgresSaver`` to enable persistent,
 # distributed checkpoints that survive server restarts.
 default_checkpointer = MemorySaver()
+_postgres_pool: AsyncConnectionPool[AsyncConnection[DictRow]] | None = None
+_postgres_saver: AsyncPostgresSaver | None = None
 
 
 def route_ats(state: AgentState) -> Literal["tailor", "__end__"]:
@@ -171,3 +178,73 @@ def create_reflector_graph(
 pipeline_app = create_pipeline_graph()
 interview_app = create_interview_graph()
 reflector_app = create_reflector_graph()
+
+
+async def init_postgres_saver(
+    conn_string: str | None = None,
+) -> AsyncPostgresSaver | None:
+    """
+    Initialize persistent AsyncPostgresSaver and attach it to graph applications.
+
+    In development/production environments, this creates an AsyncConnectionPool,
+    runs saver.setup() to initialize Postgres checkpoint tables, and attaches
+    the saver to pipeline_app, interview_app, and reflector_app.
+
+    Args:
+        conn_string: Optional libpq connection string. If None, derived from settings.
+
+    Returns:
+        The active AsyncPostgresSaver instance if connection succeeds, else None.
+    """
+    global _postgres_pool, _postgres_saver
+    if conn_string is None:
+        conn_string = (
+            f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@"
+            f"{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
+        )
+
+    try:
+        _postgres_pool = AsyncConnectionPool(
+            conninfo=conn_string,
+            min_size=1,
+            max_size=10,
+            timeout=2.0,
+            open=False,
+            kwargs={
+                "autocommit": True,
+                "prepare_threshold": 0,
+                "row_factory": dict_row,
+                "connect_timeout": 2,
+            },
+        )
+        await _postgres_pool.open(wait=True, timeout=2.0)
+        _postgres_saver = AsyncPostgresSaver(_postgres_pool)
+        await _postgres_saver.setup()
+
+        # Attach persistent checkpointer to compiled graph applications
+        pipeline_app.checkpointer = _postgres_saver
+        interview_app.checkpointer = _postgres_saver
+        reflector_app.checkpointer = _postgres_saver
+        return _postgres_saver
+    except Exception:
+        # Fall back cleanly to default MemorySaver if database is unreachable
+        if _postgres_pool:
+            try:
+                await _postgres_pool.close()
+            except Exception:
+                pass
+            _postgres_pool = None
+        _postgres_saver = None
+        return None
+
+
+async def close_postgres_saver() -> None:
+    """Close the underlying PostgreSQL connection pool on shutdown."""
+    global _postgres_pool, _postgres_saver
+    if _postgres_pool:
+        try:
+            await _postgres_pool.close()
+        except Exception:
+            pass
+        _postgres_pool = None
+    _postgres_saver = None
