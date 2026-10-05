@@ -116,6 +116,19 @@ async def interview_websocket_endpoint(
         # Message processing loop
         while True:
             raw_text = await websocket.receive_text()
+            if len(raw_text.encode("utf-8")) > settings.MAX_WS_FRAME_BYTES:
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "title": "Payload Too Large",
+                        "message": (
+                            f"WebSocket frame exceeds maximum allowed size "
+                            f"({settings.MAX_WS_FRAME_BYTES} bytes)."
+                        ),
+                    }
+                )
+                continue
+
             try:
                 data = json.loads(raw_text)
             except json.JSONDecodeError:

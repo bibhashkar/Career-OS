@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     MAX_REVISIONS: int = 3
     GRAPH_RECURSION_LIMIT: int = 25
 
+    # ---- Payload & Buffer Security Limits ----
+    MAX_CV_RAW_TEXT_LENGTH: int = 50000
+    MAX_FEEDBACK_TEXT_LENGTH: int = 5000
+    MAX_WS_FRAME_BYTES: int = 16384
+
     # ---- PostgreSQL connection ----
     # The individual POSTGRES_* fields configure discrete connection parameters.
     # DATABASE_URL is automatically derived from these components unless

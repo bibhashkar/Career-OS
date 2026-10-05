@@ -47,7 +47,8 @@ class CVGenerateRequest(BaseModel):
     )
     company_name: str | None = Field("NexusAI Labs", examples=["NexusAI Labs"])
     required_skills: list[str] = Field(
-        default_factory=lambda: ["Python", "FastAPI", "LangGraph", "pgvector"]
+        default_factory=lambda: ["Python", "FastAPI", "LangGraph", "pgvector"],
+        max_length=50,
     )
     visa_required: bool | None = Field(None, examples=[True])
     tone_directives: dict[str, Any] | None = Field(
@@ -146,6 +147,7 @@ class CVIngestRequest(BaseModel):
     raw_text: str = Field(
         ...,
         min_length=10,
+        max_length=settings.MAX_CV_RAW_TEXT_LENGTH,
         description="Unstructured resume text or Markdown.",
         examples=["## Experience\nSenior Backend Engineer at Acme Corp..."],
     )

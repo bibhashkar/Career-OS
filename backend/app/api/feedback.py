@@ -45,6 +45,7 @@ class FeedbackRequest(BaseModel):
     user_feedback: str = Field(
         ...,
         min_length=3,
+        max_length=settings.MAX_FEEDBACK_TEXT_LENGTH,
         examples=["Focus more heavily on distributed consensus and system design."],
     )
 
