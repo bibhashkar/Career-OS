@@ -22,6 +22,8 @@ from pydantic import BaseModel, Field
 
 from app.agents.graph import pipeline_app
 from app.agents.state import AgentState
+from app.agents.tools.embeddings import chunk_cv_text, ingest_cv_blocks
+from app.core.config import settings
 
 router = APIRouter(prefix="/api/cv", tags=["CV"])
 
@@ -128,5 +130,53 @@ async def generate_tailored_cv(
         ats_score=ats_score,
         ats_feedback=final_state.get("ats_feedback") or {},
         revision_count=final_state.get("revision_count", 1),
-        passed=ats_score >= 75.0,
+        passed=ats_score >= settings.ATS_PASS_THRESHOLD,
+    )
+
+
+class CVIngestRequest(BaseModel):
+    """Payload for uploading unstructured resume text or markdown."""
+
+    user_id: str | None = Field(
+        None, description="Candidate profile ID. Auto-generated if omitted."
+    )
+    raw_text: str = Field(
+        ...,
+        min_length=10,
+        description="Unstructured resume text or Markdown.",
+        examples=["## Experience\nSenior Backend Engineer at Acme Corp..."],
+    )
+
+
+class CVIngestResponse(BaseModel):
+    """Response containing parsed career blocks and storage confirmation."""
+
+    user_id: str
+    blocks_ingested: int
+    blocks: list[dict[str, Any]]
+
+
+@router.post(
+    "/ingest",
+    response_model=CVIngestResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def ingest_cv_document(
+    request: CVIngestRequest,
+) -> CVIngestResponse:
+    """
+    Ingest unstructured resume text, decompose into semantic chunks, and embed.
+
+    Parses the candidate's raw resume into modular achievement blocks,
+    computes 1536-dimensional vector embeddings, and stores them in PostgreSQL
+    via pgvector for downstream semantic CV tailoring.
+    """
+    user_id = request.user_id or str(uuid.uuid4())
+    chunks = await chunk_cv_text(request.raw_text)
+    persisted = await ingest_cv_blocks(user_id=user_id, blocks=chunks)
+
+    return CVIngestResponse(
+        user_id=user_id,
+        blocks_ingested=len(persisted),
+        blocks=persisted,
     )
