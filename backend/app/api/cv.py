@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from app.agents.graph import pipeline_app
 from app.agents.state import AgentState
 from app.agents.tools.embeddings import chunk_cv_text, ingest_cv_blocks
+from app.core.auth import CurrentUser
 from app.core.config import settings
 
 router = APIRouter(prefix="/api/cv", tags=["CV"])
@@ -84,6 +85,7 @@ class CVGenerateResponse(BaseModel):
 )
 async def generate_tailored_cv(
     request: CVGenerateRequest,
+    user: CurrentUser,
 ) -> CVGenerateResponse:
     """
     Execute LangGraph CV tailoring and cyclic ATS evaluation sequence.
@@ -95,12 +97,14 @@ async def generate_tailored_cv(
 
     Args:
         request: Validated job criteria and candidate identification.
+        user: Authenticated user context.
 
     Returns:
         CVGenerateResponse containing the tailored draft and ATS scorecard.
     """
+    candidate_id = request.user_id or user.user_id
     initial_state: AgentState = {
-        "user_id": request.user_id or str(uuid.uuid4()),
+        "user_id": candidate_id,
         "current_job_id": request.job_id,
         "job_details": {
             "id": request.job_id,
@@ -168,6 +172,7 @@ class CVIngestResponse(BaseModel):
 )
 async def ingest_cv_document(
     request: CVIngestRequest,
+    user: CurrentUser,
 ) -> CVIngestResponse:
     """
     Ingest unstructured resume text, decompose into semantic chunks, and embed.
@@ -176,7 +181,7 @@ async def ingest_cv_document(
     computes 1536-dimensional vector embeddings, and stores them in PostgreSQL
     via pgvector for downstream semantic CV tailoring.
     """
-    user_id = request.user_id or str(uuid.uuid4())
+    user_id = request.user_id or user.user_id
     chunks = await chunk_cv_text(request.raw_text)
     persisted = await ingest_cv_blocks(user_id=user_id, blocks=chunks)
 

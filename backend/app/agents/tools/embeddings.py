@@ -240,9 +240,13 @@ async def ingest_cv_blocks(
     Returns:
         List of persisted block dictionaries with IDs and vector embeddings.
     """
-    parsed_uid = (
-        uuid.UUID(str(user_id)) if not isinstance(user_id, uuid.UUID) else user_id
-    )
+    if isinstance(user_id, uuid.UUID):
+        parsed_uid = user_id
+    else:
+        try:
+            parsed_uid = uuid.UUID(str(user_id))
+        except (ValueError, TypeError):
+            parsed_uid = uuid.uuid5(uuid.NAMESPACE_DNS, str(user_id))
 
     async def _persist_with_session(s: AsyncSession) -> list[dict[str, Any]]:
         # Ensure parent UserProfile exists to satisfy FK constraint

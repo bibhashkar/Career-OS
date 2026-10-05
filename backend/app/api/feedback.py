@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.graph import reflector_app
 from app.agents.state import AgentState
+from app.core.auth import CurrentUser
 from app.core.config import settings
 from app.core.database import get_session_context
 from app.models.feedback_log import FeedbackLog
@@ -70,7 +71,10 @@ class FeedbackResponse(BaseModel):
     response_model=FeedbackResponse,
     status_code=status.HTTP_200_OK,
 )
-async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:
+async def submit_feedback(
+    request: FeedbackRequest,
+    user: CurrentUser,
+) -> FeedbackResponse:
     """
     Synthesize candidate feedback into updated agent prompt weights.
 
@@ -79,11 +83,13 @@ async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:
 
     Args:
         request: Validated feedback payload with thread_id and text.
+        user: Authenticated user context.
 
     Returns:
         FeedbackResponse containing the active weight adjustments.
     """
     state: AgentState = {
+        "user_id": user.user_id,
         "user_feedback": request.user_feedback,
     }
 

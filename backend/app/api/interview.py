@@ -27,13 +27,14 @@ import json
 import logging
 import uuid
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from langchain_core.runnables import RunnableConfig
 
 from app.agents.graph import interview_app
 from app.agents.state import AgentState
 from app.agents.tools.company_intel import fetch_company_intel
 from app.agents.tools.job_search import search_jobs
+from app.core.auth import authenticate_websocket
 from app.core.config import settings
 from app.core.logging import get_correlation_id
 
@@ -49,6 +50,7 @@ async def interview_websocket_endpoint(
     job_id: str | None = None,
     company_name: str | None = None,
     title: str | None = None,
+    token: str | None = None,
 ) -> None:
     """
     Stream interview dialogue bi-directionally keyed on thread_id checkpoint.
@@ -63,6 +65,7 @@ async def interview_websocket_endpoint(
         job_id: Optional target job listing ID to ground company tech stack prep.
         company_name: Optional target employer name.
         title: Optional target position title.
+        token: Optional JWT bearer token for connection authorization.
     """
     await websocket.accept()
     config: RunnableConfig = {
@@ -73,6 +76,25 @@ async def interview_websocket_endpoint(
     try:
         # Check current state or send initial question if new session
         current_state = await interview_app.aget_state(config)
+        existing_owner = current_state.values.get("user_id") if current_state else None
+
+        user = await authenticate_websocket(
+            websocket,
+            thread_id=thread_id,
+            token=token,
+            existing_thread_owner=existing_owner,
+        )
+        if user is None:
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "title": "Unauthorized",
+                    "message": "Invalid token or unauthorized thread access.",
+                }
+            )
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
         if not current_state or not current_state.values.get("interview_history"):
             resolved_company = company_name or "Target Company"
             resolved_title = title or "Software Engineer"
@@ -92,6 +114,7 @@ async def interview_websocket_endpoint(
             dossier = await fetch_company_intel(resolved_company)
 
             init_state: AgentState = {
+                "user_id": user.user_id,
                 "current_job_id": job_id,
                 "company_dossier": dossier,
                 "job_details": {
@@ -145,7 +168,8 @@ async def interview_websocket_endpoint(
 
             # Advance LangGraph interview agent with candidate answer
             turn_state: AgentState = {
-                "messages": [{"role": "user", "content": user_content}]
+                "user_id": user.user_id,
+                "messages": [{"role": "user", "content": user_content}],
             }
             next_state = await interview_app.ainvoke(turn_state, config=config)
             coach_reply = next_state.get("messages", [])[-1]["content"]

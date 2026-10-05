@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     MAX_FEEDBACK_TEXT_LENGTH: int = 5000
     MAX_WS_FRAME_BYTES: int = 16384
 
+    # ---- Authentication & Cryptographic Keys ----
+    SECRET_KEY: str = "career-os-dev-insecure-secret-key-change-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+
     # ---- PostgreSQL connection ----
     # The individual POSTGRES_* fields configure discrete connection parameters.
     # DATABASE_URL is automatically derived from these components unless
@@ -140,6 +145,10 @@ class Settings(BaseSettings):
                 )
             if self.APP_DEBUG:
                 raise ValueError("APP_DEBUG must be False in production.")
+            if "dev-insecure" in self.SECRET_KEY:
+                raise ValueError(
+                    "SECRET_KEY must be securely configured in production."
+                )
 
         return self
 

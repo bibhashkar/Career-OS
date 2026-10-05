@@ -139,9 +139,13 @@ async def search_cv_blocks(
 
     if session is not None and user_id is not None:
         try:
-            parsed_uuid = (
-                uuid.UUID(str(user_id)) if isinstance(user_id, str) else user_id
-            )
+            if isinstance(user_id, uuid.UUID):
+                parsed_uuid = user_id
+            else:
+                try:
+                    parsed_uuid = uuid.UUID(str(user_id))
+                except (ValueError, TypeError):
+                    parsed_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, str(user_id))
             stmt = select(CVBlock).where(CVBlock.user_profile_id == parsed_uuid)
 
             # Order by pgvector cosine distance if embedding provided

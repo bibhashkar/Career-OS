@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.tools.company_intel import fetch_company_intel
 from app.agents.tools.job_search import search_jobs
+from app.core.auth import CurrentUser
 from app.core.database import get_session_context
 from app.models.job_listing import JobListing
 
@@ -62,7 +63,10 @@ class JobSearchResponse(BaseModel):
     response_model=JobSearchResponse,
     status_code=status.HTTP_200_OK,
 )
-async def search_and_intel(request: JobSearchRequest) -> JobSearchResponse:
+async def search_and_intel(
+    request: JobSearchRequest,
+    user: CurrentUser,
+) -> JobSearchResponse:
     """
     Discover jobs and enrich them with target company tech stack intelligence.
 
@@ -72,6 +76,7 @@ async def search_and_intel(request: JobSearchRequest) -> JobSearchResponse:
 
     Args:
         request: Validated search criteria and constraint filters.
+        user: Authenticated user context.
 
     Returns:
         JobSearchResponse with enriched job listings.
