@@ -157,6 +157,16 @@ async def interview_websocket_endpoint(
             except json.JSONDecodeError:
                 data = {"content": raw_text}
 
+            if not isinstance(data, dict):
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "title": "Bad Request",
+                        "message": "WebSocket frame must be a JSON object.",
+                    }
+                )
+                continue
+
             msg_type = data.get("type", "message")
             if msg_type == "ping":
                 await websocket.send_json({"type": "pong"})

@@ -83,3 +83,42 @@ def test_interview_websocket_resolves_job_by_id() -> None:
         assert initial_msg["type"] == "message"
         assert initial_msg["sender"] == "coach"
         assert "NexusAI Labs" in initial_msg["content"]
+
+
+def test_interview_websocket_handles_malformed_frames() -> None:
+    """Verify non-object JSON frames return Bad Request error without crashing."""
+    client = TestClient(app)
+    thread_id = "test_ws_thread_malformed_frames"
+
+    with client.websocket_connect(f"/api/interview/{thread_id}") as ws:
+        # Initial greeting
+        ws.receive_json()
+
+        # Send invalid JSON array frame
+        ws.send_text("[1, 2, 3]")
+        err_msg = ws.receive_json()
+        assert err_msg["type"] == "error"
+        assert err_msg["title"] == "Bad Request"
+        assert "JSON object" in err_msg["message"]
+
+        # Heartbeat ping still works afterwards
+        ws.send_json({"type": "ping"})
+        pong_msg = ws.receive_json()
+        assert pong_msg["type"] == "pong"
+
+
+def test_interview_websocket_plain_text_frame_handled_as_message() -> None:
+    """Verify plain unformatted text frames are treated as candidate message content."""
+    client = TestClient(app)
+    thread_id = "test_ws_thread_plain_text"
+
+    with client.websocket_connect(f"/api/interview/{thread_id}") as ws:
+        # Initial greeting
+        ws.receive_json()
+
+        # Send raw string (not JSON)
+        ws.send_text("I have 5 years of Python and FastAPI microservices experience.")
+        reply = ws.receive_json()
+        assert reply["type"] == "message"
+        assert reply["sender"] == "coach"
+        assert reply["turn"] >= 2
