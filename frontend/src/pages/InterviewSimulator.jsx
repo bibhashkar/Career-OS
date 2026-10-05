@@ -33,6 +33,7 @@ export function InterviewSimulator({ job, onBack }) {
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackError, setFeedbackError] = useState(null);
 
   const wsRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -111,6 +112,7 @@ export function InterviewSimulator({ job, onBack }) {
     e?.preventDefault();
     if (!feedbackText.trim()) return;
     setFeedbackLoading(true);
+    setFeedbackError(null);
     try {
       await submitFeedback(threadId, feedbackText);
       setFeedbackSent(true);
@@ -118,6 +120,10 @@ export function InterviewSimulator({ job, onBack }) {
       setTimeout(() => setFeedbackSent(false), 3000);
     } catch (err) {
       console.error("Failed to submit feedback:", err);
+      setFeedbackError(
+        err.response?.data?.detail ||
+          "Failed to submit feedback to Reflector agent. Please try again."
+      );
     } finally {
       setFeedbackLoading(false);
     }
@@ -349,6 +355,18 @@ export function InterviewSimulator({ job, onBack }) {
                   placeholder="e.g. 'Ask harder questions on concurrency and PostgreSQL replication.'"
                   className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
+                {feedbackError && (
+                  <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between gap-2">
+                    <span className="truncate">{feedbackError}</span>
+                    <button
+                      type="button"
+                      onClick={handleSubmitFeedback}
+                      className="underline text-rose-200 hover:text-white font-medium shrink-0"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
                 <button
                   type="submit"
                   disabled={!feedbackText.trim() || feedbackLoading}
