@@ -18,6 +18,7 @@ structured output extraction without hitting external endpoints.
 """
 
 import json
+import os
 from collections.abc import Sequence
 from typing import Any, TypeVar
 
@@ -134,27 +135,41 @@ def get_llm(
     model_name: str | None = None,
     temperature: float = 0.2,
     default_mock_responses: Sequence[str] | None = None,
+    force_real: bool = False,
 ) -> BaseChatModel:
     """
     Resolve and return a configured BaseChatModel instance.
 
     Selection Priority:
       1. Explicit test override (if configured via ``set_test_llm``).
-      2. Google Gemini (``ChatGoogleGenerativeAI``) when ``LLM_PROVIDER == 'gemini'``
+      2. Hermetic ``MockChatModel`` when running under pytest or in test mode,
+         unless ``force_real=True`` is explicitly specified.
+      3. Google Gemini (``ChatGoogleGenerativeAI``) when ``LLM_PROVIDER == 'gemini'``
          and ``GEMINI_API_KEY`` is populated.
-      3. Hermetic ``MockChatModel`` for offline CI testing and local environments
+      4. Fallback ``MockChatModel`` for offline CI testing and local environments
          without active cloud API credentials.
 
     Args:
         model_name: Optional override for the underlying model identifier.
         temperature: Sampling temperature for generation randomness (0.0 - 1.0).
         default_mock_responses: Optional predetermined response strings for mock.
+        force_real: When True, bypasses test isolation to construct real client.
 
     Returns:
         Configured BaseChatModel instance.
     """
     if _test_llm is not None:
         return _test_llm
+
+    responses = (
+        list(default_mock_responses)
+        if default_mock_responses
+        else ["Default hermetic response from Career-OS intelligence provider."]
+    )
+
+    is_testing = "PYTEST_CURRENT_TEST" in os.environ or settings.APP_ENV == "test"
+    if is_testing and not force_real:
+        return MockChatModel(responses=responses)
 
     provider = settings.LLM_PROVIDER.lower().strip()
 
@@ -166,9 +181,4 @@ def get_llm(
             temperature=temperature,
         )
 
-    responses = (
-        list(default_mock_responses)
-        if default_mock_responses
-        else ["Default hermetic response from Career-OS intelligence provider."]
-    )
     return MockChatModel(responses=responses)

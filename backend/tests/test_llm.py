@@ -69,7 +69,11 @@ def test_get_llm_gemini_provider() -> None:
     reset_test_llm()
     with patch("app.agents.llm.settings.GEMINI_API_KEY", "test_gemini_key"):
         with patch("app.agents.llm.settings.LLM_PROVIDER", "gemini"):
-            llm = get_llm(model_name="gemini-2.0-flash", temperature=0.5)
+            llm = get_llm(
+                model_name="gemini-2.0-flash",
+                temperature=0.5,
+                force_real=True,
+            )
             assert isinstance(llm, ChatGoogleGenerativeAI)
             assert llm.model == "gemini-2.0-flash"
             assert llm.temperature == 0.5
