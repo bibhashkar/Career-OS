@@ -2,6 +2,7 @@
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.graph import interview_app
 from app.main import app
@@ -71,7 +72,7 @@ async def test_feedback_endpoint() -> None:
 async def test_feedback_does_not_pollute_interview_thread_state() -> None:
     """Verify feedback submissions never overwrite or corrupt interview state."""
     thread_id = "test_thread_isolation_ws_999"
-    int_config = {"configurable": {"thread_id": thread_id}}
+    int_config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
     # Initialize an active interview session
     await interview_app.ainvoke(

@@ -1,6 +1,9 @@
 """Unit and integration tests for LangGraph agent workflows and loop guards."""
 
+from typing import cast
+
 import pytest
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.graph import (
     interview_app,
@@ -13,6 +16,10 @@ from app.agents.nodes.hunter import hunter_node
 from app.agents.nodes.profiler import profiler_node
 from app.agents.nodes.tailor import tailor_node
 from app.agents.state import AgentState
+
+
+def _config(thread_id: str) -> RunnableConfig:
+    return {"configurable": {"thread_id": thread_id}}
 
 
 def test_route_ats_loop_guard() -> None:
@@ -43,7 +50,7 @@ async def test_pipeline_graph_end_to_end() -> None:
         },
     }
 
-    config = {"configurable": {"thread_id": "thread_test_pipeline_001"}}
+    config = _config("thread_test_pipeline_001")
     final_state = await pipeline_app.ainvoke(initial_state, config=config)
 
     assert final_state["status"] == "ats_evaluated"
@@ -57,7 +64,7 @@ async def test_pipeline_graph_end_to_end() -> None:
 async def test_interview_coach_stateful_turns() -> None:
     """Verify coach graph advances multi-turn technical interview state."""
     thread_id = "thread_mock_interview_999"
-    config = {"configurable": {"thread_id": thread_id}}
+    config = _config(thread_id)
 
     # Turn 1: Initial invocation without user message
     turn_1_state: AgentState = {
@@ -98,7 +105,7 @@ async def test_reflector_agent_updates_weights() -> None:
         ]
     }
 
-    config = {"configurable": {"thread_id": "thread_reflector_001"}}
+    config = _config("thread_reflector_001")
     result = await reflector_app.ainvoke(feedback_state, config=config)
 
     assert result["status"] == "feedback_reflected"
@@ -144,7 +151,7 @@ async def test_pipeline_preserves_target_job_end_to_end() -> None:
             "ats_requirements": {"required_skills": ["React", "FastAPI"]},
         },
     }
-    config = {"configurable": {"thread_id": "thread_preserve_target_001"}}
+    config = _config("thread_preserve_target_001")
 
     # Act
     final_state = await pipeline_app.ainvoke(initial_state, config=config)
@@ -194,7 +201,7 @@ async def test_unmatched_job_enforces_loop_guard_and_fails_ats() -> None:
             "ats_requirements": {"required_skills": ["COBOL", "JCL", "DB2"]},
         },
     }
-    config = {"configurable": {"thread_id": "thread_loop_guard_test_001"}}
+    config = _config("thread_loop_guard_test_001")
 
     # Act
     final_state = await pipeline_app.ainvoke(initial_state, config=config)
@@ -207,7 +214,7 @@ async def test_unmatched_job_enforces_loop_guard_and_fails_ats() -> None:
         "JCL",
         "DB2",
     }
-    assert route_ats(final_state) == "__end__"
+    assert route_ats(cast(AgentState, final_state)) == "__end__"
 
 
 @pytest.mark.asyncio
@@ -273,7 +280,7 @@ async def test_pipeline_propagates_tone_and_visa_directives() -> None:
             },
         },
     }
-    config = {"configurable": {"thread_id": "thread_tone_prop_001"}}
+    config = _config("thread_tone_prop_001")
 
     # Act
     final_state = await pipeline_app.ainvoke(initial_state, config=config)

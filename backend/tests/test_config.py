@@ -7,7 +7,7 @@ from app.core.config import Settings
 
 def test_settings_default_debug_is_false() -> None:
     """Verify APP_DEBUG defaults to False for security and clean logs."""
-    config = Settings(_env_file=None)
+    config = Settings(_env_file=None)  # type: ignore[call-arg]
     assert config.APP_DEBUG is False
 
 

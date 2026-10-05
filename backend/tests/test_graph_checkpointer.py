@@ -1,6 +1,7 @@
 """Unit tests for LangGraph checkpointer initialization and lifecycle."""
 
 import pytest
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
 
 from app.agents.graph import (
@@ -46,7 +47,9 @@ async def test_graph_checkpointer_swap_preserves_execution() -> None:
 
     try:
         interview_app.checkpointer = custom_saver
-        config = {"configurable": {"thread_id": "thread_checkpointer_swap_01"}}
+        config: RunnableConfig = {
+            "configurable": {"thread_id": "thread_checkpointer_swap_01"}
+        }
 
         state: AgentState = {
             "company_dossier": {"company_name": "Checkpointer Inc"},
