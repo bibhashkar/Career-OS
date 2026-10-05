@@ -110,23 +110,7 @@ export function App() {
 
         {activeTab === "cv_tailor" && (
           <CVTailorView
-            job={
-              selectedJob || {
-                id: "job-ai-001",
-                title: "Senior AI Systems Engineer",
-                company_name: "NexusAI Labs",
-                location: "Remote",
-                ats_requirements: {
-                  required_skills: [
-                    "Python",
-                    "FastAPI",
-                    "LangGraph",
-                    "PostgreSQL",
-                    "pgvector",
-                  ],
-                },
-              }
-            }
+            job={selectedJob}
             onBack={() => setActiveTab("dashboard")}
             onStartInterview={handleStartInterview}
           />

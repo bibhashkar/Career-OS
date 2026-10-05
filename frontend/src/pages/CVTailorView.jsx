@@ -5,11 +5,12 @@ import { ATSCard } from "../components/ATSCard";
 import { CVPreview } from "../components/CVPreview";
 
 export function CVTailorView({ job, onBack, onStartInterview }) {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
 
   const runTailoring = async () => {
+    if (!job?.id) return;
     setLoading(true);
     setError(null);
     try {
@@ -35,6 +36,29 @@ export function CVTailorView({ job, onBack, onStartInterview }) {
       runTailoring();
     }
   }, [job]);
+
+  if (!job) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-20 text-center space-y-6">
+        <div className="w-16 h-16 rounded-2xl bg-slate-800 border border-slate-700 mx-auto flex items-center justify-center text-slate-400 shadow-xl">
+          <FileCheck className="w-8 h-8 text-sky-400" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-xl font-bold text-white">No Target Job Selected</h2>
+          <p className="text-sm text-slate-400 max-w-md mx-auto">
+            Select a target position from the Discovery dashboard to run the multi-agent
+            tailoring loop, retrieve matching career blocks, and optimize ATS score.
+          </p>
+        </div>
+        <button
+          onClick={onBack}
+          className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-sky-600/20 transition-all inline-flex items-center gap-2"
+        >
+          <ArrowLeft className="w-4 h-4" /> Go to Job Discovery
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
