@@ -31,6 +31,7 @@ from app.core.config import settings
 from app.core.database import engine, init_vector_extension
 from app.core.errors import setup_exception_handlers
 from app.core.logging import CorrelationIdMiddleware, setup_logging
+from app.core.security import SecurityHeadersMiddleware
 
 logger = logging.getLogger("career_os.main")
 
@@ -77,19 +78,20 @@ app = FastAPI(
 # RFC 7807 Problem Details exception handlers for uniform error serialization
 setup_exception_handlers(app)
 
+# Security headers middleware enforcing OWASP protection policies
+app.add_middleware(SecurityHeadersMiddleware)
+
 # Distributed correlation ID middleware for request tracing and timing
 app.add_middleware(CorrelationIdMiddleware)
 
 # CORS is configured for the decoupled Vite + React frontend.
-# The frontend is a pure presentation layer — it has no business logic and
-# communicates exclusively through this API. Wildcard methods and headers are
-# intentionally permissive for local development; tighten in production.
+# Explicit allowed methods and headers prevent arbitrary verb and header abuse.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=settings.CORS_ALLOW_METHODS,
+    allow_headers=settings.CORS_ALLOW_HEADERS,
 )
 
 # Mount API routers. Each router is a thin transport adapter — no business

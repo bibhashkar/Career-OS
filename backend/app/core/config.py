@@ -62,10 +62,25 @@ class Settings(BaseSettings):
     POSTGRES_PORT: int = 5432
     DATABASE_URL: str = ""
 
-    # ---- CORS allowed origins ----
+    # ---- CORS allowed origins & security policy ----
     # Defaults to the two ports used by the local Vite dev server.
     # In production, replace with the exact deployed frontend domain.
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    CORS_ALLOW_METHODS: list[str] = [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE",
+        "OPTIONS",
+        "HEAD",
+    ]
+    CORS_ALLOW_HEADERS: list[str] = [
+        "Content-Type",
+        "Authorization",
+        "X-Correlation-ID",
+        "Accept",
+        "Origin",
+    ]
 
     # ---- External API keys & LLM Provider (optional for mock development) ----
     # The agent nodes and tools implement hermetic offline fallbacks so the full
@@ -82,21 +97,23 @@ class Settings(BaseSettings):
     # Apollo — company and contact enrichment
     APOLLO_API_KEY: str | None = None
 
-    @field_validator("CORS_ORIGINS", mode="before")
+    @field_validator(
+        "CORS_ORIGINS", "CORS_ALLOW_METHODS", "CORS_ALLOW_HEADERS", mode="before"
+    )
     @classmethod
-    def assemble_cors_origins(cls, v: Any) -> list[str]:
+    def assemble_cors_lists(cls, v: Any) -> list[str]:
         """
-        Normalise CORS_ORIGINS from multiple env-variable formats.
+        Normalise list settings from multiple env-variable formats.
 
         Docker Compose and many CI systems pass list-type settings as either
         a JSON array string (``["http://a.com","http://b.com"]``) or a
         comma-separated string (``http://a.com,http://b.com``). This validator
-        handles both so operators don't need to choose one format.
+        handles both formats cleanly.
         """
         if isinstance(v, str):
             if v.startswith("["):
                 return json.loads(v)
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
+            return [item.strip() for item in v.split(",") if item.strip()]
         return v
 
     @model_validator(mode="after")
