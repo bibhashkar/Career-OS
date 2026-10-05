@@ -28,6 +28,7 @@ from app.api.interview import router as interview_router
 from app.api.jobs import router as jobs_router
 from app.core.config import settings
 from app.core.database import engine, init_vector_extension
+from app.core.logging import CorrelationIdMiddleware, setup_logging
 
 
 @asynccontextmanager
@@ -45,6 +46,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
       - Disposes the SQLAlchemy async engine, closing all pooled psycopg
         connections gracefully before process exit.
     """
+    setup_logging()
     try:
         await init_vector_extension()
     except Exception:
@@ -67,6 +69,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Distributed correlation ID middleware for request tracing and timing
+app.add_middleware(CorrelationIdMiddleware)
 
 # CORS is configured for the decoupled Vite + React frontend.
 # The frontend is a pure presentation layer — it has no business logic and
