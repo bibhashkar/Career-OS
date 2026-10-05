@@ -14,11 +14,16 @@ of canonical tech companies. If live search is unavailable or fails, it falls ba
 to these fixtures to ensure tests remain fast, reproducible, and isolated.
 """
 
+import asyncio
+import json
 from typing import Any
 
 import httpx
+from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
+from app.agents.llm import get_llm
 from app.core.config import settings
 from app.core.database import get_session_context
 from app.models.company_dossier import CompanyDossier
@@ -78,6 +83,21 @@ MOCK_DOSSIERS: dict[str, dict[str, Any]] = {
         "culture_notes": ("Deep technical rigor, high test coverage, async-first."),
     },
 }
+
+
+class CompanyIntelExtractionSchema(BaseModel):
+    """Structured extraction of company architecture and engineering culture."""
+
+    industry: str = Field(default="Software Engineering & Technology")
+    tech_stack: list[str] = Field(
+        default_factory=lambda: ["Python", "FastAPI", "React", "PostgreSQL", "Docker"]
+    )
+    business_model: str = Field(
+        default="Enterprise SaaS and cloud automation solutions"
+    )
+    culture_notes: str = Field(
+        default="Focused on modern decoupled architectures and robust DX."
+    )
 
 
 async def fetch_company_intel(
@@ -163,16 +183,64 @@ async def fetch_company_intel(
         except Exception:
             pass
 
-    # 3. Match hermetic fixtures or generate structured default
+    # 3. Match hermetic fixtures or synthesize structured intel via LLM
     if not resolved:
         if normalized_name in MOCK_DOSSIERS:
             resolved = dict(MOCK_DOSSIERS[normalized_name])
         else:
+            default_stack = ["Python", "FastAPI", "React", "PostgreSQL", "Docker"]
+            default_industry = "Software Engineering & Technology"
+            default_model = "Enterprise SaaS and cloud automation solutions"
+            default_culture = "Focused on modern decoupled architectures and robust DX."
+
+            mock_json = json.dumps(
+                {
+                    "industry": default_industry,
+                    "tech_stack": default_stack,
+                    "business_model": default_model,
+                    "culture_notes": default_culture,
+                }
+            )
+            llm = get_llm(temperature=0.1, default_mock_responses=[mock_json])
+
+            res_industry = default_industry
+            res_stack = default_stack
+            res_model = default_model
+            res_culture = default_culture
+
+            try:
+                chain = llm.with_structured_output(CompanyIntelExtractionSchema)
+                llm_output = await asyncio.wait_for(
+                    chain.ainvoke(
+                        [
+                            SystemMessage(
+                                content=(
+                                    "You are an enterprise technical profiler. "
+                                    "Extract the primary tech stack, industry, "
+                                    "business model, and engineering culture."
+                                )
+                            ),
+                            HumanMessage(content=f"Company: {company_name}"),
+                        ]
+                    ),
+                    timeout=8.0,
+                )
+                if (
+                    isinstance(llm_output, CompanyIntelExtractionSchema)
+                    and llm_output.tech_stack
+                ):
+                    res_industry = llm_output.industry or default_industry
+                    res_stack = llm_output.tech_stack
+                    res_model = llm_output.business_model or default_model
+                    res_culture = llm_output.culture_notes or default_culture
+            except Exception:
+                pass
+
             resolved = {
                 "company_name": company_name,
                 "domain": domain or f"{normalized_name.replace(' ', '')}.com",
-                "industry": "Software Engineering & Technology",
-                "tech_stack": ["Python", "FastAPI", "React", "PostgreSQL", "Docker"],
+                "industry": res_industry,
+                "tech_stack": res_stack,
                 "recent_news": [
                     {
                         "title": f"{company_name} expands engineering for AI",
@@ -180,10 +248,8 @@ async def fetch_company_intel(
                         "source": "Industry Journal",
                     }
                 ],
-                "business_model": "Enterprise SaaS and cloud automation solutions",
-                "culture_notes": (
-                    "Focused on modern decoupled architectures and robust DX."
-                ),
+                "business_model": res_model,
+                "culture_notes": res_culture,
             }
 
     # 4. Persist newly resolved dossier to database
