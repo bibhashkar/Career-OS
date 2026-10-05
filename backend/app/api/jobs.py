@@ -12,6 +12,7 @@ an enriched discovery sequence:
 """
 
 import asyncio
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, status
@@ -19,6 +20,8 @@ from pydantic import BaseModel, Field
 
 from app.agents.tools.company_intel import fetch_company_intel
 from app.agents.tools.job_search import search_jobs
+from app.core.database import get_session_context
+from app.models.job_listing import JobListing
 
 router = APIRouter(prefix="/api/jobs", tags=["Jobs"])
 
@@ -86,5 +89,31 @@ async def search_and_intel(request: JobSearchRequest) -> JobSearchResponse:
         job_copy = dict(job)
         job_copy["company_dossier"] = dossier
         enriched_jobs.append(job_copy)
+
+    # Persist discovered job listings to database
+    try:
+        async with get_session_context() as session:
+            for job in enriched_jobs:
+                dossier_id = None
+                dossier_meta = job.get("company_dossier")
+                if dossier_meta and dossier_meta.get("id"):
+                    try:
+                        dossier_id = uuid.UUID(str(dossier_meta["id"]))
+                    except Exception:
+                        dossier_id = None
+
+                job_record = JobListing(
+                    title=job.get("title", "Unknown Role"),
+                    company_name=job.get("company_name", "Unknown Company"),
+                    url=job.get("url"),
+                    location=job.get("location", "Remote"),
+                    salary_range=job.get("salary_range"),
+                    raw_description=job.get("raw_description", ""),
+                    ats_requirements=job.get("ats_requirements", {}),
+                    company_dossier_id=dossier_id,
+                )
+                session.add(job_record)
+    except Exception:
+        pass
 
     return JobSearchResponse(count=len(enriched_jobs), jobs=enriched_jobs)

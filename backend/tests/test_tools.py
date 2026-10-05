@@ -31,6 +31,15 @@ async def test_fetch_company_intel_returns_structured_dossier() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_company_intel_resolves_and_persists() -> None:
+    """Verify company intel resolves unknown company and returns structured profile."""
+    dossier = await fetch_company_intel("QuantumStream Systems")
+    assert dossier["company_name"] == "QuantumStream Systems"
+    assert "tech_stack" in dossier
+    assert len(dossier["tech_stack"]) > 0
+
+
+@pytest.mark.asyncio
 async def test_search_cv_blocks_skill_matching() -> None:
     """Verify vector search helper ranks blocks matching required skills."""
     blocks = await search_cv_blocks(

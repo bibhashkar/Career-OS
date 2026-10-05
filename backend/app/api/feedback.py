@@ -22,6 +22,8 @@ from pydantic import BaseModel, Field
 
 from app.agents.graph import reflector_app
 from app.agents.state import AgentState
+from app.core.database import get_session_context
+from app.models.feedback_log import FeedbackLog
 
 router = APIRouter(prefix="/api/feedback", tags=["Feedback"])
 
@@ -87,9 +89,22 @@ async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:
 
     logs = result.get("feedback_logs", [])
     last_log = logs[-1] if logs else {}
+    adjustments = last_log.get("prompt_weight_adjustments", {})
+
+    # Persist feedback log to database
+    try:
+        async with get_session_context() as session:
+            log_record = FeedbackLog(
+                thread_id=request.thread_id,
+                user_feedback=request.user_feedback,
+                prompt_weight_adjustments=adjustments,
+            )
+            session.add(log_record)
+    except Exception:
+        pass
 
     return FeedbackResponse(
         thread_id=request.thread_id,
-        prompt_weight_adjustments=last_log.get("prompt_weight_adjustments", {}),
+        prompt_weight_adjustments=adjustments,
         status="weights_updated",
     )

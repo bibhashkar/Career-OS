@@ -17,8 +17,11 @@ to these fixtures to ensure tests remain fast, reproducible, and isolated.
 from typing import Any
 
 import httpx
+from sqlalchemy import func, select
 
 from app.core.config import settings
+from app.core.database import get_session_context
+from app.models.company_dossier import CompanyDossier
 
 # Pre-seeded company intelligence knowledge base for reliable offline testing
 MOCK_DOSSIERS: dict[str, dict[str, Any]] = {
@@ -96,7 +99,31 @@ async def fetch_company_intel(
     """
     normalized_name = company_name.lower().strip()
 
-    # If Exa API key is provided, perform live search
+    # 1. Query persistent CompanyDossier database cache
+    try:
+        async with get_session_context() as session:
+            stmt = select(CompanyDossier).where(
+                func.lower(CompanyDossier.company_name) == normalized_name
+            )
+            res = await session.execute(stmt)
+            cached = res.scalars().first()
+            if cached:
+                return {
+                    "id": str(cached.id),
+                    "company_name": cached.company_name,
+                    "domain": cached.domain,
+                    "industry": cached.industry,
+                    "tech_stack": cached.tech_stack,
+                    "recent_news": cached.recent_news,
+                    "business_model": cached.business_model,
+                    "culture_notes": cached.culture_notes,
+                }
+    except Exception:
+        pass
+
+    resolved: dict[str, Any] | None = None
+
+    # 2. Query Exa neural search if API key configured
     if settings.EXA_API_KEY:
         try:
             url = "https://api.exa.ai/search"
@@ -117,7 +144,7 @@ async def fetch_company_intel(
                         {"title": r.get("title", ""), "url": r.get("url", "")}
                         for r in results
                     ]
-                    return {
+                    resolved = {
                         "company_name": company_name,
                         "domain": domain or f"{normalized_name.replace(' ', '')}.com",
                         "industry": "Technology",
@@ -136,22 +163,45 @@ async def fetch_company_intel(
         except Exception:
             pass
 
-    # Return matched mock dossier or generate dynamic structured intelligence
-    if normalized_name in MOCK_DOSSIERS:
-        return MOCK_DOSSIERS[normalized_name]
-
-    return {
-        "company_name": company_name,
-        "domain": domain or f"{normalized_name.replace(' ', '')}.com",
-        "industry": "Software Engineering & Technology",
-        "tech_stack": ["Python", "FastAPI", "React", "PostgreSQL", "Docker"],
-        "recent_news": [
-            {
-                "title": f"{company_name} expands engineering for AI",
-                "date": "2026-06-01",
-                "source": "Industry Journal",
+    # 3. Match hermetic fixtures or generate structured default
+    if not resolved:
+        if normalized_name in MOCK_DOSSIERS:
+            resolved = dict(MOCK_DOSSIERS[normalized_name])
+        else:
+            resolved = {
+                "company_name": company_name,
+                "domain": domain or f"{normalized_name.replace(' ', '')}.com",
+                "industry": "Software Engineering & Technology",
+                "tech_stack": ["Python", "FastAPI", "React", "PostgreSQL", "Docker"],
+                "recent_news": [
+                    {
+                        "title": f"{company_name} expands engineering for AI",
+                        "date": "2026-06-01",
+                        "source": "Industry Journal",
+                    }
+                ],
+                "business_model": "Enterprise SaaS and cloud automation solutions",
+                "culture_notes": (
+                    "Focused on modern decoupled architectures and robust DX."
+                ),
             }
-        ],
-        "business_model": "Enterprise SaaS and cloud automation solutions",
-        "culture_notes": ("Focused on modern decoupled architectures and robust DX."),
-    }
+
+    # 4. Persist newly resolved dossier to database
+    try:
+        async with get_session_context() as session:
+            record = CompanyDossier(
+                company_name=resolved["company_name"],
+                domain=resolved.get("domain"),
+                industry=resolved.get("industry"),
+                tech_stack=resolved.get("tech_stack", []),
+                recent_news=resolved.get("recent_news", []),
+                business_model=resolved.get("business_model"),
+                culture_notes=resolved.get("culture_notes"),
+            )
+            session.add(record)
+            await session.flush()
+            resolved["id"] = str(record.id)
+    except Exception:
+        pass
+
+    return resolved
