@@ -24,6 +24,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import get_session_context
 from app.models.cv_block import CVBlock
 
 # Fallback deterministic blocks for hermetic testing without live database seed
@@ -114,6 +115,22 @@ async def search_cv_blocks(
     Returns:
         List of serialized CV block dictionaries.
     """
+    if session is None and user_id is not None:
+        try:
+            async with get_session_context() as auto_session:
+                persisted_blocks = await search_cv_blocks(
+                    user_id=user_id,
+                    query_embedding=query_embedding,
+                    required_skills=required_skills,
+                    limit=limit,
+                    session=auto_session,
+                )
+                # If database returned actual blocks for this user, return them
+                if persisted_blocks and persisted_blocks != DEFAULT_CV_BLOCKS[:limit]:
+                    return persisted_blocks
+        except Exception:
+            pass
+
     if session is not None and user_id is not None:
         try:
             parsed_uuid = (
@@ -127,8 +144,8 @@ async def search_cv_blocks(
 
             stmt = stmt.limit(limit)
             result = await session.execute(stmt)
-            blocks = result.scalars().all()
-            if blocks:
+            db_records = result.scalars().all()
+            if db_records:
                 return [
                     {
                         "id": str(b.id),
@@ -139,7 +156,7 @@ async def search_cv_blocks(
                         "metrics": b.metrics,
                         "skills": b.skills,
                     }
-                    for b in blocks
+                    for b in db_records
                 ]
         except Exception:
             # Fall back hermetically on any database connectivity issue

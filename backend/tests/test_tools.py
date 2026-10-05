@@ -1,8 +1,10 @@
-"""Unit tests for hermetic external tools (job search, intel, vector search)."""
+import uuid
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.agents.tools import fetch_company_intel, search_cv_blocks, search_jobs
+from app.models.cv_block import CVBlock
 
 
 @pytest.mark.asyncio
@@ -39,3 +41,35 @@ async def test_search_cv_blocks_skill_matching() -> None:
     assert len(blocks) == 2
     top_block = blocks[0]
     assert any(s in top_block["skills"] for s in ["LangGraph", "pgvector", "FastAPI"])
+
+
+@pytest.mark.asyncio
+async def test_search_cv_blocks_with_session_returns_db_records() -> None:
+    """Verify search_cv_blocks executes query against provided session."""
+    user_id = uuid.uuid4()
+    mock_block = CVBlock(
+        id=uuid.uuid4(),
+        user_profile_id=user_id,
+        category="experience",
+        title="Principal AI Infrastructure Architect",
+        organization="Apex Systems",
+        content="Engineered real-time LangGraph multi-agent routing engines.",
+        metrics={"scale": "10M agents"},
+        skills=["Python", "LangGraph", "pgvector"],
+    )
+
+    mock_session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [mock_block]
+    mock_session.execute.return_value = mock_result
+
+    results = await search_cv_blocks(
+        user_id=user_id,
+        session=mock_session,
+        limit=5,
+    )
+
+    assert len(results) == 1
+    assert results[0]["title"] == "Principal AI Infrastructure Architect"
+    assert results[0]["organization"] == "Apex Systems"
+    mock_session.execute.assert_called_once()
