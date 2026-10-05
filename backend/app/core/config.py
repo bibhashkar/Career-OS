@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     # ---- Workflow & ATS Thresholds ----
     ATS_PASS_THRESHOLD: float = 75.0
     MAX_REVISIONS: int = 3
+    GRAPH_RECURSION_LIMIT: int = 25
 
     # ---- PostgreSQL connection ----
     # The individual POSTGRES_* fields configure discrete connection parameters.

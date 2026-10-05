@@ -119,7 +119,10 @@ async def generate_tailored_cv(
 
     # Isolated thread identifier ensures state checkpoints do not collide
     thread_id = f"cv_gen_{request.job_id}_{uuid.uuid4().hex[:8]}"
-    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    config: RunnableConfig = {
+        "configurable": {"thread_id": thread_id},
+        "recursion_limit": settings.GRAPH_RECURSION_LIMIT,
+    }
 
     final_state = await pipeline_app.ainvoke(initial_state, config=config)
 

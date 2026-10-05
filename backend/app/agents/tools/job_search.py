@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.core.http import DEFAULT_TIMEOUT, execute_with_retry
 
 logger = logging.getLogger("career_os.tools.job_search")
 
@@ -138,32 +139,40 @@ async def search_jobs(
                 "page": "1",
                 "num_pages": "1",
             }
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(url, headers=headers, params=params)
-                if response.status_code == 200:
-                    data = response.json().get("data", [])
-                    results = []
-                    for item in data[:5]:
-                        city = item.get("job_city", "")
-                        state = item.get("job_state", "")
-                        loc_str = f"{city}, {state}".strip(", ") or location
-                        results.append(
-                            {
-                                "id": item.get("job_id", str(uuid.uuid4())),
-                                "title": item.get("job_title", query),
-                                "company_name": item.get("employer_name", "Unknown"),
-                                "url": item.get("job_apply_link"),
-                                "location": loc_str,
-                                "salary_range": item.get("job_salary") or "Competitive",
-                                "raw_description": item.get("job_description", ""),
-                                "ats_requirements": {
-                                    "required_skills": [query],
-                                    "visa_sponsorship": True,
-                                },
-                            }
-                        )
-                    if results:
-                        return results
+
+            async def _fetch() -> httpx.Response:
+                async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+                    return await client.get(url, headers=headers, params=params)
+
+            response = await execute_with_retry(
+                _fetch,
+                max_retries=3,
+                operation_name=f"JSearch API [{query}]",
+            )
+            if response and response.status_code == 200:
+                data = response.json().get("data", [])
+                results = []
+                for item in data[:5]:
+                    city = item.get("job_city", "")
+                    state = item.get("job_state", "")
+                    loc_str = f"{city}, {state}".strip(", ") or location
+                    results.append(
+                        {
+                            "id": item.get("job_id", str(uuid.uuid4())),
+                            "title": item.get("job_title", query),
+                            "company_name": item.get("employer_name", "Unknown"),
+                            "url": item.get("job_apply_link"),
+                            "location": loc_str,
+                            "salary_range": item.get("job_salary") or "Competitive",
+                            "raw_description": item.get("job_description", ""),
+                            "ats_requirements": {
+                                "required_skills": [query],
+                                "visa_sponsorship": True,
+                            },
+                        }
+                    )
+                if results:
+                    return results
         except Exception as exc:
             # Fall back hermetically to mock dataset on any API failure
             logger.warning(

@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.graph import reflector_app
 from app.agents.state import AgentState
+from app.core.config import settings
 from app.core.database import get_session_context
 from app.models.feedback_log import FeedbackLog
 
@@ -87,7 +88,10 @@ async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:
 
     # Namespace the thread to isolate reflector checkpoints from interview messages
     thread_id = f"reflector_{request.thread_id}"
-    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    config: RunnableConfig = {
+        "configurable": {"thread_id": thread_id},
+        "recursion_limit": settings.GRAPH_RECURSION_LIMIT,
+    }
     result = await reflector_app.ainvoke(state, config=config)
 
     logs = result.get("feedback_logs", [])

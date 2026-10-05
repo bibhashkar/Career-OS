@@ -27,6 +27,7 @@ from sqlalchemy import func, select
 from app.agents.llm import get_llm
 from app.core.config import settings
 from app.core.database import get_session_context
+from app.core.http import DEFAULT_TIMEOUT, execute_with_retry
 from app.models.company_dossier import CompanyDossier
 
 logger = logging.getLogger("career_os.tools.company_intel")
@@ -159,30 +160,38 @@ async def fetch_company_intel(
                 "num_results": 3,
                 "use_autoprompt": True,
             }
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                if resp.status_code == 200:
-                    results = resp.json().get("results", [])
-                    news = [
-                        {"title": r.get("title", ""), "url": r.get("url", "")}
-                        for r in results
-                    ]
-                    resolved = {
-                        "company_name": company_name,
-                        "domain": domain or f"{normalized_name.replace(' ', '')}.com",
-                        "industry": "Technology",
-                        "tech_stack": [
-                            "Python",
-                            "FastAPI",
-                            "PostgreSQL",
-                            "Cloud",
-                        ],
-                        "recent_news": news,
-                        "business_model": "Software platform services",
-                        "culture_notes": (
-                            "Data gathered via live web intelligence search."
-                        ),
-                    }
+
+            async def _fetch() -> httpx.Response:
+                async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+                    return await client.post(url, headers=headers, json=payload)
+
+            resp = await execute_with_retry(
+                _fetch,
+                max_retries=3,
+                operation_name=f"Exa search [{company_name}]",
+            )
+            if resp and resp.status_code == 200:
+                results = resp.json().get("results", [])
+                news = [
+                    {"title": r.get("title", ""), "url": r.get("url", "")}
+                    for r in results
+                ]
+                resolved = {
+                    "company_name": company_name,
+                    "domain": domain or f"{normalized_name.replace(' ', '')}.com",
+                    "industry": "Technology",
+                    "tech_stack": [
+                        "Python",
+                        "FastAPI",
+                        "PostgreSQL",
+                        "Cloud",
+                    ],
+                    "recent_news": news,
+                    "business_model": "Software platform services",
+                    "culture_notes": (
+                        "Data gathered via live web intelligence search."
+                    ),
+                }
         except Exception as exc:
             logger.warning(
                 f"Exa search failed for company '{company_name}'; falling back: {exc}"

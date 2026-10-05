@@ -34,6 +34,7 @@ from app.agents.graph import interview_app
 from app.agents.state import AgentState
 from app.agents.tools.company_intel import fetch_company_intel
 from app.agents.tools.job_search import search_jobs
+from app.core.config import settings
 from app.core.logging import get_correlation_id
 
 logger = logging.getLogger("career_os.interview")
@@ -64,7 +65,10 @@ async def interview_websocket_endpoint(
         title: Optional target position title.
     """
     await websocket.accept()
-    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    config: RunnableConfig = {
+        "configurable": {"thread_id": thread_id},
+        "recursion_limit": settings.GRAPH_RECURSION_LIMIT,
+    }
 
     try:
         # Check current state or send initial question if new session
