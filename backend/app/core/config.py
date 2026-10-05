@@ -67,9 +67,11 @@ class Settings(BaseSettings):
     # In production, replace with the exact deployed frontend domain.
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
-    # ---- External API keys (all optional for local/mock development) ----
-    # The agent tools implement hermetic offline fallbacks so the full pipeline
-    # runs in CI without these keys. Set them to enable live data sources.
+    # ---- External API keys & LLM Provider (optional for mock development) ----
+    # The agent nodes and tools implement hermetic offline fallbacks so the full
+    # pipeline runs in CI without live API keys.
+    LLM_PROVIDER: str = "gemini"
+    GEMINI_MODEL: str = "gemini-1.5-flash"
     OPENAI_API_KEY: str | None = None
     ANTHROPIC_API_KEY: str | None = None
     GEMINI_API_KEY: str | None = None
