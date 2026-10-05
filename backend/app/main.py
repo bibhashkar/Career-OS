@@ -28,6 +28,7 @@ from app.api.interview import router as interview_router
 from app.api.jobs import router as jobs_router
 from app.core.config import settings
 from app.core.database import engine, init_vector_extension
+from app.core.errors import setup_exception_handlers
 from app.core.logging import CorrelationIdMiddleware, setup_logging
 
 
@@ -69,6 +70,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# RFC 7807 Problem Details exception handlers for uniform error serialization
+setup_exception_handlers(app)
 
 # Distributed correlation ID middleware for request tracing and timing
 app.add_middleware(CorrelationIdMiddleware)

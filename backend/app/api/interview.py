@@ -24,6 +24,8 @@ WebSocket Framing Protocol:
 """
 
 import json
+import logging
+import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from langchain_core.runnables import RunnableConfig
@@ -32,6 +34,9 @@ from app.agents.graph import interview_app
 from app.agents.state import AgentState
 from app.agents.tools.company_intel import fetch_company_intel
 from app.agents.tools.job_search import search_jobs
+from app.core.logging import get_correlation_id
+
+logger = logging.getLogger("career_os.interview")
 
 router = APIRouter(tags=["Interview"])
 
@@ -142,7 +147,19 @@ async def interview_websocket_endpoint(
         # Checkpoint is automatically persisted in checkpointer by thread_id
         pass
     except Exception as exc:
+        cid = get_correlation_id() or uuid.uuid4().hex
+        logger.exception(
+            f"Unhandled error in interview WebSocket "
+            f"[thread_id={thread_id}, correlation_id={cid}]: {exc}"
+        )
         try:
-            await websocket.send_json({"type": "error", "message": str(exc)})
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "title": "Interview Processing Error",
+                    "message": "An error occurred during coaching evaluation.",
+                    "correlation_id": cid,
+                }
+            )
         except Exception:
             pass
