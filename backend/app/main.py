@@ -18,7 +18,7 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, status
+from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -31,6 +31,7 @@ from app.core.config import settings
 from app.core.database import engine, init_vector_extension
 from app.core.errors import setup_exception_handlers
 from app.core.logging import CorrelationIdMiddleware, setup_logging
+from app.core.metrics import PrometheusMetricsMiddleware, metrics_registry
 from app.core.security import SecurityHeadersMiddleware
 
 logger = logging.getLogger("career_os.main")
@@ -78,6 +79,9 @@ app = FastAPI(
 # RFC 7807 Problem Details exception handlers for uniform error serialization
 setup_exception_handlers(app)
 
+# Prometheus metrics tracking middleware
+app.add_middleware(PrometheusMetricsMiddleware)
+
 # Security headers middleware enforcing OWASP protection policies
 app.add_middleware(SecurityHeadersMiddleware)
 
@@ -100,6 +104,17 @@ app.include_router(jobs_router)
 app.include_router(cv_router)
 app.include_router(feedback_router)
 app.include_router(interview_router)
+
+
+@app.get("/metrics", response_class=Response)
+async def metrics_endpoint() -> Response:
+    """
+    Export Prometheus text format application and connection pool metrics.
+    """
+    content = metrics_registry.generate_prometheus_output()
+    return Response(
+        content=content, media_type="text/plain; version=0.0.4; charset=utf-8"
+    )
 
 
 @app.get("/health", status_code=status.HTTP_200_OK)
