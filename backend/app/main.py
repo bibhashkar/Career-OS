@@ -32,6 +32,7 @@ from app.core.database import engine, init_vector_extension
 from app.core.errors import setup_exception_handlers
 from app.core.logging import CorrelationIdMiddleware, setup_logging
 from app.core.metrics import PrometheusMetricsMiddleware, metrics_registry
+from app.core.rate_limit import RateLimitMiddleware
 from app.core.security import SecurityHeadersMiddleware
 
 logger = logging.getLogger("career_os.main")
@@ -81,6 +82,9 @@ setup_exception_handlers(app)
 
 # Prometheus metrics tracking middleware
 app.add_middleware(PrometheusMetricsMiddleware)
+
+# Rate limiting middleware protecting resource-intensive agent workloads
+app.add_middleware(RateLimitMiddleware)
 
 # Security headers middleware enforcing OWASP protection policies
 app.add_middleware(SecurityHeadersMiddleware)

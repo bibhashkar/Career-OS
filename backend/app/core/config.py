@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     MAX_CV_RAW_TEXT_LENGTH: int = 50000
     MAX_FEEDBACK_TEXT_LENGTH: int = 5000
     MAX_WS_FRAME_BYTES: int = 16384
+    RATE_LIMIT_PER_MINUTE: int = 120
+    CV_TAILOR_RATE_LIMIT_PER_MINUTE: int = 20
 
     # ---- Authentication & Cryptographic Keys ----
     SECRET_KEY: str = "career-os-dev-insecure-secret-key-change-in-production"
