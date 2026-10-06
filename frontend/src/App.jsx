@@ -5,7 +5,6 @@ import {
   MessageSquare,
   Sparkles,
   Layers,
-  ExternalLink,
 } from "lucide-react";
 import { Dashboard } from "./pages/Dashboard";
 import { CVTailorView } from "./pages/CVTailorView";

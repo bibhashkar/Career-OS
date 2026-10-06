@@ -94,6 +94,16 @@ jobs:
         run: |
           npm ci
 
+      - name: Lint frontend codebase (ESLint)
+        working-directory: frontend
+        run: |
+          npm run lint
+
+      - name: Run frontend unit tests (Vitest)
+        working-directory: frontend
+        run: |
+          npm test
+
       - name: Build frontend SPA (Vite)
         working-directory: frontend
         run: |
