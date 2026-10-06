@@ -32,6 +32,8 @@ export default [
         WebSocket: "readonly",
         URLSearchParams: "readonly",
         navigator: "readonly",
+        Blob: "readonly",
+        URL: "readonly",
         describe: "readonly",
         it: "readonly",
         expect: "readonly",

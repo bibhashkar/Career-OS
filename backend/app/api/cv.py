@@ -16,7 +16,7 @@ nodes, cycling up to 3 times if necessary, before returning the final scorecard.
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
@@ -25,6 +25,7 @@ from app.agents.state import AgentState
 from app.agents.tools.embeddings import chunk_cv_text, ingest_cv_blocks
 from app.core.auth import CurrentUser
 from app.core.config import settings
+from app.core.cv_export import format_cv_as_markdown, format_cv_as_plaintext
 
 router = APIRouter(prefix="/api/cv", tags=["CV"])
 
@@ -190,3 +191,42 @@ async def ingest_cv_document(
         blocks_ingested=len(persisted),
         blocks=persisted,
     )
+
+
+class CVExportRequest(BaseModel):
+    """Payload containing CV draft to format for export."""
+
+    cv_draft: dict[str, Any] = Field(..., description="Structured tailored CV draft.")
+
+
+@router.post("/export", response_class=Response)
+async def export_tailored_cv(
+    request: CVExportRequest,
+    user: CurrentUser,
+    export_format: str = Query("markdown", pattern="^(markdown|txt)$"),
+) -> Response:
+    """
+    Export tailored CV draft as an ATS-clean Markdown or plaintext document.
+
+    Generates a single-column, table-free text layout adhering to strict ATS
+    scanner compatibility standards.
+    """
+    if not request.cv_draft:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="cv_draft is required for export.",
+        )
+
+    if export_format == "txt":
+        content = format_cv_as_plaintext(request.cv_draft)
+        media_type = "text/plain; charset=utf-8"
+        filename = "tailored_cv.txt"
+    else:
+        content = format_cv_as_markdown(request.cv_draft)
+        media_type = "text/markdown; charset=utf-8"
+        filename = "tailored_cv.md"
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    }
+    return Response(content=content, media_type=media_type, headers=headers)

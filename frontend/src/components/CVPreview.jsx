@@ -34,10 +34,55 @@ ${draft.experience_blocks
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleDownload = (format) => {
+    const filename = `tailored_cv_${(draft.target_company || "draft").toLowerCase().replace(/[^a-z0-9]/g, "_")}.${format === "txt" ? "txt" : "md"}`;
+    const textContent = format === "txt"
+      ? `
+${(draft.candidate_title || "Software Engineer").toUpperCase()}
+Target Role at ${draft.target_company || "Target Company"}
+========================================
+
+PROFESSIONAL SUMMARY
+--------------------
+${draft.professional_summary || ""}
+
+CORE SKILLS
+-----------
+${draft.skills_highlighted?.join(", ") || ""}
+
+EXPERIENCE & ACCOMPLISHMENTS
+----------------------------
+${draft.experience_blocks?.map((b) => `* ${b.title} (${b.organization || ""})\n  ${b.content}`).join("\n\n") || ""}
+`.trim()
+      : `
+# ${draft.candidate_title || "Software Engineer"}
+**Target Company:** ${draft.target_company || ""}
+
+## Professional Summary
+${draft.professional_summary || ""}
+
+## Core Competencies & Skills
+${draft.skills_highlighted?.join(", ") || ""}
+
+## Experience & Key Achievements
+${draft.experience_blocks?.map((b) => `### ${b.title}${b.organization ? ` - ${b.organization}` : ""}\n${b.content}`).join("\n\n") || ""}
+`.trim();
+
+    const blob = new Blob([textContent], { type: format === "txt" ? "text/plain" : "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-6 shadow-xl space-y-6">
       {/* Top action bar */}
-      <div className="flex items-center justify-between border-b border-slate-700/60 pb-4">
+      <div className="flex items-center justify-between border-b border-slate-700/60 pb-4 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <div className="p-2 bg-sky-500/10 text-sky-400 rounded-lg">
             <UserCheck className="w-5 h-5" />
@@ -52,20 +97,36 @@ ${draft.experience_blocks
           </div>
         </div>
 
-        <button
-          onClick={handleCopy}
-          className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium rounded-lg text-xs transition-colors flex items-center gap-1.5"
-        >
-          {copied ? (
-            <>
-              <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied
-            </>
-          ) : (
-            <>
-              <Copy className="w-3.5 h-3.5" /> Copy Plaintext
-            </>
-          )}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleDownload("md")}
+            className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-medium rounded-lg text-xs transition-colors flex items-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-sky-400"
+            title="Download ATS-compliant Markdown"
+          >
+            Export .md
+          </button>
+          <button
+            onClick={() => handleDownload("txt")}
+            className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium rounded-lg text-xs transition-colors flex items-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-sky-400"
+            title="Download ATS Plaintext"
+          >
+            Export .txt
+          </button>
+          <button
+            onClick={handleCopy}
+            className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium rounded-lg text-xs transition-colors flex items-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-sky-400"
+          >
+            {copied ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5" /> Copy Text
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Professional Summary */}

@@ -49,13 +49,14 @@ export async function submitFeedback(threadId, userFeedback) {
 }
 
 /**
- * Query backend health status.
+ * Export tailored CV draft as Markdown or TXT blob.
  */
-export async function checkHealth() {
-  const healthUrl = import.meta.env.VITE_API_URL
-    ? `${import.meta.env.VITE_API_URL.replace(/\/$/, "")}/health`
-    : "/health";
-  const response = await axios.get(healthUrl);
+export async function exportCV(cvDraft, format = "markdown") {
+  const response = await apiClient.post(
+    `/cv/export?export_format=${format}`,
+    { cv_draft: cvDraft },
+    { responseType: "blob" }
+  );
   return response.data;
 }
 
