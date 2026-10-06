@@ -17,10 +17,11 @@ import {
 import { InterviewWebSocket } from "../services/websocket";
 import { submitFeedback } from "../services/api";
 
-export function InterviewSimulator({ job, onBack }) {
-  // Retrieve saved thread_id or initialize fresh session
+export function InterviewSimulator({ job, initialThreadId, onBack }) {
+  // Retrieve passed initialThreadId, saved thread_id, or initialize fresh session
   const [threadId, setThreadId] = useState(() => {
     return (
+      initialThreadId ||
       localStorage.getItem("active_interview_thread_id") ||
       `thread_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
     );
@@ -37,6 +38,13 @@ export function InterviewSimulator({ job, onBack }) {
 
   const wsRef = useRef(null);
   const messagesEndRef = useRef(null);
+
+  // Sync thread_id if initialThreadId changes from route param
+  useEffect(() => {
+    if (initialThreadId && initialThreadId !== threadId) {
+      setThreadId(initialThreadId);
+    }
+  }, [initialThreadId]);
 
   // Sync thread_id with localStorage for resume capability
   useEffect(() => {

@@ -1,5 +1,12 @@
 import React, { useState } from "react";
 import {
+  Routes,
+  Route,
+  NavLink,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
+import {
   Compass,
   FileText,
   MessageSquare,
@@ -10,18 +17,29 @@ import { Dashboard } from "./pages/Dashboard";
 import { CVTailorView } from "./pages/CVTailorView";
 import { InterviewSimulator } from "./pages/InterviewSimulator";
 
+function InterviewRouteWrapper({ job, onBack }) {
+  const { threadId } = useParams();
+  return (
+    <InterviewSimulator
+      job={job}
+      initialThreadId={threadId}
+      onBack={onBack}
+    />
+  );
+}
+
 export function App() {
-  const [activeTab, setActiveTab] = useState("dashboard"); // "dashboard" | "cv_tailor" | "interview"
   const [selectedJob, setSelectedJob] = useState(null);
+  const navigate = useNavigate();
 
   const handleSelectJobForCV = (job) => {
     setSelectedJob(job);
-    setActiveTab("cv_tailor");
+    navigate("/cv-tailor");
   };
 
   const handleStartInterview = (job) => {
     if (job) setSelectedJob(job);
-    setActiveTab("interview");
+    navigate("/interview");
   };
 
   return (
@@ -31,7 +49,7 @@ export function App() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           {/* Logo & Platform identity */}
           <div
-            onClick={() => setActiveTab("dashboard")}
+            onClick={() => navigate("/")}
             className="flex items-center gap-2.5 cursor-pointer select-none"
           >
             <div className="p-2 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white shadow-md shadow-sky-500/20">
@@ -54,38 +72,45 @@ export function App() {
 
           {/* Navigation Tab Bar */}
           <nav className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
-            <button
-              onClick={() => setActiveTab("dashboard")}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
-                activeTab === "dashboard"
-                  ? "bg-sky-600 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
+            <NavLink
+              to="/"
+              end
+              className={({ isActive }) =>
+                `px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                  isActive
+                    ? "bg-sky-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`
+              }
             >
               <Compass className="w-3.5 h-3.5" /> Discovery & Intel
-            </button>
+            </NavLink>
 
-            <button
-              onClick={() => setActiveTab("cv_tailor")}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
-                activeTab === "cv_tailor"
-                  ? "bg-sky-600 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
+            <NavLink
+              to="/cv-tailor"
+              className={({ isActive }) =>
+                `px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                  isActive
+                    ? "bg-sky-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`
+              }
             >
               <FileText className="w-3.5 h-3.5" /> CV Tailor & ATS
-            </button>
+            </NavLink>
 
-            <button
-              onClick={() => setActiveTab("interview")}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
-                activeTab === "interview"
-                  ? "bg-sky-600 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
+            <NavLink
+              to="/interview"
+              className={({ isActive }) =>
+                `px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                  isActive
+                    ? "bg-sky-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`
+              }
             >
               <MessageSquare className="w-3.5 h-3.5" /> Mock Coach
-            </button>
+            </NavLink>
           </nav>
 
           {/* Target Role Context Badge */}
@@ -100,27 +125,45 @@ export function App() {
 
       {/* Main View Router */}
       <main className="flex-1">
-        {activeTab === "dashboard" && (
-          <Dashboard
-            onSelectJob={handleSelectJobForCV}
-            onStartInterview={handleStartInterview}
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <Dashboard
+                onSelectJob={handleSelectJobForCV}
+                onStartInterview={handleStartInterview}
+              />
+            }
           />
-        )}
-
-        {activeTab === "cv_tailor" && (
-          <CVTailorView
-            job={selectedJob}
-            onBack={() => setActiveTab("dashboard")}
-            onStartInterview={handleStartInterview}
+          <Route
+            path="/cv-tailor"
+            element={
+              <CVTailorView
+                job={selectedJob}
+                onBack={() => navigate("/")}
+                onStartInterview={handleStartInterview}
+              />
+            }
           />
-        )}
-
-        {activeTab === "interview" && (
-          <InterviewSimulator
-            job={selectedJob}
-            onBack={() => setActiveTab("dashboard")}
+          <Route
+            path="/interview"
+            element={
+              <InterviewSimulator
+                job={selectedJob}
+                onBack={() => navigate("/")}
+              />
+            }
           />
-        )}
+          <Route
+            path="/interview/:threadId"
+            element={
+              <InterviewRouteWrapper
+                job={selectedJob}
+                onBack={() => navigate("/")}
+              />
+            }
+          />
+        </Routes>
       </main>
 
       {/* Footer */}
