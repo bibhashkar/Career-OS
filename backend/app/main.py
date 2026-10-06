@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.agents.graph import close_postgres_saver, init_postgres_saver
+from app.api.applications import router as applications_router
 from app.api.cv import router as cv_router
 from app.api.feedback import router as feedback_router
 from app.api.interview import router as interview_router
@@ -106,6 +107,7 @@ app.add_middleware(
 # logic lives here; routers delegate directly to compiled LangGraph graphs.
 app.include_router(jobs_router)
 app.include_router(cv_router)
+app.include_router(applications_router)
 app.include_router(feedback_router)
 app.include_router(interview_router)
 

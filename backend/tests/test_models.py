@@ -3,6 +3,7 @@
 import uuid
 
 from app.models import (
+    Application,
     Base,
     CompanyDossier,
     CVBlock,
@@ -20,6 +21,7 @@ def test_table_names_are_singular() -> None:
         "company_dossier",
         "cv_block",
         "feedback_log",
+        "application",
     }
     actual_tables = {table.name for table in Base.metadata.tables.values()}
     assert expected_tables == actual_tables
@@ -100,3 +102,13 @@ def test_user_profile_cv_blocks_strict_restrict_cascade() -> None:
     cascade_options = UserProfile.cv_blocks.property.cascade
     assert "delete-orphan" not in cascade_options
     assert "delete" not in cascade_options
+
+
+def test_application_instantiation() -> None:
+    """Verify Application model instantiation and default fields."""
+    app_record = Application(
+        user_profile_id=uuid.uuid4(),
+        job_listing_id=uuid.uuid4(),
+        status="saved",
+    )
+    assert app_record.status == "saved"
