@@ -11,21 +11,23 @@ help:
 	@echo "  make docker-down  Stop Docker Compose services"
 	@echo "  make clean        Remove cache and build artifacts"
 
+VENV ?= $(shell test -d backend/.venv && echo backend/.venv || echo .venv)
+
 dev:
 	@echo "Starting Career-OS services..."
 	@echo "Run 'uvicorn app.main:app --reload' in backend/ and 'npm run dev' in frontend/"
 
 test:
-	./.venv/bin/pytest backend
+	./$(VENV)/bin/pytest backend
 
 lint:
-	./.venv/bin/ruff format --check backend
-	./.venv/bin/ruff check backend
-	./.venv/bin/mypy backend
+	./$(VENV)/bin/ruff format --check backend
+	./$(VENV)/bin/ruff check backend
+	./$(VENV)/bin/mypy backend
 
 format:
-	./.venv/bin/ruff format backend
-	./.venv/bin/ruff check --fix backend
+	./$(VENV)/bin/ruff format backend
+	./$(VENV)/bin/ruff check --fix backend
 
 build:
 	cd frontend && npm run build
