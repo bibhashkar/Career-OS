@@ -299,8 +299,15 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Chat Window Column */}
         <div className="lg:col-span-2 bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 shadow-xl flex flex-col h-[650px]">
-          {/* Scrollable Message History */}
-          <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+          {/* Scrollable Message History with ARIA live region */}
+          <div
+            className="flex-1 overflow-y-auto space-y-4 pr-2 focus:outline-none focus:ring-1 focus:ring-slate-700 rounded-lg"
+            tabIndex={0}
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions text"
+            aria-label="Interview chat transcript"
+          >
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-500 space-y-2">
                 <Bot className="w-8 h-8 text-sky-400 animate-pulse" />
@@ -353,23 +360,26 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
           <form
             onSubmit={handleSendMessage}
             className="pt-3 border-t border-slate-700/60 flex items-center gap-2"
+            aria-label="Send interview response"
           >
             <input
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               disabled={connectionStatus !== "connected"}
+              aria-label="Type your technical response"
               placeholder={
                 connectionStatus === "connected"
                   ? "Type your technical response..."
                   : "Session is paused. Click 'Resume Session' to continue."
               }
-              className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50"
+              className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={!inputValue.trim() || connectionStatus !== "connected"}
-              className="px-4 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 text-white font-semibold rounded-xl text-xs transition-all shadow-md shadow-sky-600/20 flex items-center gap-1.5"
+              aria-label="Send response"
+              className="px-4 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 text-white font-semibold rounded-xl text-xs transition-all shadow-md shadow-sky-600/20 flex items-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-sky-400"
             >
               <Send className="w-3.5 h-3.5" /> Send
             </button>
@@ -437,16 +447,24 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
               <p className="text-xs text-slate-400">
                 Tell the Reflector agent how to adjust its technical depth or style:
               </p>
-              <form onSubmit={handleSubmitFeedback} className="space-y-2">
+              <form
+                onSubmit={handleSubmitFeedback}
+                className="space-y-2"
+                aria-label="Reflector agent feedback tuning"
+              >
                 <textarea
                   rows={2}
                   value={feedbackText}
                   onChange={(e) => setFeedbackText(e.target.value)}
+                  aria-label="Feedback for Reflector agent"
                   placeholder="e.g. 'Ask harder questions on concurrency and PostgreSQL replication.'"
-                  className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                 />
                 {feedbackError && (
-                  <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between gap-2">
+                  <div
+                    role="alert"
+                    className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between gap-2"
+                  >
                     <span className="truncate">{feedbackError}</span>
                     <button
                       type="button"
@@ -460,7 +478,8 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
                 <button
                   type="submit"
                   disabled={!feedbackText.trim() || feedbackLoading}
-                  className="w-full py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 text-white font-medium rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
+                  aria-label="Apply feedback to Reflector agent"
+                  className="w-full py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 text-white font-medium rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-sky-400"
                 >
                   {feedbackLoading ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />

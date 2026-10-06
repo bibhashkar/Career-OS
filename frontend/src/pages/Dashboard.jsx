@@ -67,27 +67,30 @@ export function Dashboard({ onSelectJob, onStartInterview }) {
       {/* Search & Constraint Filter Bar */}
       <form
         onSubmit={handleSearchSubmit}
+        aria-label="Job search and filter form"
         className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 shadow-xl grid grid-cols-1 md:grid-cols-4 gap-3 items-center"
       >
         <div className="relative md:col-span-2">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" aria-hidden="true" />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            aria-label="Target role or skills query"
             placeholder="Target role or skills (e.g. Senior AI Engineer)"
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
           />
         </div>
 
         <div className="relative">
-          <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+          <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" aria-hidden="true" />
           <input
             type="text"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
+            aria-label="Job location query"
             placeholder="Location (e.g. Remote)"
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
           />
         </div>
 
@@ -97,19 +100,21 @@ export function Dashboard({ onSelectJob, onStartInterview }) {
               type="checkbox"
               checked={visaRequired}
               onChange={(e) => setVisaRequired(e.target.checked)}
+              aria-label="Require H-1B or Visa sponsorship"
               className="w-4 h-4 rounded bg-slate-900 border-slate-600 text-sky-500 focus:ring-sky-500"
             />
             <span className="flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> H-1B / Visa
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" /> H-1B / Visa
             </span>
           </label>
 
           <button
             type="submit"
             disabled={loading}
-            className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 text-white font-medium rounded-xl text-sm transition-all shadow-md shadow-sky-600/20 flex items-center gap-2"
+            aria-label={loading ? "Searching jobs" : "Search jobs"}
+            className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 text-white font-medium rounded-xl text-sm transition-all shadow-md shadow-sky-600/20 flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-sky-400"
           >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Search"}
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : "Search"}
           </button>
         </div>
       </form>
