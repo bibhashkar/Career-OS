@@ -9,7 +9,7 @@ export function CVTailorView({ job, onBack, onStartInterview }) {
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
 
-  const runTailoring = async () => {
+  const runTailoring = React.useCallback(async () => {
     if (!job?.id) return;
     setLoading(true);
     setError(null);
@@ -29,13 +29,13 @@ export function CVTailorView({ job, onBack, onStartInterview }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [job]);
 
   useEffect(() => {
     if (job?.id) {
       runTailoring();
     }
-  }, [job]);
+  }, [job?.id, runTailoring]);
 
   if (!job) {
     return (

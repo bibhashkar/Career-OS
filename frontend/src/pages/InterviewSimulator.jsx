@@ -67,7 +67,7 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
     if (initialThreadId && initialThreadId !== threadId) {
       setThreadId(initialThreadId);
     }
-  }, [initialThreadId]);
+  }, [initialThreadId, threadId]);
 
   // Sync thread_id with localStorage and update sessions history
   useEffect(() => {
@@ -95,7 +95,7 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
     });
   }, [threadId, job]);
 
-  // Connect WebSocket on mount or when threadId changes
+  // Connect WebSocket on mount or when threadId or job changes
   useEffect(() => {
     const ws = new InterviewWebSocket(
       threadId,
@@ -127,7 +127,7 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
     return () => {
       ws.disconnect();
     };
-  }, [threadId]);
+  }, [threadId, job?.id, job?.company_name, job?.title]);
 
   // Auto-scroll chat to latest message
   useEffect(() => {

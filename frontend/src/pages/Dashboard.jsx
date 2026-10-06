@@ -24,7 +24,7 @@ export function Dashboard({ onSelectJob, onStartInterview }) {
   const [error, setError] = useState(null);
   const [expandedJobId, setExpandedJobId] = useState(null);
 
-  const fetchJobs = async () => {
+  const fetchJobs = React.useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -37,11 +37,11 @@ export function Dashboard({ onSelectJob, onStartInterview }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [query, location, visaRequired]);
 
   useEffect(() => {
     fetchJobs();
-  }, []);
+  }, [fetchJobs]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
