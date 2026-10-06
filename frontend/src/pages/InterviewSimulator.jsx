@@ -13,9 +13,30 @@ import {
   Cpu,
   ThumbsUp,
   Loader2,
+  History,
 } from "lucide-react";
 import { InterviewWebSocket } from "../services/websocket";
 import { submitFeedback } from "../services/api";
+import { SessionHistoryModal } from "../components/SessionHistoryModal";
+
+const SESSIONS_STORAGE_KEY = "career_os_interview_sessions";
+
+function getStoredSessions() {
+  try {
+    const raw = localStorage.getItem(SESSIONS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredSessions(sessions) {
+  try {
+    localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+  } catch (err) {
+    console.error("Failed to save sessions to localStorage:", err);
+  }
+}
 
 export function InterviewSimulator({ job, initialThreadId, onBack }) {
   // Retrieve passed initialThreadId, saved thread_id, or initialize fresh session
@@ -31,6 +52,8 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
   const [inputValue, setInputValue] = useState("");
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
   const [showPrepSheet, setShowPrepSheet] = useState(true);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [savedSessions, setSavedSessions] = useState(getStoredSessions);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
@@ -46,10 +69,31 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
     }
   }, [initialThreadId]);
 
-  // Sync thread_id with localStorage for resume capability
+  // Sync thread_id with localStorage and update sessions history
   useEffect(() => {
     localStorage.setItem("active_interview_thread_id", threadId);
-  }, [threadId]);
+
+    // Record or update session in history
+    setSavedSessions((prev) => {
+      const existingIdx = prev.findIndex((s) => s.threadId === threadId);
+      const sessionEntry = {
+        threadId,
+        companyName: job?.company_name || (existingIdx >= 0 ? prev[existingIdx].companyName : "Target Employer"),
+        title: job?.title || (existingIdx >= 0 ? prev[existingIdx].title : "Technical Interview"),
+        timestamp: Date.now(),
+      };
+
+      let updated;
+      if (existingIdx >= 0) {
+        updated = [...prev];
+        updated[existingIdx] = { ...updated[existingIdx], ...sessionEntry };
+      } else {
+        updated = [sessionEntry, ...prev].slice(0, 20); // Retain latest 20 sessions
+      }
+      saveStoredSessions(updated);
+      return updated;
+    });
+  }, [threadId, job]);
 
   // Connect WebSocket on mount or when threadId changes
   useEffect(() => {
@@ -137,6 +181,25 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
     }
   };
 
+  const handleResumeSession = (targetThreadId) => {
+    wsRef.current?.disconnect();
+    setMessages([]);
+    setThreadId(targetThreadId);
+    setShowHistoryModal(false);
+  };
+
+  const handleDeleteSession = (targetThreadId) => {
+    const updated = savedSessions.filter((s) => s.threadId !== targetThreadId);
+    setSavedSessions(updated);
+    saveStoredSessions(updated);
+  };
+
+  const handleClearAllSessions = () => {
+    setSavedSessions([]);
+    saveStoredSessions([]);
+    setShowHistoryModal(false);
+  };
+
   const dossier = job?.company_dossier || {
     company_name: job?.company_name || "Target Employer",
     tech_stack: ["Python", "FastAPI", "PostgreSQL", "LangGraph"],
@@ -145,6 +208,17 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+      {/* Session History Modal */}
+      <SessionHistoryModal
+        isOpen={showHistoryModal}
+        onClose={() => setShowHistoryModal(false)}
+        sessions={savedSessions}
+        activeThreadId={threadId}
+        onResumeSession={handleResumeSession}
+        onDeleteSession={handleDeleteSession}
+        onClearAllSessions={handleClearAllSessions}
+      />
+
       {/* Navigation & Controls Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div className="flex items-center gap-3">
@@ -180,7 +254,15 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setShowHistoryModal(true)}
+            className="px-3 py-1.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-xs font-medium text-slate-300 transition-colors flex items-center gap-1.5"
+            title="View Past Sessions"
+          >
+            <History className="w-3.5 h-3.5 text-sky-400" /> Past Sessions ({savedSessions.length})
+          </button>
+
           <button
             onClick={handleTogglePause}
             className="px-3 py-1.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-xs font-medium text-slate-300 transition-colors flex items-center gap-1.5"
