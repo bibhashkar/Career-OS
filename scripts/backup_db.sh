@@ -19,6 +19,20 @@
 
 set -euo pipefail
 
+# Automatically source .env from project root or current directory if present
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SCRIPT_DIR}/../.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "${SCRIPT_DIR}/../.env"
+    set +a
+elif [ -f .env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source .env
+    set +a
+fi
+
 BACKUP_DIR="${1:-./backups}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 DB_HOST="${POSTGRES_HOST:-localhost}"

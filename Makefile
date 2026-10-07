@@ -1,21 +1,38 @@
-.PHONY: help dev test lint format build clean docker-up docker-down
+.PHONY: help dev test lint format build clean docker-up docker-down run-backend run-frontend
+
+# Include .env if present and export variables to child processes
+ifneq (,$(wildcard ./.env))
+    include .env
+    export
+endif
 
 help:
 	@echo "Career-OS Development Commands:"
-	@echo "  make dev          Start backend and frontend development servers"
-	@echo "  make test         Run all Python unit and integration tests"
-	@echo "  make lint         Run ruff checks and mypy static type analysis"
-	@echo "  make format       Format code using ruff"
-	@echo "  make build        Build frontend production assets"
-	@echo "  make docker-up    Start full stack with Docker Compose"
-	@echo "  make docker-down  Stop Docker Compose services"
-	@echo "  make clean        Remove cache and build artifacts"
+	@echo "  make dev           Verify environment (.env) and display start commands"
+	@echo "  make run-backend   Start FastAPI backend development server"
+	@echo "  make run-frontend  Start Vite React frontend development server"
+	@echo "  make test          Run all Python unit and integration tests"
+	@echo "  make lint          Run ruff checks and mypy static type analysis"
+	@echo "  make format        Format code using ruff"
+	@echo "  make build         Build frontend production assets"
+	@echo "  make docker-up     Start full stack with Docker Compose using .env"
+	@echo "  make docker-down   Stop Docker Compose services"
+	@echo "  make clean         Remove cache and build artifacts"
 
 VENV ?= $(shell test -d backend/.venv && echo backend/.venv || echo .venv)
 
-dev:
-	@echo "Starting Career-OS services..."
-	@echo "Run 'uvicorn app.main:app --reload' in backend/ and 'npm run dev' in frontend/"
+.env:
+	@if [ ! -f .env ]; then cp .env.example .env; echo "Initialized .env from .env.example"; fi
+
+dev: .env
+	@echo "Career-OS environment verified (.env active)."
+	@echo "Run 'make run-backend' and 'make run-frontend' to start development servers."
+
+run-backend: .env
+	cd backend && ../$(VENV)/bin/uvicorn app.main:app --reload --host $(or $(HOST),0.0.0.0) --port $(or $(PORT),8000)
+
+run-frontend:
+	cd frontend && npm run dev
 
 test:
 	./$(VENV)/bin/pytest backend

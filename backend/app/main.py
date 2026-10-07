@@ -55,6 +55,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         connections gracefully before process exit.
     """
     setup_logging()
+    logger.info(
+        "Career-OS backend starting [environment=%s, debug=%s]",
+        settings.APP_ENV,
+        settings.APP_DEBUG,
+    )
     try:
         await init_vector_extension()
     except Exception as exc:

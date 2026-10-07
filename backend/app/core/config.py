@@ -13,10 +13,16 @@ silently at the first request that needs the value.
 """
 
 import json
+from pathlib import Path
 from typing import Any
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Determine directory paths for robust .env loading across execution contexts
+_CORE_DIR = Path(__file__).resolve().parent
+_BACKEND_DIR = _CORE_DIR.parent.parent
+_PROJECT_ROOT = _BACKEND_DIR.parent
 
 
 class Settings(BaseSettings):
@@ -29,8 +35,14 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        # Load .env from the directory where the server is launched (backend/).
-        env_file=".env",
+        # Look for .env first at the repository root, then backend/, then cwd.
+        # This guarantees that launching from root, backend/, or container
+        # subdirectories loads values from .env directly without fallback.
+        env_file=(
+            str(_PROJECT_ROOT / ".env"),
+            str(_BACKEND_DIR / ".env"),
+            ".env",
+        ),
         env_file_encoding="utf-8",
         # Silently ignore extra env vars — useful when the shell exports
         # variables consumed by other tools (Docker, poetry, etc.).
@@ -109,6 +121,22 @@ class Settings(BaseSettings):
     EXA_API_KEY: str | None = None
     # Apollo — company and contact enrichment
     APOLLO_API_KEY: str | None = None
+
+    @field_validator(
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GEMINI_API_KEY",
+        "JSEARCH_API_KEY",
+        "EXA_API_KEY",
+        "APOLLO_API_KEY",
+        mode="before",
+    )
+    @classmethod
+    def blank_str_to_none(cls, v: Any) -> Any:
+        """Treat blank/empty strings in .env as None for optional API keys."""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
     @field_validator(
         "CORS_ORIGINS", "CORS_ALLOW_METHODS", "CORS_ALLOW_HEADERS", mode="before"

@@ -3,6 +3,8 @@ services:
     image: pgvector/pgvector:pg16
     container_name: career_os_postgres
     restart: always
+    env_file:
+      - .env
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-career_os}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -26,19 +28,26 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-career_os}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      APP_ENV: ${APP_ENV:-production}
-      APP_DEBUG: "false"
+      APP_ENV: ${APP_ENV:-development}
+      APP_DEBUG: ${APP_DEBUG:-false}
       SECRET_KEY: ${SECRET_KEY:-career-os-dev-secret-key-32chars-min!}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000","http://localhost:80"]'
+      JSEARCH_API_KEY: ${JSEARCH_API_KEY:-}
+      EXA_API_KEY: ${EXA_API_KEY:-}
+      APOLLO_API_KEY: ${APOLLO_API_KEY:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-'["http://localhost:5173","http://localhost:3000","http://localhost:80"]'}
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -54,6 +63,11 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+      VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8000}
     ports:
       - "3000:80"
 
