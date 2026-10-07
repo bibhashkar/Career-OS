@@ -19,6 +19,7 @@ flowchart TD
         CORS["Strict CORS & Security Headers"]
         Auth["JWT & WebSocket Auth Guard"]
         Router["REST Routers & WS Endpoints"]
+        Metrics["Prometheus /metrics"]
     end
 
     subgraph Agents["LangGraph Multi-Agent Workflows"]
@@ -46,6 +47,7 @@ flowchart TD
     Agents <--> PGSaver
     Agents <--> PGVector
     Agents <--> Relational
+    API --> Metrics
 ```
 
 ---
@@ -56,7 +58,7 @@ flowchart TD
 |------|------------|---------|
 | **Short-Term Checkpoints** | `langgraph.checkpoint.postgres.AsyncPostgresSaver` | Pausable, resumable multi-turn WebSocket mock interviews across reconnections and server restarts. |
 | **Semantic Vector Store** | PostgreSQL + `pgvector` with HNSW Index | 1536-dimensional cosine similarity matching of candidate career blocks (`cv_block`) against job requirements. |
-| **Relational Storage** | PostgreSQL + SQLAlchemy 2.0 Async | Long-term entities: `user_profile`, `job_listing`, `company_dossier`, `cv_block`, `feedback_log`. |
+| **Relational Storage** | PostgreSQL + SQLAlchemy 2.0 Async | Long-term entities: `user_profile`, `job_listing`, `company_dossier`, `cv_block`, `feedback_log`, `job_application`. |
 
 ---
 
@@ -64,48 +66,50 @@ flowchart TD
 
 ### 1. Prerequisites
 - Docker & Docker Compose (or Python 3.12+ and Node.js 20+)
-- PostgreSQL 16 with pgvector extension
+- PostgreSQL 16 with pgvector extension (if running locally without Docker)
 
-### 2. Run with Docker Compose
-Clone the repository and launch the full stack:
+### 2. Configuration (`.env`)
+The project uses a **centralized `.env` file** at the root of the repository for both backend and frontend configuration.
 
 ```bash
 # Clone the repository
 git clone https://github.com/your-username/career-os.git
 cd career-os
 
-# Copy environment configuration
-cp .env.example .env
-
-# Start database, backend, and frontend
-docker compose up --build
+# Initialize the centralized environment file
+make .env
 ```
 
-- Frontend: `http://localhost:3000`
+*Note: You only need one `.env` file at the root. The frontend Vite server and backend FastAPI server both read from this root `.env`.*
+
+### 3. Run with Docker Compose
+To launch the full stack (database, backend, frontend):
+
+```bash
+make docker-up
+```
+
+- Frontend: `http://localhost:3000` (or `http://localhost:5173`)
 - Backend API: `http://localhost:8000`
 - API Docs (Swagger UI): `http://localhost:8000/docs`
+- Stop the stack: `make docker-down`
 
-### 3. Local Development Setup
+### 4. Local Development Setup
+If you prefer running services outside of Docker, use the included Makefile targets:
 
-#### Backend Setup
 ```bash
-cd backend
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
+# Set up Python venv and NPM dependencies (first time only)
+cd backend && python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements-dev.txt && cd ..
+cd frontend && npm install && cd ..
 
-# Run database migrations
-alembic upgrade head
+# Verify environment and display start commands
+make dev
 
-# Start backend development server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
+# Run backend development server (reads from root .env)
+make run-backend
 
-#### Frontend Setup
-```bash
-cd frontend
-npm install
-npm run dev
+# Run frontend development server (reads from root .env)
+make run-frontend
 ```
 
 ---
@@ -125,6 +129,8 @@ npm run dev
 | `CORS_ORIGINS`   | `["http://localhost:5173", "http://localhost:3000"]` | Whitelisted frontend origins. |
 | `ATS_PASS_THRESHOLD` | `75.0` | Minimum score percentage required to pass ATS evaluation. |
 | `MAX_REVISIONS`  | `3` | Maximum cyclic revisions between Tailor and ATS agents. |
+| `VITE_API_URL`   | `http://localhost:8000` | REST API URL for the frontend. |
+| `VITE_WS_URL`    | `ws://localhost:8000` | WebSocket API URL for the frontend. |
 
 ---
 
@@ -132,9 +138,11 @@ npm run dev
 
 ### REST Endpoints
 - `POST /api/jobs/search`: Discover target roles filtered by query, location, and visa sponsorship.
+- `GET /api/applications/`: Track applied jobs, interview stages, and outcomes.
 - `POST /api/cv/generate`: Synthesize tailored CV draft and evaluate cyclic ATS compatibility.
-- `POST /api/feedback`: Submit candidate critique to the Reflector agent to calibrate interview tone and depth.
 - `POST /api/cv/embed`: Ingest raw resume text and index 1536-dim semantic embeddings.
+- `POST /api/feedback`: Submit candidate critique to the Reflector agent to calibrate interview tone and depth.
+- `GET /metrics`: Prometheus text-format application and database connection pool metrics.
 - `GET /health`: Health probe returning service, environment, and live database status.
 
 ### WebSocket Interview Protocol
@@ -147,25 +155,33 @@ npm run dev
 
 ---
 
+## Utilities
+
+### Database Backups
+A utility script `scripts/backup_db.sh` is provided to securely dump the PostgreSQL database, including `pgvector` schemas. It automatically sources the root `.env` to authenticate.
+
+```bash
+./scripts/backup_db.sh
+```
+
+---
+
 ## Testing & Quality Gates
 
 Run the verification suite locally before committing:
 
 ```bash
 # Code formatting
-ruff format backend
+make format
 
-# Static linting
-ruff check backend
-
-# Static type analysis (65 source files strictly checked)
-mypy backend
+# Static linting & Type analysis (ruff + mypy)
+make lint
 
 # Hermetic test suite (zero external network dependencies)
-pytest backend
+make test
 
 # Frontend build check
-cd frontend && npm run build
+make build
 ```
 
 ---
