@@ -1,4 +1,4 @@
-.PHONY: help dev test lint format build clean docker-up docker-down run-backend run-frontend
+.PHONY: help dev test lint format build clean docker-up docker-down run-backend run-frontend run-worker
 
 # Include .env if present and export variables to child processes
 ifneq (,$(wildcard ./.env))
@@ -10,6 +10,7 @@ help:
 	@echo "Career-OS Development Commands:"
 	@echo "  make dev           Verify environment (.env) and display start commands"
 	@echo "  make run-backend   Start FastAPI backend development server"
+	@echo "  make run-worker    Start background ingestion worker daemon"
 	@echo "  make run-frontend  Start Vite React frontend development server"
 	@echo "  make test          Run all Python unit and integration tests"
 	@echo "  make lint          Run ruff checks and mypy static type analysis"
@@ -26,10 +27,13 @@ VENV ?= $(shell test -d backend/.venv && echo backend/.venv || echo .venv)
 
 dev: .env
 	@echo "Career-OS environment verified (.env active)."
-	@echo "Run 'make run-backend' and 'make run-frontend' to start development servers."
+	@echo "Run 'make run-backend', 'make run-worker', and 'make run-frontend' to start development services."
 
 run-backend: .env
 	cd backend && ../$(VENV)/bin/uvicorn app.main:app --reload --host $(or $(HOST),0.0.0.0) --port $(or $(PORT),8000)
+
+run-worker: .env
+	cd backend && ../$(VENV)/bin/python -m app.ingestion.worker
 
 run-frontend:
 	cd frontend && npm run dev

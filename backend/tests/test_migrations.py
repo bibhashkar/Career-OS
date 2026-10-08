@@ -16,10 +16,11 @@ def test_alembic_configuration_and_head_revision() -> None:
 
     heads = script.get_heads()
     assert len(heads) == 1
-    assert heads[0] == "0001_initial_schema"
+    assert heads[0] == "0002_ingestion_pipeline"
 
-    revision = script.get_revision("0001_initial_schema")
-    assert revision is not None
-    assert revision.module is not None
-    assert hasattr(revision.module, "upgrade")
-    assert hasattr(revision.module, "downgrade")
+    for rev_id in ("0001_initial_schema", "0002_ingestion_pipeline"):
+        revision = script.get_revision(rev_id)
+        assert revision is not None
+        assert revision.module is not None
+        assert hasattr(revision.module, "upgrade")
+        assert hasattr(revision.module, "downgrade")

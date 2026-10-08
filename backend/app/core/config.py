@@ -122,6 +122,13 @@ class Settings(BaseSettings):
     # Apollo — company and contact enrichment
     APOLLO_API_KEY: str | None = None
 
+    # ---- Ingestion rate limits & quotas (daily maximums) ----
+    RATE_LIMIT_GEMINI_RPM: int = 15
+    RATE_LIMIT_GEMINI_RPD: int = 1500
+    RATE_LIMIT_DUCKDUCKGO_HOURLY: int = 60
+    RATE_LIMIT_JOBSPY_HOURLY: int = 30
+    RATE_LIMIT_GITHUB_HOURLY: int = 60
+
     @field_validator(
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY",
