@@ -29,6 +29,9 @@ from pydantic import BaseModel, Field
 from app.agents.llm import get_llm
 from app.agents.state import AgentState
 from app.core.config import settings
+from app.ingestion.deterministic_extractor import (
+    extract_deterministic_requirements,
+)
 
 logger = logging.getLogger("career_os.nodes.ats")
 
@@ -67,6 +70,12 @@ async def ats_node(state: AgentState) -> dict[str, Any]:
     ats_reqs = job.get("ats_requirements") or {}
     raw_required = ats_reqs.get("required_skills")
     required_skills = list(raw_required) if raw_required is not None else []
+
+    # If posting has raw description but no parsed skills, extract deterministically
+    raw_desc = job.get("raw_description", "")
+    if not required_skills and raw_desc:
+        extracted = extract_deterministic_requirements(job.get("title", ""), raw_desc)
+        required_skills = extracted.required_skills
 
     highlighted = [s.lower() for s in cv_draft.get("skills_highlighted", [])]
     matched = [s for s in required_skills if s.lower() in highlighted]

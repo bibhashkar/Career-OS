@@ -130,4 +130,3 @@ class CompanyDossierDTO(BaseModel):
     field_provenance: dict[str, FieldProvenanceDTO] = Field(default_factory=dict)
     last_fetched_at: datetime | None = None
     next_refresh_at: datetime | None = None
-

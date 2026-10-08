@@ -188,9 +188,7 @@ class LeverAdapter(ATSAdapterPort):
             posted_at: datetime | None = None
             if item.get("createdAt"):
                 try:
-                    posted_at = datetime.fromtimestamp(
-                        item["createdAt"] / 1000, tz=UTC
-                    )
+                    posted_at = datetime.fromtimestamp(item["createdAt"] / 1000, tz=UTC)
                 except (ValueError, OSError):
                     pass
 
