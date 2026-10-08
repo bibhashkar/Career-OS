@@ -1,0 +1,24 @@
+{
+  "jobs": [
+    {
+      "id": 101,
+      "title": "Senior Backend Engineer",
+      "updated_at": "2026-10-01T12:00:00Z",
+      "location": {
+        "name": "San Francisco, CA"
+      },
+      "absolute_url": "https://boards.greenhouse.io/stripe/jobs/101",
+      "content": "&lt;p&gt;We are seeking a Senior Backend Engineer proficient in Python and distributed systems.&lt;/p&gt;"
+    },
+    {
+      "id": 102,
+      "title": "AI Infrastructure Engineer",
+      "updated_at": "2026-10-02T15:30:00Z",
+      "location": {
+        "name": "Remote"
+      },
+      "absolute_url": "https://boards.greenhouse.io/stripe/jobs/102",
+      "content": "&lt;p&gt;Design high-throughput ML agent workflows and vector indexes.&lt;/p&gt;"
+    }
+  ]
+}

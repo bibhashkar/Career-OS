@@ -1,0 +1,28 @@
+[
+  {
+    "id": "lever-job-001",
+    "text": "Staff Systems Engineer",
+    "createdAt": 1759320000000,
+    "categories": {
+      "location": "San Francisco, CA",
+      "team": "Infrastructure",
+      "commitment": "Full time"
+    },
+    "hostedUrl": "https://jobs.lever.co/postman/lever-job-001",
+    "applyUrl": "https://jobs.lever.co/postman/lever-job-001/apply",
+    "descriptionPlain": "Build fault-tolerant multi-agent pipelines with PostgreSQL and FastAPI."
+  },
+  {
+    "id": "lever-job-002",
+    "text": "Product Designer",
+    "createdAt": 1759406400000,
+    "categories": {
+      "location": "Remote",
+      "team": "Design",
+      "commitment": "Full time"
+    },
+    "hostedUrl": "https://jobs.lever.co/postman/lever-job-002",
+    "applyUrl": "https://jobs.lever.co/postman/lever-job-002/apply",
+    "descriptionPlain": "Design beautiful developer-first experiences."
+  }
+]

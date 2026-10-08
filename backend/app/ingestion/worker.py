@@ -73,7 +73,9 @@ class IngestionWorker:
             breaker = CircuitBreaker(session)
 
             try:
-                await self._execute_task(task.task_type, task.payload, ledger, breaker)
+                await self._execute_task(
+                    session, task.task_type, task.payload, ledger, breaker
+                )
                 await queue.complete_task(task.id)
                 logger.info("Completed task %s", task.id)
             except Exception as e:
@@ -84,6 +86,7 @@ class IngestionWorker:
 
     async def _execute_task(
         self,
+        session: Any,
         task_type: str,
         payload: dict[str, Any],
         ledger: PersistentBudgetLedger,
@@ -91,8 +94,25 @@ class IngestionWorker:
     ) -> None:
         """Route task to appropriate handler."""
         if task_type == IngestionTaskType.SYNC_BOARD:
-            logger.info("Board sync handler for payload: %s", payload)
-            # Implemented in Phase 2 with ATS adapters
+            provider = payload.get("provider", "")
+            slug = payload.get("slug", "")
+            if not provider or not slug:
+                raise ValueError("SYNC_BOARD payload missing provider or slug")
+
+            if not await breaker.is_available(provider):
+                raise RuntimeError(
+                    f"Circuit breaker is active for provider '{provider}'"
+                )
+
+            from app.ingestion.service import BoardSyncService
+
+            service = BoardSyncService(session)
+            run = await service.sync_board(provider, slug)
+            if run.status == "failed":
+                await breaker.record_failure(provider, run.error_message)
+                raise RuntimeError(f"Board sync failed: {run.error_message}")
+            else:
+                await breaker.record_success(provider)
         elif task_type == IngestionTaskType.INGEST_URL:
             logger.info("URL ingestion handler for payload: %s", payload)
         elif task_type == IngestionTaskType.REFRESH_COMPANY:

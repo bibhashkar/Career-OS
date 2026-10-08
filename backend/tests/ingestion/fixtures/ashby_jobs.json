@@ -1,0 +1,16 @@
+{
+  "apiVersion": "1",
+  "data": {
+    "jobPostings": [
+      {
+        "id": "ashby-job-001",
+        "title": "Principal Agent Architect",
+        "publishedDate": "2026-10-03T10:00:00Z",
+        "locationName": "Remote - US",
+        "isRemote": true,
+        "descriptionHtml": "&lt;p&gt;Architect autonomous systems with stateful execution checkpoints.&lt;/p&gt;",
+        "descriptionPlain": "Architect autonomous systems with stateful execution checkpoints."
+      }
+    ]
+  }
+}

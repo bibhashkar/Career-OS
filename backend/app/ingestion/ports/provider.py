@@ -105,3 +105,4 @@ class BudgetLedgerPort(ABC):
     async def get_usage(self, provider: str) -> dict[str, Any]:
         """Retrieve current usage and limits for a provider."""
         pass
+
