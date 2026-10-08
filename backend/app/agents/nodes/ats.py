@@ -65,7 +65,8 @@ async def ats_node(state: AgentState) -> dict[str, Any]:
     cv_draft = state.get("cv_draft") or {}
     job = state.get("job_details") or {}
     ats_reqs = job.get("ats_requirements") or {}
-    required_skills = ats_reqs.get("required_skills", ["Python", "FastAPI"])
+    raw_required = ats_reqs.get("required_skills")
+    required_skills = list(raw_required) if raw_required is not None else []
 
     highlighted = [s.lower() for s in cv_draft.get("skills_highlighted", [])]
     matched = [s for s in required_skills if s.lower() in highlighted]
@@ -74,25 +75,31 @@ async def ats_node(state: AgentState) -> dict[str, Any]:
     revision = state.get("revision_count", 1)
 
     # Calculate weighted ATS score based on true evidence match ratio
-    base_match_ratio = len(matched) / max(len(required_skills), 1)
-
-    # Realistic ATS model baseline:
-    # - Keyword Match (up to 70 points): based on candidate's proven skills
-    # - Formatting & Structure (15 points baseline): layout and parseability
-    # - Revision Polish (up to 15 points): awarded on subsequent revisions
-    #   if candidate has demonstrated baseline qualifications (>= 50% match)
-    keyword_score = base_match_ratio * 70.0
-    formatting_score = 15.0
-    revision_bonus = min(15.0, (revision - 1) * 7.5) if base_match_ratio >= 0.5 else 0.0
-
-    fallback_score = round(
-        min(100.0, keyword_score + formatting_score + revision_bonus), 1
-    )
-    fallback_recommendation = (
-        "Ready for application submission."
-        if fallback_score >= settings.ATS_PASS_THRESHOLD
-        else f"Incorporate missing critical keywords: {', '.join(missing)}."
-    )
+    if required_skills:
+        base_match_ratio = len(matched) / len(required_skills)
+        keyword_score = base_match_ratio * 70.0
+        formatting_score = 15.0
+        revision_bonus = (
+            min(15.0, (revision - 1) * 7.5) if base_match_ratio >= 0.5 else 0.0
+        )
+        fallback_score = round(
+            min(100.0, keyword_score + formatting_score + revision_bonus), 1
+        )
+        fallback_recommendation = (
+            "Ready for application submission."
+            if fallback_score >= settings.ATS_PASS_THRESHOLD
+            else f"Incorporate missing critical keywords: {', '.join(missing)}."
+        )
+    else:
+        # When posting does not list required skills, do not fabricate requirements
+        base_match_ratio = 1.0
+        keyword_score = 70.0
+        formatting_score = 20.0
+        fallback_score = 90.0
+        fallback_recommendation = (
+            "No explicit technical requirements detected in posting; "
+            "resume structure verified."
+        )
 
     mock_json = json.dumps(
         {

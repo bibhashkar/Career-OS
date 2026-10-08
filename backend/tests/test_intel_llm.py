@@ -49,6 +49,7 @@ async def test_fetch_company_intel_fallback_resilience() -> None:
         dossier = await fetch_company_intel("Uncharted Technologies")
         assert dossier["company_name"] == "Uncharted Technologies"
         assert "tech_stack" in dossier
-        assert len(dossier["tech_stack"]) > 0
+        assert isinstance(dossier["tech_stack"], list)
+        assert dossier.get("data_origin") == "inferred"
     finally:
         reset_test_llm()

@@ -1,3 +1,5 @@
+from collections.abc import Generator
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -8,7 +10,7 @@ client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def clean_rate_limiter() -> None:
+def clean_rate_limiter() -> Generator[None, None, None]:
     rate_limiter.reset()
     yield
     rate_limiter.reset()

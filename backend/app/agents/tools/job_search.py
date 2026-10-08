@@ -15,6 +15,7 @@ that tests never fail due to third-party network outages or exhausted API quotas
 """
 
 import logging
+import os
 import uuid
 from typing import Any
 
@@ -34,6 +35,7 @@ MOCK_JOBS: list[dict[str, Any]] = [
         "url": "https://nexusai.example.com/careers/ai-eng",
         "location": "Remote",
         "salary_range": "$160,000 - $195,000",
+        "data_origin": "demo",
         "raw_description": (
             "We are seeking a Senior AI Systems Engineer with deep expertise in "
             "Python, FastAPI, LangGraph multi-agent workflows, and PostgreSQL "
@@ -60,6 +62,7 @@ MOCK_JOBS: list[dict[str, Any]] = [
         "url": "https://scaleagents.example.com/jobs/backend-staff",
         "location": "San Francisco, CA (Hybrid)",
         "salary_range": "$180,000 - $220,000",
+        "data_origin": "demo",
         "raw_description": (
             "Looking for a Staff Backend Engineer to scale our runtime. "
             "Experience with LangChain, LangGraph, async psycopg, pgvector, "
@@ -85,6 +88,7 @@ MOCK_JOBS: list[dict[str, Any]] = [
         "url": "https://careercloud.example.com/openings/fullstack-ai",
         "location": "Remote",
         "salary_range": "$140,000 - $175,000",
+        "data_origin": "demo",
         "raw_description": (
             "Join us to build stateful career applications. Stack includes React, "
             "Vite, Tailwind CSS, FastAPI, and PostgreSQL pgvector embeddings. "
@@ -127,7 +131,8 @@ async def search_jobs(
     Returns:
         List of matching job listing dictionaries.
     """
-    if settings.JSEARCH_API_KEY:
+    is_testing = "PYTEST_CURRENT_TEST" in os.environ or settings.APP_ENV == "test"
+    if settings.JSEARCH_API_KEY and not is_testing:
         try:
             url = "https://jsearch.p.rapidapi.com/search"
             headers = {
@@ -165,9 +170,10 @@ async def search_jobs(
                             "location": loc_str,
                             "salary_range": item.get("job_salary") or "Competitive",
                             "raw_description": item.get("job_description", ""),
+                            "data_origin": "live",
                             "ats_requirements": {
-                                "required_skills": [query],
-                                "visa_sponsorship": True,
+                                "required_skills": [],
+                                "visa_sponsorship": "unknown",
                             },
                         }
                     )

@@ -17,6 +17,7 @@ to these fixtures to ensure tests remain fast, reproducible, and isolated.
 import asyncio
 import json
 import logging
+import os
 from typing import Any
 
 import httpx
@@ -38,6 +39,7 @@ MOCK_DOSSIERS: dict[str, dict[str, Any]] = {
         "company_name": "NexusAI Labs",
         "domain": "nexusai.example.com",
         "industry": "Artificial Intelligence & RAG",
+        "data_origin": "demo",
         "tech_stack": [
             "Python",
             "FastAPI",
@@ -68,6 +70,7 @@ MOCK_DOSSIERS: dict[str, dict[str, Any]] = {
         "company_name": "ScaleAgents Inc",
         "domain": "scaleagents.example.com",
         "industry": "Autonomous Agents",
+        "data_origin": "demo",
         "tech_stack": [
             "Python",
             "LangGraph",
@@ -93,9 +96,7 @@ class CompanyIntelExtractionSchema(BaseModel):
     """Structured extraction of company architecture and engineering culture."""
 
     industry: str = Field(default="Software Engineering & Technology")
-    tech_stack: list[str] = Field(
-        default_factory=lambda: ["Python", "FastAPI", "React", "PostgreSQL", "Docker"]
-    )
+    tech_stack: list[str] = Field(default_factory=list)
     business_model: str = Field(
         default="Enterprise SaaS and cloud automation solutions"
     )
@@ -141,14 +142,20 @@ async def fetch_company_intel(
                     "recent_news": cached.recent_news,
                     "business_model": cached.business_model,
                     "culture_notes": cached.culture_notes,
+                    "data_origin": "cached",
                 }
     except Exception as exc:
         logger.debug(f"Cache lookup failed for company '{company_name}': {exc}")
 
-    resolved: dict[str, Any] | None = None
+    # 2. Match deterministic fixtures for known/demo employers
+    if normalized_name in MOCK_DOSSIERS:
+        return dict(MOCK_DOSSIERS[normalized_name])
 
-    # 2. Query Exa neural search if API key configured
-    if settings.EXA_API_KEY:
+    resolved: dict[str, Any] | None = None
+    is_testing = "PYTEST_CURRENT_TEST" in os.environ or settings.APP_ENV == "test"
+
+    # 3. Query Exa neural search if API key configured and not in hermetic test mode
+    if settings.EXA_API_KEY and not is_testing:
         try:
             url = "https://api.exa.ai/search"
             headers = {
@@ -175,98 +182,81 @@ async def fetch_company_intel(
                 news = [
                     {"title": r.get("title", ""), "url": r.get("url", "")}
                     for r in results
+                    if r.get("title")
                 ]
                 resolved = {
                     "company_name": company_name,
                     "domain": domain or f"{normalized_name.replace(' ', '')}.com",
                     "industry": "Technology",
-                    "tech_stack": [
-                        "Python",
-                        "FastAPI",
-                        "PostgreSQL",
-                        "Cloud",
-                    ],
+                    "tech_stack": [],  # Do not invent unverified tech stack
                     "recent_news": news,
-                    "business_model": "Software platform services",
+                    "business_model": None,
                     "culture_notes": (
                         "Data gathered via live web intelligence search."
                     ),
+                    "data_origin": "live",
                 }
         except Exception as exc:
             logger.warning(
                 f"Exa search failed for company '{company_name}'; falling back: {exc}"
             )
 
-    # 3. Match hermetic fixtures or synthesize structured intel via LLM
+    # 4. Synthesize structured intel via LLM without fabricated news/defaults
     if not resolved:
-        if normalized_name in MOCK_DOSSIERS:
-            resolved = dict(MOCK_DOSSIERS[normalized_name])
-        else:
-            default_stack = ["Python", "FastAPI", "React", "PostgreSQL", "Docker"]
-            default_industry = "Software Engineering & Technology"
-            default_model = "Enterprise SaaS and cloud automation solutions"
-            default_culture = "Focused on modern decoupled architectures and robust DX."
-
-            mock_json = json.dumps(
-                {
-                    "industry": default_industry,
-                    "tech_stack": default_stack,
-                    "business_model": default_model,
-                    "culture_notes": default_culture,
-                }
-            )
-            llm = get_llm(temperature=0.1, default_mock_responses=[mock_json])
-
-            res_industry = default_industry
-            res_stack = default_stack
-            res_model = default_model
-            res_culture = default_culture
-
-            try:
-                chain = llm.with_structured_output(CompanyIntelExtractionSchema)
-                llm_output = await asyncio.wait_for(
-                    chain.ainvoke(
-                        [
-                            SystemMessage(
-                                content=(
-                                    "You are an enterprise technical profiler. "
-                                    "Extract the primary tech stack, industry, "
-                                    "business model, and engineering culture."
-                                )
-                            ),
-                            HumanMessage(content=f"Company: {company_name}"),
-                        ]
-                    ),
-                    timeout=8.0,
-                )
-                if (
-                    isinstance(llm_output, CompanyIntelExtractionSchema)
-                    and llm_output.tech_stack
-                ):
-                    res_industry = llm_output.industry or default_industry
-                    res_stack = llm_output.tech_stack
-                    res_model = llm_output.business_model or default_model
-                    res_culture = llm_output.culture_notes or default_culture
-            except Exception as exc:
-                logger.debug(
-                    f"LLM company intel extraction fallback for '{company_name}': {exc}"
-                )
-
-            resolved = {
-                "company_name": company_name,
-                "domain": domain or f"{normalized_name.replace(' ', '')}.com",
-                "industry": res_industry,
-                "tech_stack": res_stack,
-                "recent_news": [
-                    {
-                        "title": f"{company_name} expands engineering for AI",
-                        "date": "2026-06-01",
-                        "source": "Industry Journal",
-                    }
-                ],
-                "business_model": res_model,
-                "culture_notes": res_culture,
+        mock_json = json.dumps(
+            {
+                "industry": "Software Engineering & Technology",
+                "tech_stack": ["Python", "FastAPI"],
+                "business_model": "Software platform services",
+                "culture_notes": (
+                    "Focused on modern decoupled architectures and robust DX."
+                ),
             }
+        )
+        llm = get_llm(temperature=0.1, default_mock_responses=[mock_json])
+
+        res_industry = "Software Engineering & Technology"
+        res_stack: list[str] = []
+        res_model: str | None = None
+        res_culture: str | None = None
+
+        try:
+            chain = llm.with_structured_output(CompanyIntelExtractionSchema)
+            llm_output = await asyncio.wait_for(
+                chain.ainvoke(
+                    [
+                        SystemMessage(
+                            content=(
+                                "You are an enterprise technical profiler. "
+                                "Extract the primary tech stack, industry, "
+                                "business model, and engineering culture."
+                            )
+                        ),
+                        HumanMessage(content=f"Company: {company_name}"),
+                    ]
+                ),
+                timeout=8.0,
+            )
+            if isinstance(llm_output, CompanyIntelExtractionSchema):
+                res_industry = llm_output.industry or res_industry
+                res_stack = llm_output.tech_stack or []
+                res_model = llm_output.business_model
+                res_culture = llm_output.culture_notes
+        except Exception as exc:
+            logger.debug(
+                f"LLM company intel extraction fallback for '{company_name}': {exc}"
+            )
+
+        resolved = {
+            "company_name": company_name,
+            "domain": domain or f"{normalized_name.replace(' ', '')}.com",
+            "industry": res_industry,
+            "tech_stack": res_stack,
+            "recent_news": [],  # Never fabricate news items
+            "business_model": res_model,
+            "culture_notes": res_culture,
+            "data_origin": "inferred",
+        }
 
     # 4. Persist newly resolved dossier to database
     try:

@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     # The agent nodes and tools implement hermetic offline fallbacks so the full
     # pipeline runs in CI without live API keys.
     LLM_PROVIDER: str = "gemini"
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     OPENAI_API_KEY: str | None = None
     ANTHROPIC_API_KEY: str | None = None
     GEMINI_API_KEY: str | None = None
