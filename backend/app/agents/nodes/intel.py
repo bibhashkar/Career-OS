@@ -16,7 +16,7 @@ Downstream Dependencies:
 from typing import Any
 
 from app.agents.state import AgentState
-from app.agents.tools.company_intel import fetch_company_intel
+from app.ingestion.api import get_default_company_intel
 
 
 async def intel_node(state: AgentState) -> dict[str, Any]:
@@ -24,7 +24,7 @@ async def intel_node(state: AgentState) -> dict[str, Any]:
     Gather intelligence on company tech stacks, recent news, and business model.
 
     Reads:
-      - ``job_details``: Identifies target company name.
+      - ``job_details``: Identifies target company name and optional domain.
 
     Writes:
       - ``company_dossier``: Researched tech stack, news, culture, and model.
@@ -39,8 +39,13 @@ async def intel_node(state: AgentState) -> dict[str, Any]:
     """
     job_details = state.get("job_details") or {}
     company_name = job_details.get("company_name", "NexusAI Labs")
+    domain = job_details.get("domain")
 
-    dossier = await fetch_company_intel(company_name)
+    intel_port = get_default_company_intel()
+    dossier_dto = await intel_port.get_company_profile(
+        company_name=company_name, domain=domain
+    )
+    dossier = dossier_dto.model_dump(mode="json")
     top_stack = ", ".join(dossier.get("tech_stack", [])[:4])
 
     return {

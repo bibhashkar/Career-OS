@@ -72,8 +72,8 @@ def generate_deterministic_embedding(text: str, dim: int = 1536) -> list[float]:
     """
     Generate a deterministic, unit-normalized vector for hermetic testing.
 
-    Uses SHA-256 hash expansion to produce reproducible float vectors
-    representing semantic text tokens.
+    Uses token-level hash projection so that texts sharing semantic tokens
+    yield coherent cosine similarities even in offline test mode.
 
     Args:
         text: Input string to embed.
@@ -82,15 +82,19 @@ def generate_deterministic_embedding(text: str, dim: int = 1536) -> list[float]:
     Returns:
         List of unit-normalized floats with length ``dim``.
     """
-    digest = hashlib.sha256(text.encode("utf-8")).digest()
-    values: list[float] = []
-    for i in range(dim):
-        b = digest[i % len(digest)]
-        val = ((b + (i * 31)) % 100) / 100.0 - 0.5
-        values.append(val)
+    words = [w.strip(".,;:!?()[]{}\"'").lower() for w in text.split()]
+    tokens = [w for w in words if len(w) > 1] or [text.lower()]
 
-    norm = math.sqrt(sum(v * v for v in values)) or 1.0
-    return [round(v / norm, 6) for v in values]
+    accum = [0.0] * dim
+    for tok in tokens:
+        digest = hashlib.sha256(tok.encode("utf-8")).digest()
+        for i in range(dim):
+            b = digest[i % len(digest)]
+            val = ((b + (i * 31)) % 100) / 100.0 - 0.5
+            accum[i] += val
+
+    norm = math.sqrt(sum(v * v for v in accum)) or 1.0
+    return [round(v / norm, 6) for v in accum]
 
 
 async def embed_text(text: str) -> list[float]:

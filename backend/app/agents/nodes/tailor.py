@@ -25,6 +25,9 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from app.agents.llm import get_llm
 from app.agents.state import AgentState
 from app.agents.tools.vector_search import search_cv_blocks
+from app.ingestion.deterministic_extractor import (
+    extract_deterministic_requirements,
+)
 
 logger = logging.getLogger("career_os.nodes.tailor")
 
@@ -56,7 +59,16 @@ async def tailor_node(state: AgentState) -> dict[str, Any]:
     user_id = state.get("user_id")
     job = state.get("job_details") or {}
     reqs = job.get("ats_requirements", {})
-    required_skills = reqs.get("required_skills", ["Python", "FastAPI"])
+    raw_required = reqs.get("required_skills")
+    required_skills = list(raw_required) if raw_required is not None else []
+
+    # If posting has raw description but no parsed skills, extract deterministically
+    raw_desc = job.get("raw_description", "")
+    if not required_skills and raw_desc:
+        extracted = extract_deterministic_requirements(job.get("title", ""), raw_desc)
+        required_skills = extracted.required_skills
+    if not required_skills:
+        required_skills = ["Software Engineering"]
 
     # If revising due to ATS feedback, prioritize missing keywords in retrieval
     ats_feedback = state.get("ats_feedback") or {}
