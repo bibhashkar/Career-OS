@@ -25,6 +25,40 @@ export async function searchJobs(query, location = "Remote", visaRequired = fals
 }
 
 /**
+ * Ingest a job directly by ATS URL (Greenhouse, Lever, Ashby).
+ */
+export async function ingestJobUrl(url) {
+  const response = await apiClient.post("/jobs/ingest-url", { url });
+  return response.data;
+}
+
+/**
+ * Ingest a job by pasting text.
+ */
+export async function pasteJobText(payload) {
+  const response = await apiClient.post("/jobs/paste-text", payload);
+  return response.data;
+}
+
+/**
+ * Force-refresh company intelligence dossier within cooldown limits.
+ */
+export async function refreshCompanyIntel(companyName) {
+  const response = await apiClient.post(
+    `/jobs/companies/${encodeURIComponent(companyName)}/refresh`
+  );
+  return response.data;
+}
+
+/**
+ * Cross-check job listing against secondary aggregators.
+ */
+export async function crossCheckJob(jobId) {
+  const response = await apiClient.post(`/jobs/${jobId}/cross-check`);
+  return response.data;
+}
+
+/**
  * Trigger LangGraph CV tailoring and cyclic ATS evaluation.
  */
 export async function generateCV(jobId, requiredSkills = [], title = "", companyName = "") {

@@ -1,8 +1,29 @@
-import React from "react";
-import { Building2, Cpu, Newspaper, Briefcase, Sparkles } from "lucide-react";
+import React, { useState } from "react";
+import { Building2, Cpu, Newspaper, Briefcase, Sparkles, RefreshCw } from "lucide-react";
+import { refreshCompanyIntel } from "../services/api";
 
-export function CompanyDossierCard({ dossier }) {
+export function CompanyDossierCard({ dossier, onDossierUpdated }) {
+  const [refreshing, setRefreshing] = useState(false);
+  const [statusMsg, setStatusMsg] = useState(null);
+
   if (!dossier) return null;
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setStatusMsg(null);
+    try {
+      const res = await refreshCompanyIntel(dossier.company_name);
+      if (res.dossier && onDossierUpdated) {
+        onDossierUpdated(res.dossier);
+      }
+      setStatusMsg(res.message || (res.refreshed ? "Refreshed!" : "Cooldown active"));
+    } catch {
+      setStatusMsg("Refresh failed");
+    } finally {
+      setRefreshing(false);
+      setTimeout(() => setStatusMsg(null), 4000);
+    }
+  };
 
   return (
     <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-5 shadow-lg space-y-4">
@@ -20,9 +41,24 @@ export function CompanyDossierCard({ dossier }) {
             </span>
           </div>
         </div>
-        <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-          <Sparkles className="w-3 h-3" /> Intel Verified
-        </span>
+        <div className="flex items-center gap-2">
+          {statusMsg && (
+            <span className="text-[11px] text-slate-400 italic animate-fadeIn">
+              {statusMsg}
+            </span>
+          )}
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Refresh company intelligence"
+            className="p-1.5 rounded-lg border border-slate-700 hover:bg-slate-700/60 text-slate-400 hover:text-sky-300 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-sky-400" : ""}`} />
+          </button>
+          <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+            <Sparkles className="w-3 h-3" /> Intel Verified
+          </span>
+        </div>
       </div>
 
       {/* Tech Stack Badges */}

@@ -114,9 +114,144 @@ class IngestionWorker:
             else:
                 await breaker.record_success(provider)
         elif task_type == IngestionTaskType.INGEST_URL:
-            logger.info("URL ingestion handler for payload: %s", payload)
+            url = payload.get("url", "")
+            if not url:
+                raise ValueError("INGEST_URL payload missing url")
+
+            from sqlalchemy import select
+
+            from app.ingestion.adapters.ats import (
+                AshbyAdapter,
+                GreenhouseAdapter,
+                LeverAdapter,
+            )
+            from app.ingestion.discovery import BoardDiscoveryEngine
+            from app.ingestion.extractor import HybridRequirementsExtractor
+            from app.ingestion.models import ATSProvider, DataOrigin, SourceConfidence
+            from app.ingestion.security import parse_ats_url
+            from app.ingestion.service import (
+                compute_content_hash,
+                compute_dedupe_fingerprint,
+            )
+            from app.models.job_listing import JobListing
+
+            parsed = parse_ats_url(url)
+            if not parsed:
+                raise ValueError(f"URL is not a recognized ATS posting URL: {url}")
+            provider, slug, job_id = parsed
+            if not job_id:
+                raise ValueError(f"URL is missing job_id: {url}")
+
+            adapter_map = {
+                ATSProvider.GREENHOUSE: GreenhouseAdapter(),
+                ATSProvider.LEVER: LeverAdapter(),
+                ATSProvider.ASHBY: AshbyAdapter(),
+            }
+            adapter = adapter_map.get(provider)
+            if not adapter:
+                raise ValueError(f"No adapter found for ATS provider: {provider}")
+
+            job_dto = await adapter.fetch_job_detail(slug, job_id)
+            if not job_dto:
+                raise RuntimeError(f"Could not fetch job details for {slug}:{job_id}")
+
+            # Register board if not already present
+            discovery = BoardDiscoveryEngine(session)
+            await discovery.register_board_if_not_exists(
+                provider=provider,
+                slug=slug,
+                company_name=job_dto.company_name,
+                discovered_via="url_ingest",
+            )
+
+            # Extract requirements
+            extractor = HybridRequirementsExtractor()
+            reqs = await extractor.extract_requirements(
+                title=job_dto.title,
+                raw_description=job_dto.raw_description,
+                company_name=job_dto.company_name,
+            )
+
+            # Upsert into JobListing
+            stmt = select(JobListing).where(
+                JobListing.source == job_dto.source,
+                JobListing.source_job_id == job_dto.source_job_id,
+            )
+            existing = (await session.execute(stmt)).scalar_one_or_none()
+            from datetime import UTC, datetime
+
+            now = datetime.now(UTC)
+            fingerprint = compute_dedupe_fingerprint(
+                job_dto.company_name, job_dto.title, job_dto.location
+            )
+            content_hash = compute_content_hash(job_dto.raw_description)
+
+            if existing is None:
+                new_job = JobListing(
+                    source=job_dto.source,
+                    source_job_id=job_dto.source_job_id,
+                    title=job_dto.title,
+                    company_name=job_dto.company_name,
+                    apply_url=job_dto.apply_url,
+                    url=job_dto.apply_url,
+                    location=job_dto.location,
+                    salary_range=job_dto.salary_range,
+                    raw_description=job_dto.raw_description,
+                    remote_type=job_dto.remote_type,
+                    posted_at=job_dto.posted_at,
+                    first_seen_at=now,
+                    last_seen_at=now,
+                    last_fetched_at=now,
+                    fingerprint=fingerprint,
+                    content_hash=content_hash,
+                    status="active",
+                    data_origin=str(DataOrigin.LIVE),
+                    source_confidence=str(SourceConfidence.HIGH),
+                    visa_sponsorship=str(reqs.visa_sponsorship),
+                    ats_requirements=reqs.model_dump(),
+                    verification={},
+                )
+                session.add(new_job)
+            else:
+                existing.last_seen_at = now
+                existing.last_fetched_at = now
+                existing.raw_description = job_dto.raw_description
+                existing.ats_requirements = reqs.model_dump()
+                existing.visa_sponsorship = str(reqs.visa_sponsorship)
+                existing.status = "active"
+
+            await session.flush()
+            logger.info("Successfully ingested job from URL: %s", url)
+
         elif task_type == IngestionTaskType.REFRESH_COMPANY:
-            logger.info("Company refresh handler for payload: %s", payload)
+            company_name = payload.get("company_name", "")
+            if not company_name:
+                raise ValueError("REFRESH_COMPANY payload missing company_name")
+
+            from app.ingestion.company_intel_provider import (
+                ProvenanceCompanyIntelProvider,
+            )
+
+            intel_provider = ProvenanceCompanyIntelProvider(session)
+            await intel_provider.fetch_company_intel(
+                company_name=company_name,
+                domain=payload.get("domain"),
+            )
+            logger.info("Successfully refreshed company intel for: %s", company_name)
+
+        elif task_type == IngestionTaskType.CROSS_CHECK_JOB:
+            job_id_str = payload.get("job_id", "")
+            if not job_id_str:
+                raise ValueError("CROSS_CHECK_JOB payload missing job_id")
+
+            import uuid
+
+            from app.ingestion.verification import JobVerificationService
+
+            verification_service = JobVerificationService(session)
+            await verification_service.verify_job(uuid.UUID(job_id_str), force=True)
+            logger.info("Successfully cross-checked job: %s", job_id_str)
+
         else:
             logger.warning("Unhandled task type '%s'", task_type)
 

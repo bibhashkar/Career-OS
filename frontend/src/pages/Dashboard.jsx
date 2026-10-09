@@ -11,9 +11,13 @@ import {
   AlertCircle,
   Loader2,
   Briefcase,
+  PlusCircle,
+  CheckCircle2,
 } from "lucide-react";
-import { searchJobs } from "../services/api";
+import { searchJobs, crossCheckJob } from "../services/api";
 import { CompanyDossierCard } from "../components/CompanyDossierCard";
+import { JobProvenanceBadge } from "../components/JobProvenanceBadge";
+import { AddJobModal } from "../components/AddJobModal";
 
 export function Dashboard({ onSelectJob, onStartInterview }) {
   const [query, setQuery] = useState("AI Systems Engineer");
@@ -23,6 +27,8 @@ export function Dashboard({ onSelectJob, onStartInterview }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [expandedJobId, setExpandedJobId] = useState(null);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [crossCheckingIds, setCrossCheckingIds] = useState(new Set());
 
   const fetchJobs = React.useCallback(async () => {
     setLoading(true);
@@ -52,16 +58,58 @@ export function Dashboard({ onSelectJob, onStartInterview }) {
     setExpandedJobId(expandedJobId === jobId ? null : jobId);
   };
 
+  const handleJobAdded = (newJob) => {
+    setJobs((prev) => [newJob, ...prev]);
+  };
+
+  const handleCrossCheck = async (jobId) => {
+    setCrossCheckingIds((prev) => new Set(prev).add(jobId));
+    try {
+      const res = await crossCheckJob(jobId);
+      if (res.verification) {
+        setJobs((prev) =>
+          prev.map((j) =>
+            j.id === jobId ? { ...j, verification: res.verification } : j
+          )
+        );
+      }
+    } catch (err) {
+      console.warn("Cross check failed for job:", jobId, err);
+    } finally {
+      setCrossCheckingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(jobId);
+        return next;
+      });
+    }
+  };
+
+  const handleDossierUpdated = (jobId, updatedDossier) => {
+    setJobs((prev) =>
+      prev.map((j) =>
+        j.id === jobId ? { ...j, company_dossier: updatedDossier } : j
+      )
+    );
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
       {/* Header Banner */}
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-2">
-          <Briefcase className="w-8 h-8 text-sky-400" /> Career Intelligence & Hunter
-        </h1>
-        <p className="text-sm text-slate-400 max-w-2xl">
-          Discover target roles, analyze employer tech stacks, and simulate ATS compatibility loops with multi-agent orchestration.
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-2">
+            <Briefcase className="w-8 h-8 text-sky-400" /> Career Intelligence & Hunter
+          </h1>
+          <p className="text-sm text-slate-400 max-w-2xl">
+            Discover verified career-site roles, analyze employer tech stacks, and import custom job postings directly from ATS URLs.
+          </p>
+        </div>
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="self-start md:self-auto px-4 py-2.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-medium rounded-xl text-sm transition-all shadow-md shadow-sky-600/20 flex items-center gap-2"
+        >
+          <PlusCircle className="w-4 h-4" /> Import Job
+        </button>
       </div>
 
       {/* Search & Constraint Filter Bar */}
@@ -124,7 +172,7 @@ export function Dashboard({ onSelectJob, onStartInterview }) {
         <div className="flex flex-col items-center justify-center py-16 space-y-3">
           <Loader2 className="w-8 h-8 text-sky-400 animate-spin" />
           <p className="text-sm text-slate-400">
-            Hunter & Intel agents scanning job boards and researching tech stacks...
+            Scanning local synced ATS boards and enriching company tech stacks...
           </p>
         </div>
       )}
@@ -147,7 +195,7 @@ export function Dashboard({ onSelectJob, onStartInterview }) {
       {!loading && !error && jobs.length === 0 && (
         <div className="text-center py-16 text-slate-500 space-y-2">
           <p className="text-base font-medium text-slate-400">No jobs matched your criteria.</p>
-          <p className="text-xs">Try broadening your search query or unchecking the visa filter.</p>
+          <p className="text-xs">Try broadening your search query or importing a job posting by URL.</p>
         </div>
       )}
 
@@ -165,6 +213,7 @@ export function Dashboard({ onSelectJob, onStartInterview }) {
             {jobs.map((job) => {
               const isExpanded = expandedJobId === job.id;
               const hasDossier = !!job.company_dossier;
+              const isCrossChecking = crossCheckingIds.has(job.id);
 
               return (
                 <div
@@ -172,10 +221,11 @@ export function Dashboard({ onSelectJob, onStartInterview }) {
                   className="bg-slate-800/80 border border-slate-700/70 rounded-2xl p-6 hover:border-slate-600/80 transition-all shadow-md space-y-4"
                 >
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-lg font-bold text-white">{job.title}</h3>
-                        {job.ats_requirements?.visa_sponsorship && (
+                        <JobProvenanceBadge job={job} />
+                        {(job.ats_requirements?.visa_sponsorship || job.visa_sponsorship === "yes") && (
                           <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
                             Visa Sponsored
                           </span>
@@ -203,7 +253,21 @@ export function Dashboard({ onSelectJob, onStartInterview }) {
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => handleCrossCheck(job.id)}
+                        disabled={isCrossChecking}
+                        title="Cross-check listing against secondary aggregator"
+                        className="px-3 py-2 text-xs font-medium rounded-xl border border-slate-700 hover:bg-slate-700/60 text-slate-300 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {isCrossChecking ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        )}
+                        Cross-Check
+                      </button>
+
                       {hasDossier && (
                         <button
                           onClick={() => toggleDossier(job.id)}
@@ -251,7 +315,10 @@ export function Dashboard({ onSelectJob, onStartInterview }) {
                   {/* Expanded Company Dossier View */}
                   {isExpanded && hasDossier && (
                     <div className="pt-2 animate-fadeIn">
-                      <CompanyDossierCard dossier={job.company_dossier} />
+                      <CompanyDossierCard
+                        dossier={job.company_dossier}
+                        onDossierUpdated={(updated) => handleDossierUpdated(job.id, updated)}
+                      />
                     </div>
                   )}
                 </div>
@@ -260,6 +327,13 @@ export function Dashboard({ onSelectJob, onStartInterview }) {
           </div>
         </div>
       )}
+
+      {/* Ingestion Modal */}
+      <AddJobModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onJobAdded={handleJobAdded}
+      />
     </div>
   );
 }

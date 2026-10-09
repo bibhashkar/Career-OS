@@ -108,6 +108,9 @@ make dev
 # Run backend development server (reads from root .env)
 make run-backend
 
+# Run background ingestion worker daemon (reads from root .env)
+make run-worker
+
 # Run frontend development server (reads from root .env)
 make run-frontend
 ```
@@ -123,9 +126,9 @@ make run-frontend
 | `DATABASE_URL` | Derived | Connection string (`postgresql+psycopg://user:pass@host:5432/db`). |
 | `SECRET_KEY` | Dev default | Cryptographic secret for signing JWT access tokens (>= 32 chars). |
 | `GEMINI_API_KEY` | `None` | Google Gemini API key. If unset, uses hermetic `MockChatModel`. |
-| `JSEARCH_API_KEY`| `None` | RapidAPI JSearch key for live job board scraping (falls back to fixtures). |
-| `EXA_API_KEY`    | `None` | Exa API key for neural company intelligence web scraping. |
-| `APOLLO_API_KEY` | `None` | Apollo API key for firmographics and recruiter contact search. |
+| `JSEARCH_API_KEY`| `None` | Optional fallback job board search key. |
+| `EXA_API_KEY`    | `None` | Optional Exa API key for neural company intelligence web scraping. |
+| `APOLLO_API_KEY` | `None` | Reserved for commercial recruiter contact search. |
 | `CORS_ORIGINS`   | `["http://localhost:5173", "http://localhost:3000"]` | Whitelisted frontend origins. |
 | `ATS_PASS_THRESHOLD` | `75.0` | Minimum score percentage required to pass ATS evaluation. |
 | `MAX_REVISIONS`  | `3` | Maximum cyclic revisions between Tailor and ATS agents. |
@@ -137,7 +140,11 @@ make run-frontend
 ## API & WebSocket Endpoints
 
 ### REST Endpoints
-- `POST /api/jobs/search`: Discover target roles filtered by query, location, and visa sponsorship.
+- `POST /api/jobs/search`: Discover target roles via Sync-then-Search (local Postgres filter with external fallback).
+- `POST /api/jobs/ingest-url`: Ingest direct job posting from Greenhouse, Lever, or Ashby with anti-SSRF protections.
+- `POST /api/jobs/paste-text`: Parse raw job description text and save with grounding verification.
+- `POST /api/jobs/{job_id}/cross-check`: Verify job listing against secondary aggregators without overwriting ATS values.
+- `POST /api/jobs/companies/{company_name}/refresh`: Refresh employer intelligence with 1-hour cooldown.
 - `GET /api/applications/`: Track applied jobs, interview stages, and outcomes.
 - `POST /api/cv/generate`: Synthesize tailored CV draft and evaluate cyclic ATS compatibility.
 - `POST /api/cv/embed`: Ingest raw resume text and index 1536-dim semantic embeddings.
