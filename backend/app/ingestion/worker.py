@@ -11,6 +11,8 @@ import signal
 from typing import Any
 
 from app.core.database import get_session_context
+from app.core.logging import set_correlation_id
+from app.core.tracing import flush_tracing, setup_tracing
 from app.ingestion.ledger import CircuitBreaker, PersistentBudgetLedger
 from app.ingestion.models import IngestionTaskType
 from app.ingestion.queue import IngestionQueue
@@ -62,6 +64,7 @@ class IngestionWorker:
             if not task:
                 return False
 
+            set_correlation_id(str(task.id))
             logger.info(
                 "Dequeued task %s (type=%s, dedupe_key=%s)",
                 task.id,
@@ -258,6 +261,7 @@ class IngestionWorker:
 
 def main() -> None:
     """CLI entrypoint for running the worker."""
+    setup_tracing()
     worker = IngestionWorker()
 
     def handle_signal(sig: int, frame: Any) -> None:
@@ -270,6 +274,8 @@ def main() -> None:
         asyncio.run(worker.run())
     except KeyboardInterrupt:
         pass
+    finally:
+        flush_tracing()
 
 
 if __name__ == "__main__":

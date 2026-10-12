@@ -25,10 +25,10 @@ WebSocket Framing Protocol:
 
 import json
 import logging
+import time
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
-from langchain_core.runnables import RunnableConfig
 
 from app.agents.graph import interview_app
 from app.agents.state import AgentState
@@ -36,7 +36,9 @@ from app.agents.tools.company_intel import fetch_company_intel
 from app.agents.tools.job_search import search_jobs
 from app.core.auth import authenticate_websocket
 from app.core.config import settings
-from app.core.logging import get_correlation_id
+from app.core.logging import get_correlation_id, set_correlation_id
+from app.core.metrics import metrics_registry
+from app.core.tracing import build_run_config
 
 logger = logging.getLogger("career_os.interview")
 
@@ -68,10 +70,16 @@ async def interview_websocket_endpoint(
         token: Optional JWT bearer token for connection authorization.
     """
     await websocket.accept()
-    config: RunnableConfig = {
-        "configurable": {"thread_id": thread_id},
-        "recursion_limit": settings.GRAPH_RECURSION_LIMIT,
-    }
+    correlation_id = websocket.headers.get("X-Correlation-ID") or uuid.uuid4().hex
+    set_correlation_id(correlation_id)
+    config = build_run_config(
+        graph="interview",
+        thread_id=thread_id,
+        run_name=f"interview_init_{thread_id}",
+        user_id=None,
+        job_id=job_id,
+        tags=["interview_coach"],
+    )
 
     try:
         # Check current state or send initial question if new session
@@ -95,8 +103,18 @@ async def interview_websocket_endpoint(
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
+        config = build_run_config(
+            graph="interview",
+            thread_id=thread_id,
+            run_name=f"interview_turn_{thread_id}",
+            user_id=user.user_id,
+            job_id=job_id,
+            tags=["interview_coach"],
+        )
+
         if not current_state or not current_state.values.get("interview_history"):
             resolved_company = company_name or "Target Company"
+
             resolved_title = title or "Software Engineer"
 
             # If job_id is provided, look up listing if title/company are unspecific
@@ -181,7 +199,17 @@ async def interview_websocket_endpoint(
                 "user_id": user.user_id,
                 "messages": [{"role": "user", "content": user_content}],
             }
-            next_state = await interview_app.ainvoke(turn_state, config=config)
+            start_time = time.monotonic()
+            try:
+                next_state = await interview_app.ainvoke(turn_state, config=config)
+                metrics_registry.record_agent_run(
+                    "interview", "success", time.monotonic() - start_time
+                )
+            except Exception:
+                metrics_registry.record_agent_run(
+                    "interview", "error", time.monotonic() - start_time
+                )
+                raise
             coach_reply = next_state.get("messages", [])[-1]["content"]
 
             await websocket.send_json(

@@ -13,11 +13,11 @@ isolated execution ``thread_id``, and invokes the compiled LangGraph
 nodes, cycling up to 3 times if necessary, before returning the final scorecard.
 """
 
+import time
 import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
 from app.agents.graph import pipeline_app
@@ -26,6 +26,8 @@ from app.agents.tools.embeddings import chunk_cv_text, ingest_cv_blocks
 from app.core.auth import CurrentUser
 from app.core.config import settings
 from app.core.cv_export import format_cv_as_markdown, format_cv_as_plaintext
+from app.core.metrics import metrics_registry
+from app.core.tracing import build_run_config
 
 router = APIRouter(prefix="/api/cv", tags=["CV"])
 
@@ -125,12 +127,26 @@ async def generate_tailored_cv(
 
     # Isolated thread identifier ensures state checkpoints do not collide
     thread_id = f"cv_gen_{request.job_id}_{uuid.uuid4().hex[:8]}"
-    config: RunnableConfig = {
-        "configurable": {"thread_id": thread_id},
-        "recursion_limit": settings.GRAPH_RECURSION_LIMIT,
-    }
+    config = build_run_config(
+        graph="pipeline",
+        thread_id=thread_id,
+        run_name=f"cv_tailor_{request.job_id}",
+        user_id=candidate_id,
+        job_id=request.job_id,
+        tags=["cv_tailor", f"job:{request.job_id}"],
+    )
 
-    final_state = await pipeline_app.ainvoke(initial_state, config=config)
+    start_time = time.monotonic()
+    try:
+        final_state = await pipeline_app.ainvoke(initial_state, config=config)
+        metrics_registry.record_agent_run(
+            "pipeline", "success", time.monotonic() - start_time
+        )
+    except Exception:
+        metrics_registry.record_agent_run(
+            "pipeline", "error", time.monotonic() - start_time
+        )
+        raise
 
     ats_score = final_state.get("ats_score", 0.0)
     return CVGenerateResponse(

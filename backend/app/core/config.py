@@ -13,6 +13,8 @@ silently at the first request that needs the value.
 """
 
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -106,6 +108,14 @@ class Settings(BaseSettings):
         "Accept",
         "Origin",
     ]
+    CORS_EXPOSE_HEADERS: list[str] = ["X-Correlation-ID"]
+
+    # ---- Observability & Arize Phoenix (Self-Hosted) ----
+    PHOENIX_ENABLED: bool = True
+    PHOENIX_COLLECTOR_ENDPOINT: str = "http://localhost:6006/v1/traces"
+    PHOENIX_PROJECT_NAME: str = "career-os"
+    PHOENIX_SAMPLING_RATE: float = 1.0
+    PHOENIX_ANONYMIZE_PII: bool = True
 
     # ---- External API keys & LLM Provider (optional for mock development) ----
     # The agent nodes and tools implement hermetic offline fallbacks so the full
@@ -146,7 +156,11 @@ class Settings(BaseSettings):
         return v
 
     @field_validator(
-        "CORS_ORIGINS", "CORS_ALLOW_METHODS", "CORS_ALLOW_HEADERS", mode="before"
+        "CORS_ORIGINS",
+        "CORS_ALLOW_METHODS",
+        "CORS_ALLOW_HEADERS",
+        "CORS_EXPOSE_HEADERS",
+        mode="before",
     )
     @classmethod
     def assemble_cors_lists(cls, v: Any) -> list[str]:
@@ -164,6 +178,23 @@ class Settings(BaseSettings):
             return [item.strip() for item in v.split(",") if item.strip()]
         return v
 
+    @field_validator("PHOENIX_SAMPLING_RATE")
+    @classmethod
+    def validate_sampling_rate(cls, v: float) -> float:
+        """Validate sampling rate is within [0.0, 1.0]."""
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("PHOENIX_SAMPLING_RATE must be between 0.0 and 1.0.")
+        return v
+
+    @property
+    def is_testing(self) -> bool:
+        """Return True if executing within automated pytest or test environment."""
+        return (
+            self.APP_ENV == "test"
+            or bool(os.environ.get("PYTEST_CURRENT_TEST"))
+            or "pytest" in sys.modules
+        )
+
     @model_validator(mode="after")
     def assemble_and_validate_settings(self) -> "Settings":
         """
@@ -174,6 +205,9 @@ class Settings(BaseSettings):
                 f"postgresql+psycopg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@"
                 f"{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
             )
+
+        if self.is_testing:
+            self.PHOENIX_ENABLED = False
 
         if self.APP_ENV == "production":
             if "localhost" in self.DATABASE_URL or "127.0.0.1" in self.DATABASE_URL:

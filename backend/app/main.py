@@ -35,6 +35,7 @@ from app.core.logging import CorrelationIdMiddleware, setup_logging
 from app.core.metrics import PrometheusMetricsMiddleware, metrics_registry
 from app.core.rate_limit import RateLimitMiddleware
 from app.core.security import SecurityHeadersMiddleware
+from app.core.tracing import flush_tracing, setup_tracing
 
 logger = logging.getLogger("career_os.main")
 
@@ -69,8 +70,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if settings.APP_ENV != "test":
         await init_postgres_saver()
 
+    setup_tracing()
+
     yield
 
+    flush_tracing()
     await close_postgres_saver()
     # Release all connections back to the OS on graceful shutdown.
     await engine.dispose()
@@ -106,7 +110,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=settings.CORS_ALLOW_METHODS,
     allow_headers=settings.CORS_ALLOW_HEADERS,
+    expose_headers=settings.CORS_EXPOSE_HEADERS,
 )
+
 
 # Mount API routers. Each router is a thin transport adapter — no business
 # logic lives here; routers delegate directly to compiled LangGraph graphs.

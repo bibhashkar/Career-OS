@@ -28,6 +28,9 @@ class MetricsRegistry:
         self._lock = threading.Lock()
         self._request_counts: dict[tuple[str, str, int], int] = defaultdict(int)
         self._request_durations: dict[tuple[str, str], list[float]] = defaultdict(list)
+        self._agent_runs: dict[tuple[str, str], int] = defaultdict(int)
+        self._agent_durations: dict[str, list[float]] = defaultdict(list)
+        self._ats_loop_exhausted: int = 0
 
     def record_request(
         self, method: str, endpoint: str, status_code: int, duration_sec: float
@@ -40,6 +43,20 @@ class MetricsRegistry:
             durations.append(duration_sec)
             if len(durations) > 100:
                 self._request_durations[(method, endpoint)] = durations[-100:]
+
+    def record_agent_run(self, graph: str, status: str, duration_sec: float) -> None:
+        """Record completion of an agent graph workflow execution."""
+        with self._lock:
+            self._agent_runs[(graph, status)] += 1
+            durations = self._agent_durations[graph]
+            durations.append(duration_sec)
+            if len(durations) > 100:
+                self._agent_durations[graph] = durations[-100:]
+
+    def increment_ats_loop_exhausted(self) -> None:
+        """Record an ATS revision cycle exhausting maximum revision bounds."""
+        with self._lock:
+            self._ats_loop_exhausted += 1
 
     def generate_prometheus_output(self) -> str:
         """Serialize registered metrics to standard Prometheus exposition format."""
@@ -75,6 +92,40 @@ class MetricsRegistry:
                         f'career_os_http_request_duration_seconds{{method="{method}",'
                         f'endpoint="{endpoint}",metric="avg"}} {avg_duration:.6f}'
                     )
+
+            lines.extend(
+                [
+                    "# HELP career_os_agent_runs_total Agent runs.",
+                    "# TYPE career_os_agent_runs_total counter",
+                ]
+            )
+            for (graph, status), count in sorted(self._agent_runs.items()):
+                lines.append(
+                    f'career_os_agent_runs_total{{graph="{graph}",'
+                    f'status="{status}"}} {count}'
+                )
+
+            lines.extend(
+                [
+                    "# HELP career_os_agent_run_duration_seconds_avg Agent latency.",
+                    "# TYPE career_os_agent_run_duration_seconds_avg gauge",
+                ]
+            )
+            for graph, durations in sorted(self._agent_durations.items()):
+                if durations:
+                    avg_dur = sum(durations) / len(durations)
+                    lines.append(
+                        f'career_os_agent_run_duration_seconds_avg{{graph="{graph}"}} '
+                        f"{avg_dur:.6f}"
+                    )
+
+            lines.extend(
+                [
+                    "# HELP career_os_ats_loop_exhausted_total ATS limit trips.",
+                    "# TYPE career_os_ats_loop_exhausted_total counter",
+                    f"career_os_ats_loop_exhausted_total {self._ats_loop_exhausted}",
+                ]
+            )
 
         # Database pool metrics directly queried from SQLAlchemy engine pool
         pool: Any = engine.pool

@@ -46,6 +46,7 @@ services:
       EXA_API_KEY: ${EXA_API_KEY:-}
       APOLLO_API_KEY: ${APOLLO_API_KEY:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-'["http://localhost:5173","http://localhost:3000","http://localhost:80"]'}
+      PHOENIX_COLLECTOR_ENDPOINT: ${PHOENIX_COLLECTOR_ENDPOINT:-http://phoenix:6006/v1/traces}
     ports:
       - "${PORT:-8000}:8000"
     healthcheck:
@@ -80,6 +81,25 @@ services:
       JSEARCH_API_KEY: ${JSEARCH_API_KEY:-}
       EXA_API_KEY: ${EXA_API_KEY:-}
       APOLLO_API_KEY: ${APOLLO_API_KEY:-}
+      PHOENIX_COLLECTOR_ENDPOINT: ${PHOENIX_COLLECTOR_ENDPOINT:-http://phoenix:6006/v1/traces}
+
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: career_os_phoenix
+    restart: unless-stopped
+    ports:
+      - "6006:6006"
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      - PHOENIX_PORT=6006
+      - PHOENIX_HOST=0.0.0.0
+      - PHOENIX_WORKING_DIR=/data
+      - PHOENIX_ENABLE_TELEMETRY=false
+    volumes:
+      - phoenix_data:/data
+    networks:
+      - default
 
   frontend:
     build:
@@ -101,3 +121,6 @@ services:
 volumes:
   postgres_data:
     driver: local
+  phoenix_data:
+    driver: local
+

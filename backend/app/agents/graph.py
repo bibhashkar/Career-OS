@@ -45,6 +45,7 @@ from app.agents.nodes.reflector import reflector_node
 from app.agents.nodes.tailor import tailor_node
 from app.agents.state import AgentState
 from app.core.config import settings
+from app.core.metrics import metrics_registry
 
 # Default in-memory checkpointer for hermetic test isolation and fast local execution.
 # In production, pass an instance of ``PostgresSaver`` to enable persistent,
@@ -79,6 +80,8 @@ def route_ats(state: AgentState) -> Literal["tailor", "__end__"]:
     # Loop guard: bounded limit to max revisions preventing runaway recursion
     if score < settings.ATS_PASS_THRESHOLD and revisions < settings.MAX_REVISIONS:
         return "tailor"
+    if score < settings.ATS_PASS_THRESHOLD and revisions >= settings.MAX_REVISIONS:
+        metrics_registry.increment_ats_loop_exhausted()
     return "__end__"
 
 

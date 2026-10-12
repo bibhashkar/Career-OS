@@ -15,10 +15,10 @@ Reflection Workflow:
 """
 
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, status
-from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
 from app.agents.graph import reflector_app
@@ -26,6 +26,8 @@ from app.agents.state import AgentState
 from app.core.auth import CurrentUser
 from app.core.config import settings
 from app.core.database import get_session_context
+from app.core.metrics import metrics_registry
+from app.core.tracing import build_run_config
 from app.models.feedback_log import FeedbackLog
 
 logger = logging.getLogger("career_os.feedback")
@@ -95,11 +97,24 @@ async def submit_feedback(
 
     # Namespace the thread to isolate reflector checkpoints from interview messages
     thread_id = f"reflector_{request.thread_id}"
-    config: RunnableConfig = {
-        "configurable": {"thread_id": thread_id},
-        "recursion_limit": settings.GRAPH_RECURSION_LIMIT,
-    }
-    result = await reflector_app.ainvoke(state, config=config)
+    config = build_run_config(
+        graph="reflector",
+        thread_id=thread_id,
+        run_name=f"reflector_{request.thread_id}",
+        user_id=user.user_id,
+        tags=["feedback_reflection"],
+    )
+    start_time = time.monotonic()
+    try:
+        result = await reflector_app.ainvoke(state, config=config)
+        metrics_registry.record_agent_run(
+            "reflector", "success", time.monotonic() - start_time
+        )
+    except Exception:
+        metrics_registry.record_agent_run(
+            "reflector", "error", time.monotonic() - start_time
+        )
+        raise
 
     logs = result.get("feedback_logs", [])
     last_log = logs[-1] if logs else {}
