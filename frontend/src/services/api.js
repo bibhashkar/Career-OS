@@ -15,7 +15,7 @@ const apiClient = axios.create({
 /**
  * Search jobs with location and visa sponsorship filtering.
  */
-export async function searchJobs(query, location = "Remote", visaRequired = false) {
+export async function searchJobs(query = "", location = "", visaRequired = false) {
   const response = await apiClient.post("/jobs/search", {
     query,
     location,

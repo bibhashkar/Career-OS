@@ -60,6 +60,26 @@ async def test_search_jobs_returns_provenance_metadata() -> None:
 
 
 @pytest.mark.asyncio
+async def test_search_jobs_empty_query_returns_empty_list_200() -> None:
+    """Verify empty query and location returns 200 with zero results without 422."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post(
+            "/api/jobs/search",
+            json={
+                "query": "",
+                "location": "",
+                "visa_required": False,
+            },
+        )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["count"] == 0
+    assert data["jobs"] == []
+
+
+@pytest.mark.asyncio
 async def test_ingest_url_blocks_ssrf_and_unsupported_urls() -> None:
     """Verify arbitrary web hosts and private IPs are rejected on direct URL import."""
     transport = ASGITransport(app=app)
