@@ -272,16 +272,22 @@ class AshbyAdapter(ATSAdapterPort):
             resp.raise_for_status()
             data = resp.json()
 
-        jobs_data = data.get("data", {}).get("jobPostings", []) or data.get(
-            "jobPostings", []
+        jobs_data = (
+            data.get("jobs", [])
+            or data.get("data", {}).get("jobPostings", [])
+            or data.get("jobPostings", [])
         )
         jobs: list[DiscoveredJobDTO] = []
 
         for item in jobs_data:
             job_id = str(item.get("id"))
             title = sanitize_text(item.get("title", ""))
-            location = item.get("locationName", "Remote") or "Remote"
-            apply_url = f"https://jobs.ashbyhq.com/{slug}/{job_id}"
+            location = item.get("location") or item.get("locationName") or "Remote"
+            apply_url = (
+                item.get("applyUrl")
+                or item.get("jobUrl")
+                or f"https://jobs.ashbyhq.com/{slug}/{job_id}"
+            )
             raw_desc = item.get("descriptionPlain") or item.get("descriptionHtml") or ""
             description = (
                 _clean_html_to_text(raw_desc)
@@ -290,11 +296,10 @@ class AshbyAdapter(ATSAdapterPort):
             )
 
             posted_at: datetime | None = None
-            if item.get("publishedDate"):
+            date_str = item.get("publishedAt") or item.get("publishedDate")
+            if date_str:
                 try:
-                    posted_at = datetime.fromisoformat(
-                        item["publishedDate"].replace("Z", "+00:00")
-                    )
+                    posted_at = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
                 except ValueError:
                     pass
 
