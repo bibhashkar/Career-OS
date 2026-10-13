@@ -104,7 +104,7 @@ class JobVerificationService:
         cross_check_res = await self.adapter.cross_check(
             title=job.title,
             company_name=job.company_name,
-            location=job.location,
+            location=job.raw_location,
         )
 
         sources_checked = ["aggregator_cross_check"]

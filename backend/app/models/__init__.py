@@ -2,10 +2,9 @@
 SQLAlchemy ORM model declarations for long-term relational persistence.
 
 Each model maps one PostgreSQL table (singular naming: user_profile, job_listing,
-cv_block, company_dossier, feedback_log). Models contain only schema definitions
-and relationship declarations — no business logic, no LLM calls. The separation
-guarantees that the data layer can be migrated independently via Alembic without
-touching agent or API code.
+cv_block, company_dossier, feedback_log, ats_board, ats_provider, industry_sector).
+Models contain only schema definitions and relationship declarations — no business
+logic, no LLM calls.
 """
 
 from app.models.application import Application
@@ -15,6 +14,8 @@ from app.models.cv_block import CVBlock
 from app.models.feedback_log import FeedbackLog
 from app.models.ingestion import (
     ATSBoard,
+    ATSProvider,
+    IndustrySector,
     IngestionRun,
     IngestionTask,
     ProviderState,
@@ -25,11 +26,13 @@ from app.models.user_profile import UserProfile
 
 __all__ = [
     "ATSBoard",
+    "ATSProvider",
     "Application",
     "Base",
     "CompanyDossier",
     "CVBlock",
     "FeedbackLog",
+    "IndustrySector",
     "IngestionRun",
     "IngestionTask",
     "JobListing",

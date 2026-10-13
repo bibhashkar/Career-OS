@@ -16,7 +16,26 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ingestion.verification import JobVerificationService
+from app.models.ingestion import ATSBoard
 from app.models.job_listing import JobListing
+
+
+async def _get_or_create_test_board(
+    session: AsyncSession, provider: str, slug: str, company: str
+) -> ATSBoard:
+    stmt = select(ATSBoard).where(ATSBoard.provider == provider, ATSBoard.slug == slug)
+    b = (await session.execute(stmt)).scalar_one_or_none()
+    if not b:
+        b = ATSBoard(
+            provider=provider,
+            slug=slug,
+            company_name=company,
+            industry="enterprise_saas",
+            is_active=True,
+        )
+        session.add(b)
+        await session.flush()
+    return b
 
 
 class MockDiscrepancyAdapter:
@@ -48,12 +67,19 @@ async def test_verification_detects_salary_and_status_discrepancy(
     db_session: AsyncSession,
 ) -> None:
     """Verify discrepancies with secondary sources do not overwrite ATS values."""
+    board = await _get_or_create_test_board(
+        db_session, "greenhouse", "acme", "Acme Corp"
+    )
     job = JobListing(
-        source="greenhouse",
+        ats_board_id=board.id,
+        ats_provider="greenhouse",
+        ats_board_slug="acme",
         source_job_id="test_verif_001",
+        industry="enterprise_saas",
         title="Staff AI Engineer",
         company_name="Acme Corp",
-        location="Remote",
+        raw_location="Remote",
+        workplace_type="remote",
         salary_range="$180,000 - $210,000",
         raw_description="Build distributed training pipelines.",
         status="active",
@@ -89,12 +115,21 @@ async def test_verification_handles_not_found_on_aggregators(
     db_session: AsyncSession,
 ) -> None:
     """Verify when no secondary listing is found, status='not_found' is recorded."""
+    board = await _get_or_create_test_board(
+        db_session, "ashby", "stealth", "Stealth AI"
+    )
     job = JobListing(
-        source="ashby",
+        ats_board_id=board.id,
+        ats_provider="ashby",
+        ats_board_slug="stealth",
         source_job_id="test_verif_002",
+        industry="enterprise_saas",
         title="Founding ML Engineer",
         company_name="Stealth AI",
-        location="San Francisco, CA",
+        raw_location="San Francisco, CA",
+        city="San Francisco",
+        state_province_code="CA",
+        country_code="US",
         raw_description="Founding role.",
         status="active",
     )
@@ -121,12 +156,17 @@ async def test_verification_enforces_7_day_cache_ttl(
         "notes": "Cached check.",
     }
 
+    board = await _get_or_create_test_board(db_session, "lever", "linear", "Linear")
     job = JobListing(
-        source="lever",
+        ats_board_id=board.id,
+        ats_provider="lever",
+        ats_board_slug="linear",
         source_job_id="test_verif_003",
+        industry="enterprise_saas",
         title="Backend Architect",
         company_name="Linear",
-        location="Remote",
+        raw_location="Remote",
+        workplace_type="remote",
         raw_description="Design high-performance distributed systems.",
         status="active",
         verification=cached_verification,

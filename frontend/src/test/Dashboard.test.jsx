@@ -75,3 +75,4 @@ describe("Dashboard Search and Empty State Experience", () => {
     expect(screen.getByText("Stripe")).toBeInTheDocument();
   });
 });
+

@@ -20,10 +20,12 @@ class DataOrigin(StrEnum):
 
 
 class VisaSponsorshipStatus(StrEnum):
-    """Tri-state visa sponsorship policy indicator."""
+    """Visa sponsorship policy indicator."""
 
     YES = "yes"
     NO = "no"
+    TRANSFER_ONLY = "transfer_only"
+    OPT_CPT_ACCEPTED = "opt_cpt_accepted"
     UNKNOWN = "unknown"
 
 
@@ -43,26 +45,47 @@ class SourceConfidence(StrEnum):
     LOW = "low"  # Multi-board aggregator or scraped listings
 
 
-class ATSProvider(StrEnum):
-    """Supported Applicant Tracking System providers."""
+class ATSProviderEnum(StrEnum):
+    """Supported Applicant Tracking System provider codes."""
 
     GREENHOUSE = "greenhouse"
     LEVER = "lever"
     ASHBY = "ashby"
-    WORKDAY = "workday"
-    SMARTRECRUITERS = "smartrecruiters"
+    WORKABLE = "workable"
     CUSTOM = "custom"
+
+
+ATSProvider = ATSProviderEnum
+
+
+class WorkplaceType(StrEnum):
+    """Physical work modality."""
+
+    ON_SITE = "on_site"
+    HYBRID = "hybrid"
+    REMOTE = "remote"
+
+
+class RemoteScope(StrEnum):
+    """Geographic & legal jurisdiction for remote roles."""
+
+    NONE = "none"
+    STATE_PROVINCE = "state_province"
+    COUNTRY_WIDE = "country_wide"
+    REGIONAL_TIMEZONE = "regional_timezone"
+    WORLDWIDE_GLOBAL = "worldwide_global"
 
 
 class IngestionTaskType(StrEnum):
     """Supported asynchronous ingestion queue task types."""
 
     SYNC_BOARD = "sync_board"
+    PROBE_SLUG = "probe_slug"
+    HARVEST_DIRECTORY = "harvest_directory"
     INGEST_URL = "ingest_url"
     INGEST_TEXT = "ingest_text"
     EXTRACT_REQUIREMENTS = "extract_requirements"
     REFRESH_COMPANY = "refresh_company"
-    CROSS_CHECK_JOB = "cross_check_job"
 
 
 class IngestionTaskStatus(StrEnum):
@@ -78,15 +101,28 @@ class IngestionTaskStatus(StrEnum):
 class DiscoveredJobDTO(BaseModel):
     """DTO representing a job posting discovered from an ATS or source."""
 
-    source: str
+    ats_provider: str
+    ats_board_slug: str
     source_job_id: str
     title: str
     company_name: str
     apply_url: str
-    location: str = "Remote"
+    url: str | None = None
+    raw_location: str = "Remote"
+    city: str | None = None
+    state_province: str | None = None
+    state_province_code: str | None = None
+    country: str | None = None
+    country_code: str | None = None
+    primary_region: str | None = None
+    workplace_type: WorkplaceType = WorkplaceType.ON_SITE
+    remote_scope: RemoteScope = RemoteScope.NONE
     salary_range: str | None = None
     raw_description: str
-    remote_type: str | None = None
+    industry: str | None = None
+    visa_sponsorship: str | None = None
+    visa_notes: str | None = None
+    visa_types: list[str] = Field(default_factory=list)
     posted_at: datetime | None = None
     data_origin: DataOrigin = DataOrigin.LIVE
     source_confidence: SourceConfidence = SourceConfidence.HIGH
@@ -100,7 +136,7 @@ class ParsedRequirementsDTO(BaseModel):
     preferred_skills: list[str] = Field(default_factory=list)
     min_experience_years: int | None = None
     visa_sponsorship: VisaSponsorshipStatus = VisaSponsorshipStatus.UNKNOWN
-    extraction_version: str = "v1"
+    extraction_version: str = "v2"
     confidence_score: float = 1.0
     needs_review: bool = False
     evidence: dict[str, list[str]] = Field(default_factory=dict)

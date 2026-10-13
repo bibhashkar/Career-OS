@@ -11,10 +11,8 @@ Constraint Modeling:
     sponsorship.
   - Tone Directives: Stored as JSON, capturing preferences like brevity,
     assertiveness, and technical depth synthesized by the Reflector agent.
-  - Foreign Key Constraint Policy: The ``cv_blocks`` relationship enforces
-    strict ``ON DELETE RESTRICT`` semantics per project rules. A user profile
-    cannot be dropped while associated achievement blocks exist, preventing
-    accidental cascading data loss of verified candidate history.
+  - Foreign Key Constraint Policy: Enforces strict ``ON DELETE RESTRICT`` semantics
+    per project rules across related career blocks, applications, and feedback logs.
 """
 
 from typing import TYPE_CHECKING, Any
@@ -25,7 +23,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
+    from app.models.application import Application
     from app.models.cv_block import CVBlock
+    from app.models.feedback_log import FeedbackLog
 
 
 class UserProfile(Base, UUIDMixin, TimestampMixin):
@@ -41,6 +41,8 @@ class UserProfile(Base, UUIDMixin, TimestampMixin):
         target_roles: JSON list of job titles sought (e.g. ['Senior AI Engineer']).
         target_locations: JSON list of target cities or 'Remote'.
         cv_blocks: One-to-many relationship to career achievement chunks.
+        applications: One-to-many relationship to tracked job applications.
+        feedback_logs: One-to-many relationship to user feedback entries.
     """
 
     __tablename__ = "user_profile"
@@ -66,5 +68,13 @@ class UserProfile(Base, UUIDMixin, TimestampMixin):
     # Relationships
     cv_blocks: Mapped[list["CVBlock"]] = relationship(
         "CVBlock",
+        back_populates="user_profile",
+    )
+    applications: Mapped[list["Application"]] = relationship(
+        "Application",
+        back_populates="user_profile",
+    )
+    feedback_logs: Mapped[list["FeedbackLog"]] = relationship(
+        "FeedbackLog",
         back_populates="user_profile",
     )

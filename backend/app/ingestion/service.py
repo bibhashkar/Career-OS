@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ingestion.adapters.ats import AshbyAdapter, GreenhouseAdapter, LeverAdapter
 from app.ingestion.models import (
-    ATSProvider,
+    ATSProviderEnum,
     DiscoveredJobDTO,
     ListingStatus,
 )
@@ -52,34 +52,59 @@ class BoardSyncService:
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
-        self._adapters: dict[ATSProvider, ATSAdapterPort] = {
-            ATSProvider.GREENHOUSE: GreenhouseAdapter(),
-            ATSProvider.LEVER: LeverAdapter(),
-            ATSProvider.ASHBY: AshbyAdapter(),
+        self._adapters: dict[str, ATSAdapterPort] = {
+            ATSProviderEnum.GREENHOUSE.value: GreenhouseAdapter(),
+            ATSProviderEnum.LEVER.value: LeverAdapter(),
+            ATSProviderEnum.ASHBY.value: AshbyAdapter(),
         }
 
-    def register_adapter(self, provider: ATSProvider, adapter: ATSAdapterPort) -> None:
+    def register_adapter(self, provider: str, adapter: ATSAdapterPort) -> None:
         """Register custom or mocked ATS adapter."""
-        self._adapters[provider] = adapter
+        key = provider.value if hasattr(provider, "value") else str(provider).lower()
+        self._adapters[key] = adapter
+
+    async def get_or_create_board(self, provider_str: str, slug: str) -> ATSBoard:
+        """Ensure an ATSBoard record exists in the database for relational safety."""
+        stmt = select(ATSBoard).where(
+            ATSBoard.provider == provider_str.lower(),
+            ATSBoard.slug == slug.lower(),
+        )
+        board = (await self.session.execute(stmt)).scalar_one_or_none()
+        if not board:
+            board = ATSBoard(
+                provider=provider_str.lower(),
+                slug=slug.lower(),
+                company_name=slug.capitalize(),
+                industry="enterprise_saas",
+                is_active=True,
+            )
+            self.session.add(board)
+            await self.session.flush()
+        return board
 
     async def sync_board(self, provider_str: str, slug: str) -> IngestionRun:
         """
         Execute full board sync:
-        1. Fetch open jobs via provider adapter.
-        2. Upsert into job_listing table.
-        3. Detect missing jobs and soft-close them.
-        4. Log metrics to ingestion_run table.
+        1. Ensure ATSBoard entity exists in database.
+        2. Fetch open jobs via provider adapter.
+        3. Upsert into job_listing table.
+        4. Detect missing jobs and soft-close them.
+        5. Log metrics to ingestion_run table.
         """
         start_time = datetime.now(UTC)
-        provider = ATSProvider(provider_str.lower())
-        adapter = self._adapters.get(provider)
+        prov_key = provider_str.lower()
+        slug_key = slug.lower()
 
+        adapter = self._adapters.get(prov_key)
         if not adapter:
             raise ValueError(f"No adapter registered for ATS provider '{provider_str}'")
 
+        board = await self.get_or_create_board(prov_key, slug_key)
+
         run = IngestionRun(
-            source=f"{provider}:{slug}",
-            board_slug=slug,
+            ats_board_id=board.id,
+            ats_provider=prov_key,
+            board_slug=slug_key,
             status="running",
             fetched_count=0,
             new_count=0,
@@ -92,24 +117,23 @@ class BoardSyncService:
         await self.session.flush()
 
         try:
-            discovered_jobs = await adapter.fetch_board_jobs(slug)
+            discovered_jobs = await adapter.fetch_board_jobs(slug_key)
             run.fetched_count = len(discovered_jobs)
 
-            source_prefix = f"{provider}:{slug}"
             current_source_ids = {j.source_job_id for j in discovered_jobs}
 
             # Upsert discovered jobs
             for dto in discovered_jobs:
-                is_new = await self._upsert_job(dto)
+                is_new = await self._upsert_job(dto, board)
                 if is_new:
                     run.new_count += 1
                 else:
                     run.updated_count += 1
 
             # Detect closed jobs:
-            # currently active jobs for this source absent from response
+            # currently active jobs for this board absent from the latest response
             stmt = select(JobListing).where(
-                JobListing.source == source_prefix,
+                JobListing.ats_board_id == board.id,
                 JobListing.status == ListingStatus.ACTIVE,
             )
             existing_active = (await self.session.execute(stmt)).scalars().all()
@@ -120,67 +144,81 @@ class BoardSyncService:
                     active_job.last_seen_at = datetime.now(UTC)
                     run.closed_count += 1
 
-            # Update ATSBoard metadata if registered
-            board_stmt = select(ATSBoard).where(
-                ATSBoard.provider == str(provider),
-                ATSBoard.slug == slug,
-            )
-            board = (await self.session.execute(board_stmt)).scalar_one_or_none()
-            if board:
-                board.last_synced_at = datetime.now(UTC)
-                board.consecutive_failures = 0
+            # Update ATSBoard sync metadata
+            board.last_synced_at = datetime.now(UTC)
+            board.consecutive_failures = 0
 
             run.status = "success"
 
         except Exception as e:
             logger.error(
-                "Board sync failed for %s:%s: %s", provider, slug, e, exc_info=True
+                "Board sync failed for %s:%s: %s", prov_key, slug_key, e, exc_info=True
             )
             run.status = "failed"
             run.error_message = str(e)
-            # Increment board consecutive failures if registered
-            board_stmt = select(ATSBoard).where(
-                ATSBoard.provider == str(provider),
-                ATSBoard.slug == slug,
-            )
-            board = (await self.session.execute(board_stmt)).scalar_one_or_none()
-            if board:
-                board.consecutive_failures += 1
+            board.consecutive_failures += 1
 
         end_time = datetime.now(UTC)
         run.duration_ms = int((end_time - start_time).total_seconds() * 1000)
         await self.session.flush()
         return run
 
-    async def _upsert_job(self, dto: DiscoveredJobDTO) -> bool:
+    async def _upsert_job(self, dto: DiscoveredJobDTO, board: ATSBoard) -> bool:
         """
-        Upsert a discovered job listing.
+        Upsert a discovered job listing with foreign key relational integrity.
         Returns True if newly created, False if updated.
         """
         stmt = select(JobListing).where(
-            JobListing.source == dto.source,
+            JobListing.ats_provider == dto.ats_provider,
+            JobListing.ats_board_slug == dto.ats_board_slug,
             JobListing.source_job_id == dto.source_job_id,
         )
         existing = (await self.session.execute(stmt)).scalar_one_or_none()
 
         now = datetime.now(UTC)
         fingerprint = compute_dedupe_fingerprint(
-            dto.company_name, dto.title, dto.location
+            board.company_name or dto.company_name, dto.title, dto.raw_location
         )
         content_hash = compute_content_hash(dto.raw_description)
 
+        modality = (
+            dto.workplace_type.value
+            if hasattr(dto.workplace_type, "value")
+            else str(dto.workplace_type)
+        )
+        scope = (
+            dto.remote_scope.value
+            if hasattr(dto.remote_scope, "value")
+            else str(dto.remote_scope)
+        )
+        job_industry = board.industry or dto.industry or "enterprise_saas"
+
         if existing is None:
             new_job = JobListing(
-                source=dto.source,
+                ats_board_id=board.id,
+                ats_provider=dto.ats_provider,
+                ats_board_slug=dto.ats_board_slug,
                 source_job_id=dto.source_job_id,
+                industry=job_industry,
+                company_dossier_id=board.company_dossier_id,
                 title=dto.title,
-                company_name=dto.company_name,
+                company_name=board.company_name or dto.company_name,
                 apply_url=dto.apply_url,
                 url=dto.apply_url,
-                location=dto.location,
+                raw_location=dto.raw_location,
+                city=dto.city,
+                state_province=dto.state_province,
+                state_province_code=dto.state_province_code,
+                country=dto.country,
+                country_code=dto.country_code,
+                primary_region=dto.primary_region or board.primary_region,
+                workplace_type=modality,
+                remote_scope=scope,
                 salary_range=dto.salary_range,
                 raw_description=dto.raw_description,
-                remote_type=dto.remote_type,
+                visa_sponsorship=dto.visa_sponsorship,
+                visa_notes=dto.visa_notes,
+                visa_types=dto.visa_types,
                 posted_at=dto.posted_at,
                 first_seen_at=now,
                 last_seen_at=now,
@@ -201,11 +239,23 @@ class BoardSyncService:
         existing.last_fetched_at = now
         existing.apply_url = dto.apply_url
         existing.status = ListingStatus.ACTIVE
+        existing.workplace_type = modality
+        existing.remote_scope = scope
+        existing.raw_location = dto.raw_location
+        if dto.city:
+            existing.city = dto.city
+        if dto.state_province_code:
+            existing.state_province_code = dto.state_province_code
+        if dto.country_code:
+            existing.country_code = dto.country_code
+        if dto.visa_sponsorship:
+            existing.visa_sponsorship = dto.visa_sponsorship
+            existing.visa_notes = dto.visa_notes
+            existing.visa_types = dto.visa_types
 
         if existing.content_hash != content_hash:
             existing.raw_description = dto.raw_description
             existing.content_hash = content_hash
             existing.title = dto.title
-            existing.location = dto.location
 
         return False

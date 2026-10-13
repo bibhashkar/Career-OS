@@ -160,12 +160,17 @@ class IngestionWorker:
 
             # Register board if not already present
             discovery = BoardDiscoveryEngine(session)
-            await discovery.register_board_if_not_exists(
+            board = await discovery.register_board_if_not_exists(
                 provider=provider,
                 slug=slug,
                 company_name=job_dto.company_name,
                 discovered_via="url_ingest",
             )
+            if not board:
+                from app.ingestion.service import BoardSyncService
+
+                sync_service = BoardSyncService(session)
+                board = await sync_service.get_or_create_board(provider, slug)
 
             # Extract requirements
             extractor = HybridRequirementsExtractor()
@@ -177,7 +182,8 @@ class IngestionWorker:
 
             # Upsert into JobListing
             stmt = select(JobListing).where(
-                JobListing.source == job_dto.source,
+                JobListing.ats_provider == job_dto.ats_provider,
+                JobListing.ats_board_slug == job_dto.ats_board_slug,
                 JobListing.source_job_id == job_dto.source_job_id,
             )
             existing = (await session.execute(stmt)).scalar_one_or_none()
@@ -185,22 +191,45 @@ class IngestionWorker:
 
             now = datetime.now(UTC)
             fingerprint = compute_dedupe_fingerprint(
-                job_dto.company_name, job_dto.title, job_dto.location
+                job_dto.company_name, job_dto.title, job_dto.raw_location
             )
             content_hash = compute_content_hash(job_dto.raw_description)
 
+            modality = (
+                job_dto.workplace_type.value
+                if hasattr(job_dto.workplace_type, "value")
+                else str(job_dto.workplace_type)
+            )
+            scope = (
+                job_dto.remote_scope.value
+                if hasattr(job_dto.remote_scope, "value")
+                else str(job_dto.remote_scope)
+            )
+            job_industry = board.industry or job_dto.industry or "enterprise_saas"
+
             if existing is None:
                 new_job = JobListing(
-                    source=job_dto.source,
+                    ats_board_id=board.id,
+                    ats_provider=job_dto.ats_provider,
+                    ats_board_slug=job_dto.ats_board_slug,
                     source_job_id=job_dto.source_job_id,
+                    industry=job_industry,
+                    company_dossier_id=board.company_dossier_id,
                     title=job_dto.title,
-                    company_name=job_dto.company_name,
+                    company_name=board.company_name or job_dto.company_name,
                     apply_url=job_dto.apply_url,
                     url=job_dto.apply_url,
-                    location=job_dto.location,
+                    raw_location=job_dto.raw_location,
+                    city=job_dto.city,
+                    state_province=job_dto.state_province,
+                    state_province_code=job_dto.state_province_code,
+                    country=job_dto.country,
+                    country_code=job_dto.country_code,
+                    primary_region=job_dto.primary_region or board.primary_region,
+                    workplace_type=modality,
+                    remote_scope=scope,
                     salary_range=job_dto.salary_range,
                     raw_description=job_dto.raw_description,
-                    remote_type=job_dto.remote_type,
                     posted_at=job_dto.posted_at,
                     first_seen_at=now,
                     last_seen_at=now,
@@ -210,7 +239,10 @@ class IngestionWorker:
                     status="active",
                     data_origin=str(DataOrigin.LIVE),
                     source_confidence=str(SourceConfidence.HIGH),
-                    visa_sponsorship=str(reqs.visa_sponsorship),
+                    visa_sponsorship=job_dto.visa_sponsorship
+                    or str(reqs.visa_sponsorship),
+                    visa_notes=job_dto.visa_notes,
+                    visa_types=job_dto.visa_types,
                     ats_requirements=reqs.model_dump(),
                     verification={},
                 )
@@ -220,7 +252,17 @@ class IngestionWorker:
                 existing.last_fetched_at = now
                 existing.raw_description = job_dto.raw_description
                 existing.ats_requirements = reqs.model_dump()
-                existing.visa_sponsorship = str(reqs.visa_sponsorship)
+                if job_dto.visa_sponsorship:
+                    existing.visa_sponsorship = job_dto.visa_sponsorship
+                existing.workplace_type = modality
+                existing.remote_scope = scope
+                existing.raw_location = job_dto.raw_location
+                if job_dto.city:
+                    existing.city = job_dto.city
+                if job_dto.state_province_code:
+                    existing.state_province_code = job_dto.state_province_code
+                if job_dto.country_code:
+                    existing.country_code = job_dto.country_code
                 existing.status = "active"
 
             await session.flush()

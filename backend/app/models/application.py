@@ -58,5 +58,9 @@ class Application(Base, UUIDMixin, TimestampMixin):
     )
 
     # Relationships
-    user_profile: Mapped["UserProfile"] = relationship("UserProfile")
-    job_listing: Mapped["JobListing"] = relationship("JobListing")
+    user_profile: Mapped["UserProfile"] = relationship(
+        "UserProfile", back_populates="applications"
+    )
+    job_listing: Mapped["JobListing"] = relationship(
+        "JobListing", back_populates="applications"
+    )

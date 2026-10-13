@@ -141,20 +141,29 @@ class LocalJobSourceService(JobSourcePort):
 
         return JobListingDTO(
             id=str(row.id),
-            source=row.source,
+            ats_provider=row.ats_provider,
+            ats_board_slug=row.ats_board_slug,
+            source=f"{row.ats_provider}:{row.ats_board_slug}",
             source_job_id=row.source_job_id,
             title=row.title,
             company_name=row.company_name,
             url=row.url,
             apply_url=str(row.apply_url or row.url or "https://careers.local"),
-            location=row.location,
+            raw_location=row.raw_location,
+            location=row.raw_location,
+            city=row.city,
+            state_province=row.state_province,
+            state_province_code=row.state_province_code,
+            country=row.country,
+            country_code=row.country_code,
+            primary_region=row.primary_region,
             salary_range=row.salary_range,
             raw_description=row.raw_description,
             ats_requirements=dict(row.ats_requirements or {}),
             verification=dict(row.verification or {}),
             data_origin=data_origin,
             source_confidence=source_conf,
-            visa_sponsorship=visa_status,
+            visa_sponsorship=row.visa_sponsorship,
             posted_at=row.posted_at,
         )
 
@@ -173,9 +182,12 @@ class LocalJobSourceService(JobSourcePort):
         else:
             visa_status = VisaSponsorshipStatus.UNKNOWN
 
+        raw_loc = m.get("raw_location") or m.get("location") or "Remote"
         return JobListingDTO(
             id=m.get("id"),
-            source=m.get("source", "mock_fixture"),
+            ats_provider=m.get("ats_provider", "custom"),
+            ats_board_slug=m.get("ats_board_slug", "demo"),
+            source=m.get("source", "custom:demo"),
             source_job_id=str(m.get("source_job_id") or m.get("id") or "job-0"),
             title=m.get("title", "Software Engineer"),
             company_name=m.get("company_name", "Unknown Company"),
@@ -183,7 +195,8 @@ class LocalJobSourceService(JobSourcePort):
             apply_url=str(
                 m.get("apply_url") or m.get("url") or "https://careers.local"
             ),
-            location=m.get("location", "Remote"),
+            raw_location=raw_loc,
+            location=raw_loc,
             salary_range=m.get("salary_range"),
             raw_description=m.get("raw_description", ""),
             ats_requirements=dict(m.get("ats_requirements") or {}),
@@ -244,8 +257,20 @@ class LocalJobSourceService(JobSourcePort):
                     loc_term = f"%{location.strip()}%"
                     stmt = stmt.where(
                         or_(
-                            JobListing.location.ilike(loc_term),
-                            JobListing.location.ilike("%remote%"),
+                            JobListing.raw_location.ilike(loc_term),
+                            JobListing.city.ilike(loc_term),
+                            JobListing.state_province.ilike(loc_term),
+                            JobListing.state_province_code.ilike(loc_term),
+                            JobListing.country.ilike(loc_term),
+                            JobListing.country_code.ilike(loc_term),
+                            JobListing.workplace_type == "remote",
+                        )
+                    )
+                elif location and location.lower() == "remote":
+                    stmt = stmt.where(
+                        or_(
+                            JobListing.workplace_type == "remote",
+                            JobListing.raw_location.ilike("%remote%"),
                         )
                     )
                 rows = (

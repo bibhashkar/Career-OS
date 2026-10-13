@@ -1,0 +1,1518 @@
+boards:
+  # ---- 1. High-Frequency Trading & Market Making (hft_quant_trading) ----
+  - provider: greenhouse
+    slug: janestreet
+    company_name: Jane Street
+    industry: hft_quant_trading
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 10
+
+  - provider: ashby
+    slug: hrt
+    company_name: Hudson River Trading
+    industry: hft_quant_trading
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 10
+
+  - provider: greenhouse
+    slug: optiver
+    company_name: Optiver
+    industry: hft_quant_trading
+    headquarters_country: Netherlands
+    headquarters_country_code: NL
+    primary_region: europe
+    tier: 1
+    priority: 10
+
+  - provider: greenhouse
+    slug: imc
+    company_name: IMC Trading
+    industry: hft_quant_trading
+    headquarters_country: Netherlands
+    headquarters_country_code: NL
+    primary_region: europe
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: flowtraders
+    company_name: Flow Traders
+    industry: hft_quant_trading
+    headquarters_country: Netherlands
+    headquarters_country_code: NL
+    primary_region: europe
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: jumptrading
+    company_name: Jump Trading
+    industry: hft_quant_trading
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 10
+
+  - provider: greenhouse
+    slug: akunacapital
+    company_name: Akuna Capital
+    industry: hft_quant_trading
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: oldmissioncapital
+    company_name: Old Mission Capital
+    industry: hft_quant_trading
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: lever
+    slug: belvederetrading
+    company_name: Belvedere Trading
+    industry: hft_quant_trading
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: virtu
+    company_name: Virtu Financial
+    industry: hft_quant_trading
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: point72
+    company_name: Point72
+    industry: hft_quant_trading
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: towerresearchcapital
+    company_name: Tower Research Capital
+    industry: hft_quant_trading
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: winton
+    company_name: Winton Group
+    industry: hft_quant_trading
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: aqr
+    company_name: AQR Capital Management
+    industry: hft_quant_trading
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: worldquant
+    company_name: WorldQuant
+    industry: hft_quant_trading
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  # ---- 2. Artificial Intelligence & Machine Learning (ai_machine_learning) ----
+  - provider: ashby
+    slug: openai
+    company_name: OpenAI
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 10
+
+  - provider: greenhouse
+    slug: anthropic
+    company_name: Anthropic
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 10
+
+  - provider: ashby
+    slug: perplexity
+    company_name: Perplexity AI
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: cohere
+    company_name: Cohere
+    industry: ai_machine_learning
+    headquarters_country: Canada
+    headquarters_country_code: CA
+    primary_region: canada
+    tier: 1
+    priority: 9
+
+  - provider: lever
+    slug: mistral
+    company_name: Mistral AI
+    industry: ai_machine_learning
+    headquarters_country: France
+    headquarters_country_code: FR
+    primary_region: europe
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: scaleai
+    company_name: Scale AI
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: togetherai
+    company_name: Together AI
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: anyscale
+    company_name: Anyscale
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: modal
+    company_name: Modal Labs
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: runway
+    company_name: Runway ML
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: baseten
+    company_name: Baseten
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 7
+
+  - provider: ashby
+    slug: elevenlabs
+    company_name: ElevenLabs
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: cursor
+    company_name: Cursor (Anysphere)
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: cognition
+    company_name: Cognition AI
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: poolside
+    company_name: Poolside AI
+    industry: ai_machine_learning
+    headquarters_country: France
+    headquarters_country_code: FR
+    primary_region: europe
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: harvey
+    company_name: Harvey AI
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: midjourney
+    company_name: Midjourney
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: dust
+    company_name: Dust AI
+    industry: ai_machine_learning
+    headquarters_country: France
+    headquarters_country_code: FR
+    primary_region: europe
+    tier: 1
+    priority: 7
+
+  - provider: ashby
+    slug: pika
+    company_name: Pika Labs
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 7
+
+  - provider: greenhouse
+    slug: databricks
+    company_name: Databricks
+    industry: ai_machine_learning
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 10
+
+  # ---- 3. Financial Technology (fintech) ----
+  - provider: greenhouse
+    slug: stripe
+    company_name: Stripe
+    industry: fintech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 10
+
+  - provider: ashby
+    slug: plaid
+    company_name: Plaid
+    industry: fintech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: ramp
+    company_name: Ramp
+    industry: fintech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: brex
+    company_name: Brex
+    industry: fintech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: mercury
+    company_name: Mercury
+    industry: fintech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: gusto
+    company_name: Gusto
+    industry: fintech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: carta
+    company_name: Carta
+    industry: fintech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: affirm
+    company_name: Affirm
+    industry: fintech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: chime
+    company_name: Chime
+    industry: fintech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: robinhood
+    company_name: Robinhood
+    industry: fintech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: adyen
+    company_name: Adyen
+    industry: fintech
+    headquarters_country: Netherlands
+    headquarters_country_code: NL
+    primary_region: europe
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: monzo
+    company_name: Monzo
+    industry: fintech
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: wise
+    company_name: Wise
+    industry: fintech
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: n26
+    company_name: N26
+    industry: fintech
+    headquarters_country: Germany
+    headquarters_country_code: DE
+    primary_region: europe
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: gocardless
+    company_name: GoCardless
+    industry: fintech
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: sumup
+    company_name: SumUp
+    industry: fintech
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: tide
+    company_name: Tide
+    industry: fintech
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 7
+
+  - provider: ashby
+    slug: clearbank
+    company_name: ClearBank
+    industry: fintech
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 7
+
+  - provider: ashby
+    slug: oaknorth
+    company_name: OakNorth Bank
+    industry: fintech
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 7
+
+  - provider: ashby
+    slug: thought-machine
+    company_name: Thought Machine
+    industry: fintech
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: freetrade
+    company_name: Freetrade
+    industry: fintech
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 7
+
+  - provider: ashby
+    slug: truelayer
+    company_name: TrueLayer
+    industry: fintech
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 7
+
+  - provider: ashby
+    slug: primer
+    company_name: Primer
+    industry: fintech
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 7
+
+  - provider: ashby
+    slug: airwallex
+    company_name: Airwallex
+    industry: fintech
+    headquarters_country: Australia
+    headquarters_country_code: AU
+    primary_region: oceania
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: zip
+    company_name: Zip Co
+    industry: fintech
+    headquarters_country: Australia
+    headquarters_country_code: AU
+    primary_region: oceania
+    tier: 1
+    priority: 8
+
+  - provider: lever
+    slug: brighte
+    company_name: Brighte
+    industry: fintech
+    headquarters_country: Australia
+    headquarters_country_code: AU
+    primary_region: oceania
+    tier: 1
+    priority: 7
+
+  - provider: ashby
+    slug: wealthsimple
+    company_name: Wealthsimple
+    industry: fintech
+    headquarters_country: Canada
+    headquarters_country_code: CA
+    primary_region: canada
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: koho
+    company_name: KOHO
+    industry: fintech
+    headquarters_country: Canada
+    headquarters_country_code: CA
+    primary_region: canada
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: toast
+    company_name: Toast
+    industry: fintech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  # ---- 4. Blockchain & Web3 (blockchain_web3) ----
+  - provider: greenhouse
+    slug: coinbase
+    company_name: Coinbase
+    industry: blockchain_web3
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: lever
+    slug: kraken
+    company_name: Kraken
+    industry: blockchain_web3
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: gemini
+    company_name: Gemini
+    industry: blockchain_web3
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: circle
+    company_name: Circle
+    industry: blockchain_web3
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: paxos
+    company_name: Paxos
+    industry: blockchain_web3
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 7
+
+  - provider: greenhouse
+    slug: fireblocks
+    company_name: Fireblocks
+    industry: blockchain_web3
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: consensys
+    company_name: Consensys
+    industry: blockchain_web3
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: alchemy
+    company_name: Alchemy
+    industry: blockchain_web3
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: bitgo
+    company_name: BitGo
+    industry: blockchain_web3
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 7
+
+  # ---- 5. Developer Tools & Infrastructure (devops_infra) ----
+  - provider: greenhouse
+    slug: datadog
+    company_name: Datadog
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 10
+
+  - provider: greenhouse
+    slug: cloudflare
+    company_name: Cloudflare
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 10
+
+  - provider: greenhouse
+    slug: gitlab
+    company_name: GitLab
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: elastic
+    company_name: Elastic
+    industry: devops_infra
+    headquarters_country: Netherlands
+    headquarters_country_code: NL
+    primary_region: europe
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: mongodb
+    company_name: MongoDB
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: cockroachlabs
+    company_name: Cockroach Labs
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: supabase
+    company_name: Supabase
+    industry: devops_infra
+    headquarters_country: Singapore
+    headquarters_country_code: SG
+    primary_region: asia_pacific
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: neon
+    company_name: Neon
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: planetscale
+    company_name: PlanetScale
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: resend
+    company_name: Resend
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: prisma
+    company_name: Prisma
+    industry: devops_infra
+    headquarters_country: Germany
+    headquarters_country_code: DE
+    primary_region: europe
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: render
+    company_name: Render
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: railway
+    company_name: Railway
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: clerk
+    company_name: Clerk
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: stytch
+    company_name: Stytch
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 7
+
+  - provider: ashby
+    slug: workos
+    company_name: WorkOS
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: launchdarkly
+    company_name: LaunchDarkly
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: sentry
+    company_name: Sentry
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: fastly
+    company_name: Fastly
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: vultr
+    company_name: Vultr
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: lever
+    slug: scaleway
+    company_name: Scaleway
+    industry: devops_infra
+    headquarters_country: France
+    headquarters_country_code: FR
+    primary_region: europe
+    tier: 1
+    priority: 7
+
+  - provider: greenhouse
+    slug: pagerduty
+    company_name: PagerDuty
+    industry: devops_infra
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  # ---- 6. Cybersecurity (cybersecurity) ----
+  - provider: ashby
+    slug: snyk
+    company_name: Snyk
+    industry: cybersecurity
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: wiz
+    company_name: Wiz
+    industry: cybersecurity
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: 1password
+    company_name: 1Password
+    industry: cybersecurity
+    headquarters_country: Canada
+    headquarters_country_code: CA
+    primary_region: canada
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: okta
+    company_name: Okta
+    industry: cybersecurity
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: zscaler
+    company_name: Zscaler
+    industry: cybersecurity
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: tanium
+    company_name: Tanium
+    industry: cybersecurity
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: lever
+    slug: sophos
+    company_name: Sophos
+    industry: cybersecurity
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: pingidentity
+    company_name: Ping Identity
+    industry: cybersecurity
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 7
+
+  - provider: greenhouse
+    slug: beyondtrust
+    company_name: BeyondTrust
+    industry: cybersecurity
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 7
+
+  - provider: ashby
+    slug: vanta
+    company_name: Vanta
+    industry: cybersecurity
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  # ---- 7. HealthTech & BioTech (healthtech, biotech) ----
+  - provider: greenhouse
+    slug: doctolib
+    company_name: Doctolib
+    industry: healthtech
+    headquarters_country: France
+    headquarters_country_code: FR
+    primary_region: europe
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: flatironhealth
+    company_name: Flatiron Health
+    industry: healthtech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: recursionpharmaceuticals
+    company_name: Recursion Pharmaceuticals
+    industry: biotech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: lever
+    slug: ro
+    company_name: Ro
+    industry: healthtech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: benchling
+    company_name: Benchling
+    industry: biotech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: insitro
+    company_name: insitro
+    industry: biotech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: freenome
+    company_name: Freenome
+    industry: biotech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 7
+
+  - provider: greenhouse
+    slug: dna
+    company_name: Ginkgo Bioworks
+    industry: biotech
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: lever
+    slug: deepgenomics
+    company_name: Deep Genomics
+    industry: biotech
+    headquarters_country: Canada
+    headquarters_country_code: CA
+    primary_region: canada
+    tier: 1
+    priority: 7
+
+  # ---- 8. Enterprise SaaS & Collaboration (enterprise_saas) ----
+  - provider: ashby
+    slug: linear
+    company_name: Linear
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: notion
+    company_name: Notion
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: loom
+    company_name: Loom
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: vercel
+    company_name: Vercel
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: figma
+    company_name: Figma
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: airbnb
+    company_name: Airbnb
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: lever
+    slug: palantir
+    company_name: Palantir
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: mixpanel
+    company_name: Mixpanel
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: amplitude
+    company_name: Amplitude
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: airtable
+    company_name: Airtable
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: miro
+    company_name: Miro
+    industry: enterprise_saas
+    headquarters_country: Netherlands
+    headquarters_country_code: NL
+    primary_region: europe
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: webflow
+    company_name: Webflow
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: zapier
+    company_name: Zapier
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: make
+    company_name: Make (Integromat)
+    industry: enterprise_saas
+    headquarters_country: Czech Republic
+    headquarters_country_code: CZ
+    primary_region: europe
+    tier: 1
+    priority: 7
+
+  - provider: greenhouse
+    slug: ghost
+    company_name: Ghost Foundation
+    industry: enterprise_saas
+    headquarters_country: Singapore
+    headquarters_country_code: SG
+    primary_region: asia_pacific
+    tier: 1
+    priority: 7
+
+  - provider: greenhouse
+    slug: celonis
+    company_name: Celonis
+    industry: enterprise_saas
+    headquarters_country: Germany
+    headquarters_country_code: DE
+    primary_region: europe
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: deepl
+    company_name: DeepL
+    industry: enterprise_saas
+    headquarters_country: Germany
+    headquarters_country_code: DE
+    primary_region: europe
+    tier: 1
+    priority: 9
+
+  - provider: lever
+    slug: spotify
+    company_name: Spotify
+    industry: enterprise_saas
+    headquarters_country: Sweden
+    headquarters_country_code: SE
+    primary_region: europe
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: cultureamp
+    company_name: Culture Amp
+    industry: enterprise_saas
+    headquarters_country: Australia
+    headquarters_country_code: AU
+    primary_region: oceania
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: pushpay
+    company_name: Pushpay
+    industry: enterprise_saas
+    headquarters_country: New Zealand
+    headquarters_country_code: NZ
+    primary_region: oceania
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: timely
+    company_name: Timely
+    industry: enterprise_saas
+    headquarters_country: New Zealand
+    headquarters_country_code: NZ
+    primary_region: oceania
+    tier: 1
+    priority: 7
+
+  - provider: greenhouse
+    slug: touchbistro
+    company_name: TouchBistro
+    industry: enterprise_saas
+    headquarters_country: Canada
+    headquarters_country_code: CA
+    primary_region: canada
+    tier: 1
+    priority: 7
+
+  - provider: greenhouse
+    slug: tulip
+    company_name: Tulip Retail
+    industry: enterprise_saas
+    headquarters_country: Canada
+    headquarters_country_code: CA
+    primary_region: canada
+    tier: 1
+    priority: 7
+
+  - provider: ashby
+    slug: trulioo
+    company_name: Trulioo
+    industry: enterprise_saas
+    headquarters_country: Canada
+    headquarters_country_code: CA
+    primary_region: canada
+    tier: 1
+    priority: 7
+
+  - provider: greenhouse
+    slug: hootsuite
+    company_name: Hootsuite
+    industry: enterprise_saas
+    headquarters_country: Canada
+    headquarters_country_code: CA
+    primary_region: canada
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: synthesia
+    company_name: Synthesia
+    industry: enterprise_saas
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: deliveroo
+    company_name: Deliveroo
+    industry: enterprise_saas
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 8
+
+  - provider: lever
+    slug: farfetch
+    company_name: Farfetch
+    industry: enterprise_saas
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 7
+
+  - provider: greenhouse
+    slug: graphcore
+    company_name: Graphcore
+    industry: enterprise_saas
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 8
+
+  - provider: ashby
+    slug: improbable
+    company_name: Improbable
+    industry: enterprise_saas
+    headquarters_country: United Kingdom
+    headquarters_country_code: GB
+    primary_region: united_kingdom
+    tier: 1
+    priority: 7
+
+  - provider: lever
+    slug: deputy
+    company_name: Deputy
+    industry: enterprise_saas
+    headquarters_country: Australia
+    headquarters_country_code: AU
+    primary_region: oceania
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: remote
+    company_name: Remote.com
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: ashby
+    slug: deel
+    company_name: Deel
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 9
+
+  - provider: greenhouse
+    slug: instacart
+    company_name: Instacart
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: lyft
+    company_name: Lyft
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: greenhouse
+    slug: flexport
+    company_name: Flexport
+    industry: enterprise_saas
+    headquarters_country: United States
+    headquarters_country_code: US
+    primary_region: north_america
+    tier: 1
+    priority: 8
+
+  - provider: lever
+    slug: waabi
+    company_name: Waabi
+    industry: ai_machine_learning
+    headquarters_country: Canada
+    headquarters_country_code: CA
+    primary_region: canada
+    tier: 1
+    priority: 8

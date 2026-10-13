@@ -116,15 +116,31 @@ def _format_job_dict(
         "company_name": job.company_name,
         "url": job.url,
         "apply_url": job.apply_url or job.url,
-        "location": job.location,
+        "location": job.raw_location,
+        "raw_location": job.raw_location,
+        "city": job.city,
+        "state_province": job.state_province,
+        "state_province_code": job.state_province_code,
+        "country": job.country,
+        "country_code": job.country_code,
+        "primary_region": job.primary_region,
+        "workplace_type": job.workplace_type,
+        "remote_scope": job.remote_scope,
+        "remote_type": "Remote"
+        if job.workplace_type == "remote"
+        else ("Hybrid" if job.workplace_type == "hybrid" else "On-site"),
         "salary_range": job.salary_range,
         "raw_description": job.raw_description,
         "ats_requirements": job.ats_requirements or {},
-        "source": job.source,
+        "ats_provider": job.ats_provider,
+        "ats_board_slug": job.ats_board_slug,
+        "source": f"{job.ats_provider}:{job.ats_board_slug}",
         "source_confidence": job.source_confidence,
         "data_origin": job.data_origin,
         "visa_sponsorship": job.visa_sponsorship,
-        "remote_type": job.remote_type,
+        "visa_notes": job.visa_notes,
+        "visa_types": job.visa_types or [],
+        "industry": job.industry,
         "verification": job.verification or {},
         "posted_at": job.posted_at.isoformat() if job.posted_at else None,
         "company_dossier": dossier,
@@ -179,8 +195,20 @@ async def search_and_intel(
                 loc_term = f"%{clean_location}%"
                 stmt = stmt.where(
                     or_(
-                        JobListing.location.ilike(loc_term),
-                        JobListing.location.ilike("%remote%"),
+                        JobListing.raw_location.ilike(loc_term),
+                        JobListing.city.ilike(loc_term),
+                        JobListing.state_province.ilike(loc_term),
+                        JobListing.state_province_code.ilike(loc_term),
+                        JobListing.country.ilike(loc_term),
+                        JobListing.country_code.ilike(loc_term),
+                        JobListing.workplace_type == "remote",
+                    )
+                )
+            elif clean_location.lower() == "remote":
+                stmt = stmt.where(
+                    or_(
+                        JobListing.workplace_type == "remote",
+                        JobListing.raw_location.ilike("%remote%"),
                     )
                 )
 
@@ -316,35 +344,70 @@ async def search_and_intel(
                         else "unknown"
                     )
 
-                    source = job_copy.get("source") or "aggregator_search"
+                    from app.ingestion.taxonomy import (
+                        LocationNormalizer,
+                        VisaSponsorshipParser,
+                    )
+
+                    raw_loc = job_copy.get("location") or "Remote"
+                    loc_info = LocationNormalizer().normalize(raw_loc)
+                    visa_info = VisaSponsorshipParser().parse(
+                        job_copy.get("raw_description", "")
+                    )
+
                     source_id = str(job_copy.get("id") or uuid.uuid4().hex[:16])
+                    clean_comp = job_copy.get("company_name", "Unknown Company")
+
+                    from app.ingestion.service import BoardSyncService
+
+                    sync_service = BoardSyncService(session)
+                    board = await sync_service.get_or_create_board(
+                        "custom", f"agg_{clean_comp.lower()[:20]}"
+                    )
 
                     stmt = select(JobListing).where(
-                        JobListing.source == source,
+                        JobListing.ats_provider == "custom",
+                        JobListing.ats_board_slug == board.slug,
                         JobListing.source_job_id == source_id,
                     )
                     existing_rec = (await session.execute(stmt)).scalar_one_or_none()
 
                     if existing_rec is None:
                         job_record = JobListing(
-                            source=source,
+                            ats_board_id=board.id,
+                            ats_provider="custom",
+                            ats_board_slug=board.slug,
                             source_job_id=source_id,
+                            industry=board.industry or "enterprise_saas",
+                            company_dossier_id=dossier_id,
                             title=job_copy.get("title", "Unknown Role"),
-                            company_name=job_copy.get(
-                                "company_name", "Unknown Company"
-                            ),
+                            company_name=clean_comp,
                             url=job_copy.get("url"),
                             apply_url=job_copy.get("url"),
-                            location=job_copy.get("location", "Remote"),
+                            raw_location=raw_loc,
+                            city=loc_info.city,
+                            state_province=loc_info.state_province,
+                            state_province_code=loc_info.state_province_code,
+                            country=loc_info.country,
+                            country_code=loc_info.country_code,
+                            primary_region=loc_info.primary_region
+                            or board.primary_region,
+                            workplace_type=loc_info.workplace_type.value
+                            if hasattr(loc_info.workplace_type, "value")
+                            else str(loc_info.workplace_type),
+                            remote_scope=loc_info.remote_scope.value
+                            if hasattr(loc_info.remote_scope, "value")
+                            else str(loc_info.remote_scope),
                             salary_range=job_copy.get("salary_range"),
                             raw_description=job_copy.get("raw_description", ""),
                             ats_requirements=job_copy.get("ats_requirements", {}),
-                            company_dossier_id=dossier_id,
                             data_origin=job_copy.get("data_origin", "live"),
                             source_confidence=job_copy.get(
                                 "source_confidence", "medium"
                             ),
-                            visa_sponsorship=visa_status,
+                            visa_sponsorship=visa_info.status or visa_status,
+                            visa_notes=visa_info.notes,
+                            visa_types=visa_info.visa_types,
                             fingerprint=fingerprint,
                             content_hash=content_hash,
                             status="active",
@@ -465,39 +528,69 @@ async def ingest_job_from_url(
 
     now = datetime.now(UTC)
     fingerprint = compute_dedupe_fingerprint(
-        job_dto.company_name, job_dto.title, job_dto.location
+        job_dto.company_name, job_dto.title, job_dto.raw_location
     )
     content_hash = compute_content_hash(job_dto.raw_description)
 
+    modality = (
+        job_dto.workplace_type.value
+        if hasattr(job_dto.workplace_type, "value")
+        else str(job_dto.workplace_type)
+    )
+    scope = (
+        job_dto.remote_scope.value
+        if hasattr(job_dto.remote_scope, "value")
+        else str(job_dto.remote_scope)
+    )
+
     async with get_session_context() as session:
-        # Register board in ats_board table
+        # Register or get board in ats_board table
         discovery = BoardDiscoveryEngine(session)
-        await discovery.register_board_if_not_exists(
+        board = await discovery.register_board_if_not_exists(
             provider=provider,
             slug=slug,
             company_name=job_dto.company_name,
             discovered_via="url_ingest",
         )
+        if not board:
+            from app.ingestion.service import BoardSyncService
+
+            sync_service = BoardSyncService(session)
+            board = await sync_service.get_or_create_board(provider, slug)
+
+        job_industry = board.industry or job_dto.industry or "enterprise_saas"
 
         # Upsert job listing
         stmt = select(JobListing).where(
-            JobListing.source == job_dto.source,
+            JobListing.ats_provider == job_dto.ats_provider,
+            JobListing.ats_board_slug == job_dto.ats_board_slug,
             JobListing.source_job_id == job_dto.source_job_id,
         )
         existing = (await session.execute(stmt)).scalar_one_or_none()
 
         if existing is None:
             job_record = JobListing(
-                source=job_dto.source,
+                ats_board_id=board.id,
+                ats_provider=job_dto.ats_provider,
+                ats_board_slug=job_dto.ats_board_slug,
                 source_job_id=job_dto.source_job_id,
+                industry=job_industry,
+                company_dossier_id=board.company_dossier_id,
                 title=job_dto.title,
-                company_name=job_dto.company_name,
+                company_name=board.company_name or job_dto.company_name,
                 apply_url=job_dto.apply_url,
                 url=job_dto.apply_url,
-                location=job_dto.location,
+                raw_location=job_dto.raw_location,
+                city=job_dto.city,
+                state_province=job_dto.state_province,
+                state_province_code=job_dto.state_province_code,
+                country=job_dto.country,
+                country_code=job_dto.country_code,
+                primary_region=job_dto.primary_region or board.primary_region,
+                workplace_type=modality,
+                remote_scope=scope,
                 salary_range=job_dto.salary_range,
                 raw_description=job_dto.raw_description,
-                remote_type=job_dto.remote_type,
                 posted_at=job_dto.posted_at,
                 first_seen_at=now,
                 last_seen_at=now,
@@ -507,7 +600,9 @@ async def ingest_job_from_url(
                 status="active",
                 data_origin=str(DataOrigin.LIVE),
                 source_confidence=str(SourceConfidence.HIGH),
-                visa_sponsorship=str(reqs.visa_sponsorship),
+                visa_sponsorship=job_dto.visa_sponsorship or str(reqs.visa_sponsorship),
+                visa_notes=job_dto.visa_notes,
+                visa_types=job_dto.visa_types,
                 ats_requirements=reqs.model_dump(),
                 verification={},
             )
@@ -519,7 +614,17 @@ async def ingest_job_from_url(
             job_record.last_fetched_at = now
             job_record.raw_description = job_dto.raw_description
             job_record.ats_requirements = reqs.model_dump()
-            job_record.visa_sponsorship = str(reqs.visa_sponsorship)
+            if job_dto.visa_sponsorship:
+                job_record.visa_sponsorship = job_dto.visa_sponsorship
+            job_record.workplace_type = modality
+            job_record.remote_scope = scope
+            job_record.raw_location = job_dto.raw_location
+            if job_dto.city:
+                job_record.city = job_dto.city
+            if job_dto.state_province_code:
+                job_record.state_province_code = job_dto.state_province_code
+            if job_dto.country_code:
+                job_record.country_code = job_dto.country_code
             job_record.status = "active"
             await session.flush()
 
@@ -566,15 +671,47 @@ async def paste_job_text(
     fingerprint = compute_dedupe_fingerprint(clean_company, clean_title, clean_location)
     content_hash = compute_content_hash(clean_desc)
 
+    from app.ingestion.taxonomy import LocationNormalizer, VisaSponsorshipParser
+
+    loc_norm = LocationNormalizer()
+    loc_info = loc_norm.normalize(clean_location)
+
+    visa_parser = VisaSponsorshipParser()
+    visa_info = visa_parser.parse(clean_desc)
+
     async with get_session_context() as session:
+        # Link to custom/manual ATSBoard
+        from app.ingestion.service import BoardSyncService
+
+        sync_service = BoardSyncService(session)
+        board = await sync_service.get_or_create_board(
+            "custom", f"manual_{clean_company.lower()[:20]}"
+        )
+
         job_record = JobListing(
-            source="manual",
+            ats_board_id=board.id,
+            ats_provider="custom",
+            ats_board_slug=board.slug,
             source_job_id=source_id,
+            industry=board.industry or "enterprise_saas",
+            company_dossier_id=board.company_dossier_id,
             title=clean_title,
             company_name=clean_company,
             url=request.url,
             apply_url=request.url,
-            location=clean_location,
+            raw_location=clean_location,
+            city=loc_info.city,
+            state_province=loc_info.state_province,
+            state_province_code=loc_info.state_province_code,
+            country=loc_info.country,
+            country_code=loc_info.country_code,
+            primary_region=loc_info.primary_region or board.primary_region,
+            workplace_type=loc_info.workplace_type.value
+            if hasattr(loc_info.workplace_type, "value")
+            else str(loc_info.workplace_type),
+            remote_scope=loc_info.remote_scope.value
+            if hasattr(loc_info.remote_scope, "value")
+            else str(loc_info.remote_scope),
             salary_range=request.salary_range,
             raw_description=clean_desc,
             first_seen_at=now,
@@ -585,7 +722,9 @@ async def paste_job_text(
             status="active",
             data_origin=str(DataOrigin.MANUAL),
             source_confidence=str(SourceConfidence.HIGH),
-            visa_sponsorship=str(reqs.visa_sponsorship),
+            visa_sponsorship=visa_info.status or str(reqs.visa_sponsorship),
+            visa_notes=visa_info.notes,
+            visa_types=visa_info.visa_types,
             ats_requirements=reqs.model_dump(),
             verification={},
         )
@@ -624,7 +763,10 @@ async def refresh_company_intel(
         existing = (await session.execute(stmt)).scalar_one_or_none()
 
         if existing and existing.last_fetched_at:
-            time_since_fetch = now - existing.last_fetched_at
+            last_fetched = existing.last_fetched_at
+            if last_fetched.tzinfo is None:
+                last_fetched = last_fetched.replace(tzinfo=UTC)
+            time_since_fetch = now - last_fetched
             if time_since_fetch < timedelta(hours=1):
                 dossier_dict = {
                     "id": str(existing.id),

@@ -4,8 +4,9 @@ Tier-1 ATS client adapters for Greenhouse, Lever, and Ashby public APIs.
 All adapters:
 - Connect directly to official, unauthenticated public endpoints.
 - Require zero API keys.
-- Parse structured responses into DiscoveredJobDTO objects.
+- Parse structured responses into normalized DiscoveredJobDTO objects.
 - Strip HTML tags safely server-side to prevent stored XSS.
+- Integrate LocationNormalizer and VisaSponsorshipParser.
 """
 
 import html
@@ -17,13 +18,16 @@ import httpx
 
 from app.core.http import DEFAULT_TIMEOUT
 from app.ingestion.models import (
-    ATSProvider,
+    ATSProviderEnum,
     DataOrigin,
     DiscoveredJobDTO,
+    RemoteScope,
     SourceConfidence,
+    WorkplaceType,
 )
 from app.ingestion.ports.provider import ATSAdapterPort
 from app.ingestion.security import sanitize_text
+from app.ingestion.taxonomy import LocationNormalizer, VisaSponsorshipParser
 
 logger = logging.getLogger("career_os.ingestion.adapters.ats")
 
@@ -35,13 +39,9 @@ def _clean_html_to_text(raw_html: str) -> str:
     """Safely decode HTML entities and strip HTML markup into clean text."""
     if not raw_html:
         return ""
-    # Unescape HTML entities (&lt;, &amp;, &quot;, etc.)
     unescaped = html.unescape(raw_html)
-    # Replace breaks and paragraphs with newlines
     with_newlines = re.sub(r"<\s*(?:br|p|div|li)[^>]*>", "\n", unescaped, flags=re.I)
-    # Strip remaining HTML tags
     stripped = HTML_TAG_RE.sub(" ", with_newlines)
-    # Collapse excess empty lines and sanitize control characters
     cleaned = re.sub(r"\n\s*\n+", "\n\n", stripped)
     return sanitize_text(cleaned)
 
@@ -59,8 +59,8 @@ class GreenhouseAdapter(ATSAdapterPort):
         self.client = client
 
     @property
-    def provider(self) -> ATSProvider:
-        return ATSProvider.GREENHOUSE
+    def provider(self) -> ATSProviderEnum:
+        return ATSProviderEnum.GREENHOUSE
 
     async def fetch_board_jobs(self, slug: str) -> list[DiscoveredJobDTO]:
         url = f"{self.BASE_URL}/{slug}/jobs?content=true"
@@ -93,16 +93,31 @@ class GreenhouseAdapter(ATSAdapterPort):
                 except ValueError:
                     pass
 
+            loc = LocationNormalizer.normalize(location)
+            visa = VisaSponsorshipParser.parse(description)
+
             jobs.append(
                 DiscoveredJobDTO(
-                    source=f"greenhouse:{slug}",
+                    ats_provider="greenhouse",
+                    ats_board_slug=slug,
                     source_job_id=job_id,
                     title=title,
                     company_name=slug.capitalize(),
                     apply_url=apply_url,
-                    location=sanitize_text(location),
+                    url=apply_url,
+                    raw_location=loc.raw_location,
+                    city=loc.city,
+                    state_province=loc.state_province,
+                    state_province_code=loc.state_province_code,
+                    country=loc.country,
+                    country_code=loc.country_code,
+                    primary_region=loc.primary_region,
+                    workplace_type=WorkplaceType(loc.workplace_type),
+                    remote_scope=RemoteScope(loc.remote_scope),
                     raw_description=description or title,
-                    remote_type="Remote" if "remote" in location.lower() else None,
+                    visa_sponsorship=visa.status,
+                    visa_notes=visa.notes,
+                    visa_types=visa.visa_types,
                     posted_at=posted_at,
                     data_origin=DataOrigin.LIVE,
                     source_confidence=SourceConfidence.HIGH,
@@ -127,16 +142,30 @@ class GreenhouseAdapter(ATSAdapterPort):
             or f"https://boards.greenhouse.io/{slug}/jobs/{job_id}"
         )
         description = _clean_html_to_text(item.get("content", ""))
+        loc = LocationNormalizer.normalize(location)
+        visa = VisaSponsorshipParser.parse(description)
 
         return DiscoveredJobDTO(
-            source=f"greenhouse:{slug}",
+            ats_provider="greenhouse",
+            ats_board_slug=slug,
             source_job_id=job_id,
             title=title,
             company_name=slug.capitalize(),
             apply_url=apply_url,
-            location=sanitize_text(location),
+            url=apply_url,
+            raw_location=loc.raw_location,
+            city=loc.city,
+            state_province=loc.state_province,
+            state_province_code=loc.state_province_code,
+            country=loc.country,
+            country_code=loc.country_code,
+            primary_region=loc.primary_region,
+            workplace_type=WorkplaceType(loc.workplace_type),
+            remote_scope=RemoteScope(loc.remote_scope),
             raw_description=description or title,
-            remote_type="Remote" if "remote" in location.lower() else None,
+            visa_sponsorship=visa.status,
+            visa_notes=visa.notes,
+            visa_types=visa.visa_types,
             posted_at=datetime.now(UTC),
             data_origin=DataOrigin.LIVE,
             source_confidence=SourceConfidence.HIGH,
@@ -157,8 +186,8 @@ class LeverAdapter(ATSAdapterPort):
         self.client = client
 
     @property
-    def provider(self) -> ATSProvider:
-        return ATSProvider.LEVER
+    def provider(self) -> ATSProviderEnum:
+        return ATSProviderEnum.LEVER
 
     async def fetch_board_jobs(self, slug: str) -> list[DiscoveredJobDTO]:
         url = f"{self.BASE_URL}/{slug}?mode=json"
@@ -192,16 +221,31 @@ class LeverAdapter(ATSAdapterPort):
                 except (ValueError, OSError):
                     pass
 
+            loc = LocationNormalizer.normalize(location)
+            visa = VisaSponsorshipParser.parse(description)
+
             jobs.append(
                 DiscoveredJobDTO(
-                    source=f"lever:{slug}",
+                    ats_provider="lever",
+                    ats_board_slug=slug,
                     source_job_id=job_id,
                     title=title,
                     company_name=slug.capitalize(),
                     apply_url=apply_url,
-                    location=sanitize_text(location),
+                    url=apply_url,
+                    raw_location=loc.raw_location,
+                    city=loc.city,
+                    state_province=loc.state_province,
+                    state_province_code=loc.state_province_code,
+                    country=loc.country,
+                    country_code=loc.country_code,
+                    primary_region=loc.primary_region,
+                    workplace_type=WorkplaceType(loc.workplace_type),
+                    remote_scope=RemoteScope(loc.remote_scope),
                     raw_description=description or title,
-                    remote_type="Remote" if "remote" in location.lower() else None,
+                    visa_sponsorship=visa.status,
+                    visa_notes=visa.notes,
+                    visa_types=visa.visa_types,
                     posted_at=posted_at,
                     data_origin=DataOrigin.LIVE,
                     source_confidence=SourceConfidence.HIGH,
@@ -230,16 +274,30 @@ class LeverAdapter(ATSAdapterPort):
         description = sanitize_text(
             item.get("descriptionPlain", "") or item.get("description", "")
         )
+        loc = LocationNormalizer.normalize(location)
+        visa = VisaSponsorshipParser.parse(description)
 
         return DiscoveredJobDTO(
-            source=f"lever:{slug}",
+            ats_provider="lever",
+            ats_board_slug=slug,
             source_job_id=job_id,
             title=title,
             company_name=slug.capitalize(),
             apply_url=apply_url,
-            location=sanitize_text(location),
+            url=apply_url,
+            raw_location=loc.raw_location,
+            city=loc.city,
+            state_province=loc.state_province,
+            state_province_code=loc.state_province_code,
+            country=loc.country,
+            country_code=loc.country_code,
+            primary_region=loc.primary_region,
+            workplace_type=WorkplaceType(loc.workplace_type),
+            remote_scope=RemoteScope(loc.remote_scope),
             raw_description=description or title,
-            remote_type="Remote" if "remote" in location.lower() else None,
+            visa_sponsorship=visa.status,
+            visa_notes=visa.notes,
+            visa_types=visa.visa_types,
             posted_at=datetime.now(UTC),
             data_origin=DataOrigin.LIVE,
             source_confidence=SourceConfidence.HIGH,
@@ -259,8 +317,8 @@ class AshbyAdapter(ATSAdapterPort):
         self.client = client
 
     @property
-    def provider(self) -> ATSProvider:
-        return ATSProvider.ASHBY
+    def provider(self) -> ATSProviderEnum:
+        return ATSProviderEnum.ASHBY
 
     async def fetch_board_jobs(self, slug: str) -> list[DiscoveredJobDTO]:
         url = f"{self.BASE_URL}/{slug}"
@@ -303,18 +361,35 @@ class AshbyAdapter(ATSAdapterPort):
                 except ValueError:
                     pass
 
+            loc = LocationNormalizer.normalize(location)
+            if item.get("isRemote"):
+                loc.workplace_type = "remote"
+                if loc.remote_scope == "none":
+                    loc.remote_scope = "country_wide"
+            visa = VisaSponsorshipParser.parse(description)
+
             jobs.append(
                 DiscoveredJobDTO(
-                    source=f"ashby:{slug}",
+                    ats_provider="ashby",
+                    ats_board_slug=slug,
                     source_job_id=job_id,
                     title=title,
                     company_name=slug.capitalize(),
                     apply_url=apply_url,
-                    location=sanitize_text(location),
+                    url=apply_url,
+                    raw_location=loc.raw_location,
+                    city=loc.city,
+                    state_province=loc.state_province,
+                    state_province_code=loc.state_province_code,
+                    country=loc.country,
+                    country_code=loc.country_code,
+                    primary_region=loc.primary_region,
+                    workplace_type=WorkplaceType(loc.workplace_type),
+                    remote_scope=RemoteScope(loc.remote_scope),
                     raw_description=description or title,
-                    remote_type="Remote"
-                    if item.get("isRemote") or "remote" in location.lower()
-                    else None,
+                    visa_sponsorship=visa.status,
+                    visa_notes=visa.notes,
+                    visa_types=visa.visa_types,
                     posted_at=posted_at,
                     data_origin=DataOrigin.LIVE,
                     source_confidence=SourceConfidence.HIGH,

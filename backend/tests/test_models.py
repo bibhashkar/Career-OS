@@ -22,6 +22,8 @@ def test_table_names_are_singular() -> None:
         "cv_block",
         "feedback_log",
         "application",
+        "ats_provider",
+        "industry_sector",
         "ats_board",
         "ingestion_run",
         "provider_usage",

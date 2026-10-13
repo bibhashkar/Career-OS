@@ -104,12 +104,14 @@ async def test_ingest_url_blocks_ssrf_and_unsupported_urls() -> None:
 async def test_ingest_url_success_with_canonical_ats() -> None:
     """Verify valid ATS job posting URL is ingested and returns 201 Created."""
     mock_dto = DiscoveredJobDTO(
-        source="greenhouse:stripe",
+        ats_provider="greenhouse",
+        ats_board_slug="stripe",
         source_job_id="1234567",
         title="Staff Infrastructure Engineer",
         company_name="Stripe",
         apply_url="https://boards.greenhouse.io/stripe/jobs/1234567",
-        location="Remote",
+        raw_location="Remote",
+        workplace_type="remote",
         salary_range="$220,000 - $260,000",
         raw_description="Python, Kubernetes, and distributed consensus.",
     )

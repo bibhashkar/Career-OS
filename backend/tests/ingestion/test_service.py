@@ -60,21 +60,27 @@ async def test_board_sync_lifecycle_and_closed_job_detection(
     db_session: AsyncSession,
 ) -> None:
     job_101 = DiscoveredJobDTO(
-        source="greenhouse:stripe",
+        ats_provider="greenhouse",
+        ats_board_slug="stripe",
         source_job_id="101",
         title="Senior Backend Engineer",
         company_name="Stripe",
         apply_url="https://boards.greenhouse.io/stripe/jobs/101",
-        location="San Francisco, CA",
+        raw_location="San Francisco, CA",
+        city="San Francisco",
+        state_province_code="CA",
+        country_code="US",
         raw_description="Python distributed systems engineer.",
     )
     job_102 = DiscoveredJobDTO(
-        source="greenhouse:stripe",
+        ats_provider="greenhouse",
+        ats_board_slug="stripe",
         source_job_id="102",
         title="AI Engineer",
         company_name="Stripe",
         apply_url="https://boards.greenhouse.io/stripe/jobs/102",
-        location="Remote",
+        raw_location="Remote",
+        workplace_type="remote",
         raw_description="ML agent workflows.",
     )
 
@@ -90,7 +96,10 @@ async def test_board_sync_lifecycle_and_closed_job_detection(
     assert run1.closed_count == 0
 
     # Verify both jobs are in database and ACTIVE
-    stmt = select(JobListing).where(JobListing.source == "greenhouse:stripe")
+    stmt = select(JobListing).where(
+        JobListing.ats_provider == "greenhouse",
+        JobListing.ats_board_slug == "stripe",
+    )
     listings = (await db_session.execute(stmt)).scalars().all()
     assert len(listings) == 2
     for item in listings:
@@ -107,14 +116,16 @@ async def test_board_sync_lifecycle_and_closed_job_detection(
 
     # Verify job_101 is now marked CLOSED and job_102 remains ACTIVE
     stmt_101 = select(JobListing).where(
-        JobListing.source == "greenhouse:stripe",
+        JobListing.ats_provider == "greenhouse",
+        JobListing.ats_board_slug == "stripe",
         JobListing.source_job_id == "101",
     )
     db_job_101 = (await db_session.execute(stmt_101)).scalar_one()
     assert db_job_101.status == ListingStatus.CLOSED
 
     stmt_102 = select(JobListing).where(
-        JobListing.source == "greenhouse:stripe",
+        JobListing.ats_provider == "greenhouse",
+        JobListing.ats_board_slug == "stripe",
         JobListing.source_job_id == "102",
     )
     db_job_102 = (await db_session.execute(stmt_102)).scalar_one()

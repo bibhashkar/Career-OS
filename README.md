@@ -40,15 +40,19 @@ flowchart TD
         Reflector["Reflector Agent (Prompt Weight Tuning)"]
     end
 
-    subgraph Worker["Background Ingestion Worker"]
-        WRK["Autonomous Task Queue Poller (SKIP LOCKED)"]
-        EXT["Hybrid Requirements Extractor"]
+    subgraph Ingestion["Ingestion Engine & Crawler"]
+        Catalog["Catalog (data/seed_boards.yaml - 150+ Boards)"]
+        CLI["CLI Crawler (scripts/crawl_jobs.py)"]
+        Adapters["ATS Adapters (Greenhouse, Lever, Ashby)"]
+        Normalizer["Location & Visa Taxonomy Normalizers"]
+        Queue["Ingestion Task Queue (SELECT FOR UPDATE SKIP LOCKED)"]
+        Worker["Autonomous Ingestion Worker (worker.py)"]
     end
 
     subgraph Persistence["Storage & Memory Tiers"]
         PGSaver["PostgresSaver (Short-Term Checkpoints)"]
         PGVector["PostgreSQL + pgvector (1536-dim HNSW Vector Store)"]
-        Relational["SQLAlchemy ORM (user_profile, job_listing, dossier)"]
+        Relational["SQLAlchemy ORM (user_profile, job_listing, ats_board, lookups)"]
     end
 
     UI -->|REST with X-Correlation-ID| CORS --> CID --> Auth --> Router
@@ -61,7 +65,12 @@ flowchart TD
     Agents <--> PGVector
     Agents <--> Relational
     Agents -->|OpenInference Spans| OTLP
-    WRK --> EXT -->|Task Spans| OTLP
+
+    Catalog -->|Seed Database| CLI
+    CLI --> Adapters --> Normalizer --> Relational
+    CLI -->|Enqueue Tasks| Queue
+    Queue --> Worker --> Adapters
+    Worker -->|Task Spans| OTLP
     OTLP --> PHX --> VOL
     PHX --> UI_PHX
     API --> Metrics
@@ -367,6 +376,41 @@ curl -X POST http://localhost:8000/api/cv/generate \
 curl -s http://localhost:8000/metrics | grep -E "career_os_agent_runs_total|career_os_http_requests_total"
 ```
 Observe that `career_os_agent_runs_total{graph="pipeline",status="success"}` has incremented.
+
+---
+
+## Scaled Ingestion Engine & CLI Crawler
+
+Career-OS indexes public ATS job boards (Greenhouse, Lever, Ashby) without metered rate limits or API keys. The system uses a declarative seed catalog (`data/seed_boards.yaml`) containing 150+ verified employers across high-growth sectors (`hft_quant_trading`, `fintech`, `ai_ml_infra`, `biotech`, `devtools`, `cybersecurity`) and global hubs (US, Canada, UK, Europe, Australia, New Zealand).
+
+All crawled jobs pass through:
+1. **`LocationNormalizer`**: Extracts granular coordinates (`city`, `state_province`, `country_code`, `primary_region`), separating physical modality (`on_site`, `hybrid`, `remote`) from legal jurisdiction scope (`worldwide_global`, `country_wide`, `state_province`, `none`).
+2. **`VisaSponsorshipParser`**: Classifies multi-jurisdiction visa policies (US H-1B/OPT, UK Skilled Worker, Canada LMIA, Australia Subclass 482, EU Blue Card), storing `NULL` when unmentioned.
+3. **Database Constraints**: Clean foreign-key referential integrity (`ats_provider`, `industry_sector`, `ats_board`) with deduplication keyed on `(ats_provider, ats_slug, provider_job_id)`.
+
+### Crawler CLI Usage (`scripts/crawl_jobs.py`)
+
+```bash
+# 1. Seed the database with the verified 150+ board catalog
+PYTHONPATH=backend python scripts/crawl_jobs.py --seed-db
+
+# 2. View ingestion telemetry across sectors, countries, modalities, and visa policies
+PYTHONPATH=backend python scripts/crawl_jobs.py --stats
+
+# 3. Target specific sectors (e.g. HFT & Quant Trading)
+PYTHONPATH=backend python scripts/crawl_jobs.py --industry hft_quant_trading
+
+# 4. Target specific countries or regions
+PYTHONPATH=backend python scripts/crawl_jobs.py --country Canada
+PYTHONPATH=backend python scripts/crawl_jobs.py --region europe --limit 10
+
+# 5. Targeted single-board crawl
+PYTHONPATH=backend python scripts/crawl_jobs.py --board greenhouse:stripe
+
+# 6. Autonomous due-board crawl (or full crawl)
+PYTHONPATH=backend python scripts/crawl_jobs.py --due
+PYTHONPATH=backend python scripts/crawl_jobs.py --all --limit 50
+```
 
 ---
 
