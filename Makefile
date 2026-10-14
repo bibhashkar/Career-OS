@@ -67,7 +67,7 @@ docker-infra:
 	docker compose up -d postgres phoenix
 
 db-migrate:
-	cd backend && ../$(VENV)/bin/alembic upgrade head
+	$(VENV)/bin/python db/migrate.py
 
 db-shell:
 	docker compose exec postgres psql -U postgres -d career_os

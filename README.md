@@ -177,18 +177,20 @@ make run-frontend   # Starts Vite React dev server on http://localhost:5173
 
 ## Database Migrations, Tracing & Profiling
 
-### 1. Running Database Migrations (Alembic)
-Career-OS manages relational and vector schema versions using Alembic:
+### 1. Running Database Migrations (Pure SQL Runner)
+Career-OS manages relational and vector schema versions using sequential pure SQL scripts (`db/migrations/0001_initial_schema.sql`) and a lightweight tracking runner:
 
 ```bash
-# Apply all pending migrations to the database
+# Apply all pending migrations sequentially to the database
 make db-migrate
+# Or directly:
+python db/migrate.py
 
-# View current database revision
-cd backend && ../.venv/bin/alembic current
+# View current migration status and SHA-256 checksum verification
+python db/migrate.py --status
 
-# View complete migration history
-cd backend && ../.venv/bin/alembic history --verbose
+# Baseline an existing database without re-executing DDL
+python db/migrate.py --baseline
 ```
 
 ### 2. Tracing SQL Queries (`APP_DEBUG`)
