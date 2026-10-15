@@ -25,8 +25,8 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -94,7 +94,7 @@ class ATSBoard(Base, UUIDMixin, TimestampMixin):
         nullable=True,
     )
     company_dossier_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        Uuid(as_uuid=True),
         ForeignKey("company_dossier.id", ondelete="RESTRICT"),
         nullable=True,
     )
@@ -136,7 +136,7 @@ class IngestionRun(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "ingestion_run"
 
     ats_board_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        Uuid(as_uuid=True),
         ForeignKey("ats_board.id", ondelete="RESTRICT"),
         index=True,
         nullable=False,
@@ -223,7 +223,7 @@ class IngestionTask(Base, UUIDMixin, TimestampMixin):
         String(255), unique=True, index=True, nullable=False
     )
     ats_board_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        Uuid(as_uuid=True),
         ForeignKey("ats_board.id", ondelete="RESTRICT"),
         index=True,
         nullable=True,

@@ -94,4 +94,115 @@ export async function exportCV(cvDraft, format = "markdown") {
   return response.data;
 }
 
+/**
+ * Fetch two-stage ranked job matches for a candidate persona.
+ */
+export async function getJobMatches(params = {}) {
+  const response = await apiClient.get("/jobs/matches", { params });
+  return response.data;
+}
+
+/**
+ * Fetch per-job matching diagnostics and dealbreaker chip analysis.
+ */
+export async function getJobDiagnostics(jobId, personaId = null) {
+  const params = personaId ? { persona_id: personaId } : {};
+  const response = await apiClient.get(`/jobs/${jobId}/diagnostics`, { params });
+  return response.data;
+}
+
+/**
+ * Fetch Tier 0 360-degree holistic candidate career audit.
+ */
+export async function getCandidateAudit() {
+  const response = await apiClient.get("/candidates/audit");
+  return response.data;
+}
+
+/**
+ * Fetch all candidate personas (Universal Profile + specialized personas).
+ */
+export async function getCandidatePersonas() {
+  const response = await apiClient.get("/candidates/personas");
+  return response.data;
+}
+
+/**
+ * Set a persona as active default on candidate login.
+ */
+export async function setDefaultPersona(personaId) {
+  const response = await apiClient.put(`/candidates/personas/${personaId}/default`);
+  return response.data;
+}
+
+/**
+ * Create a new specialized candidate persona.
+ */
+export async function createCandidatePersona(payload) {
+  const response = await apiClient.post("/candidates/personas", payload);
+  return response.data;
+}
+
+/**
+ * Parse an uploaded resume (PDF, DOCX, LinkedIn PDF) into staged blocks.
+ */
+export async function parseResumeDocument(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await apiClient.post("/candidates/parse-document", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
+}
+
+/**
+ * Parse pasted resume or LinkedIn text into staged blocks.
+ */
+export async function parseResumeText(text) {
+  const response = await apiClient.post("/candidates/parse-text", { text });
+  return response.data;
+}
+
+/**
+ * Submit verified candidate onboarding data with personas and blocks.
+ */
+export async function onboardCandidate(payload) {
+  const response = await apiClient.post("/candidates/onboard", payload);
+  return response.data;
+}
+
+/**
+ * Fetch macro market skill requirements analyzed across target roles.
+ */
+export async function getPersonaBenchmark(personaId) {
+  const response = await apiClient.get(`/candidates/personas/${personaId}/benchmark`);
+  return response.data;
+}
+
+/**
+ * Fetch candidate master CV blocks.
+ */
+export async function getCVBlocks(category = null) {
+  const params = category ? { category } : {};
+  const response = await apiClient.get("/candidates/blocks", { params });
+  return response.data;
+}
+
+/**
+ * Create a new master CV block.
+ */
+export async function createCVBlock(payload) {
+  const response = await apiClient.post("/candidates/blocks", payload);
+  return response.data;
+}
+
+/**
+ * Delete a master CV block.
+ */
+export async function deleteCVBlock(blockId) {
+  const response = await apiClient.delete(`/candidates/blocks/${blockId}`);
+  return response.data;
+}
+
 export default apiClient;
+

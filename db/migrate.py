@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Career-OS Lightweight Database Migration Runner.
 
@@ -12,7 +11,6 @@ Usage:
 """
 
 import argparse
-import asyncio
 import hashlib
 import logging
 import os
@@ -47,7 +45,7 @@ def get_database_url() -> str:
         from app.core.config import settings
 
         raw_url = settings.DATABASE_URL
-    except Exception:
+    except Exception:  # noqa: BLE001
         raw_url = os.getenv(
             "DATABASE_URL",
             "postgresql+psycopg://postgres:postgres@localhost:5432/career_os",
@@ -187,34 +185,44 @@ def baseline_migrations(conn: psycopg.Connection) -> int:
     return 0
 
 
-def apply_migrations(conn: psycopg.Connection) -> int:
+def apply_migrations(conn: psycopg.Connection, force: bool = False) -> int:
     """Apply all pending migrations inside isolated atomic transactions."""
     ensure_tracking_table(conn)
     applied = get_applied_migrations(conn)
     disk_files = get_migration_files()
 
     # Integrity verification of previously applied migrations
+    reapply_versions: set[str] = set()
     for file_path in disk_files:
         v = file_path.name
         if v in applied:
             current_hash = calculate_checksum(file_path)
             stored_hash = applied[v]["checksum"]
             if current_hash != stored_hash:
-                logger.error(
-                    "Integrity Error: Migration '%s' was already applied, but disk contents changed! "
-                    "Expected %s, found %s.",
-                    v,
-                    stored_hash,
-                    current_hash,
-                )
-                return 1
+                if force:
+                    logger.warning(
+                        "Migration '%s' disk contents changed. Re-applying with updated checksum (--force).",
+                        v,
+                    )
+                    reapply_versions.add(v)
+                else:
+                    logger.error(
+                        "Integrity Error: Migration '%s' was already applied, but disk contents changed! "
+                        "Expected %s, found %s. Use --force to re-apply.",
+                        v,
+                        stored_hash,
+                        current_hash,
+                    )
+                    return 1
 
-    pending = [p for p in disk_files if p.name not in applied]
+    pending = [
+        p for p in disk_files if p.name not in applied or p.name in reapply_versions
+    ]
     if not pending:
         logger.info("Database is up to date. Zero pending migrations.")
         return 0
 
-    logger.info("Discovered %d pending migration(s) to apply.", len(pending))
+    logger.info("Discovered %d pending/modified migration(s) to apply.", len(pending))
     for file_path in pending:
         v = file_path.name
         logger.info("Applying migration: %s...", v)
@@ -223,19 +231,22 @@ def apply_migrations(conn: psycopg.Connection) -> int:
 
         start_time = time.perf_counter()
         try:
-            with conn.transaction():
-                with conn.cursor() as cur:
-                    cur.execute(sql_content)
-                    duration_ms = int((time.perf_counter() - start_time) * 1000)
-                    cur.execute(
-                        """
-                        INSERT INTO schema_migrations (version, checksum, execution_time_ms)
-                        VALUES (%s, %s, %s);
-                        """,
-                        (v, checksum, duration_ms),
-                    )
+            with conn.transaction(), conn.cursor() as cur:
+                cur.execute(sql_content)
+                duration_ms = int((time.perf_counter() - start_time) * 1000)
+                cur.execute(
+                    """
+                    INSERT INTO schema_migrations (version, checksum, execution_time_ms)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (version) DO UPDATE
+                    SET checksum = EXCLUDED.checksum,
+                        execution_time_ms = EXCLUDED.execution_time_ms,
+                        applied_at = NOW();
+                    """,
+                    (v, checksum, duration_ms),
+                )
             logger.info("✅ Applied '%s' successfully in %d ms.", v, duration_ms)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.error(
                 "❌ Migration '%s' failed! Rolling back transaction. Error: %s",
                 v,
@@ -257,6 +268,11 @@ def main() -> int:
         action="store_true",
         help="Mark existing migrations as applied without executing DDL",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force re-apply migrations whose checksums have changed on disk",
+    )
     args = parser.parse_args()
 
     db_url = get_database_url()
@@ -267,11 +283,11 @@ def main() -> int:
             elif args.baseline:
                 return baseline_migrations(conn)
             else:
-                return apply_migrations(conn)
+                return apply_migrations(conn, force=args.force)
     except psycopg.OperationalError as exc:
         logger.error("Could not connect to PostgreSQL database (%s): %s", db_url, exc)
         return 1
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.error("Unexpected error during migration run: %s", exc)
         return 1
 

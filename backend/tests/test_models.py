@@ -5,10 +5,14 @@ import uuid
 from app.models import (
     Application,
     Base,
+    CandidatePersona,
     CompanyDossier,
     CVBlock,
     FeedbackLog,
     JobListing,
+    JobMatchCache,
+    PersonaSkill,
+    UserAccount,
     UserProfile,
 )
 
@@ -29,6 +33,11 @@ def test_table_names_are_singular() -> None:
         "provider_usage",
         "provider_state",
         "ingestion_task",
+        "user_account",
+        "candidate_persona",
+        "persona_skill",
+        "persona_cv_block_rel",
+        "job_match_cache",
     }
     actual_tables = {table.name for table in Base.metadata.tables.values()}
     assert expected_tables == actual_tables
@@ -119,3 +128,64 @@ def test_application_instantiation() -> None:
         status="saved",
     )
     assert app_record.status == "saved"
+
+
+def test_user_account_and_persona_instantiation() -> None:
+    """Verify UserAccount, CandidatePersona, and PersonaSkill models."""
+    account_id = uuid.uuid4()
+    account = UserAccount(
+        id=account_id,
+        email="test@candidate.com",
+        password_hash="hashed_pw_example",
+        full_name="Bob Candidate",
+        visa_status="H-1B",
+        preferred_locations=["New York, NY", "Remote"],
+        remote_preference="Remote",
+    )
+    assert account.email == "test@candidate.com"
+    assert account.visa_status == "H-1B"
+
+    persona_id = uuid.uuid4()
+    persona = CandidatePersona(
+        id=persona_id,
+        user_account_id=account_id,
+        name="Universal Profile",
+        is_common_persona=True,
+        headline="Full-Stack & Systems Engineer",
+        target_roles=["Backend Engineer", "AI Engineer"],
+        seniority_level="senior",
+        is_default=True,
+    )
+    assert persona.is_common_persona is True
+    assert persona.name == "Universal Profile"
+
+    skill = PersonaSkill(
+        persona_id=persona_id,
+        skill_name="Python",
+        category="language",
+        proficiency="expert",
+        years_experience=6,
+        is_core=True,
+    )
+    assert skill.skill_name == "Python"
+    assert skill.proficiency == "expert"
+
+
+def test_job_match_cache_instantiation() -> None:
+    """Verify JobMatchCache stores decomposed scoring factors and diagnostics."""
+    match = JobMatchCache(
+        persona_id=uuid.uuid4(),
+        job_listing_id=uuid.uuid4(),
+        match_score=0.88,
+        hard_gate_pass=True,
+        skill_overlap_score=0.92,
+        semantic_score=0.85,
+        seniority_score=0.80,
+        prestige_booster=0.10,
+        achievement_booster=0.10,
+        missing_skills=["Kafka"],
+        matched_skills=["Python", "FastAPI", "PostgreSQL"],
+    )
+    assert match.match_score == 0.88
+    assert match.hard_gate_pass is True
+    assert "Kafka" in match.missing_skills

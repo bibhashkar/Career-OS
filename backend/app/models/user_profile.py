@@ -15,9 +15,10 @@ Constraint Modeling:
     per project rules across related career blocks, applications, and feedback logs.
 """
 
+import uuid
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, String
+from sqlalchemy import JSON, ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from app.models.application import Application
     from app.models.cv_block import CVBlock
     from app.models.feedback_log import FeedbackLog
+    from app.models.user_account import UserAccount
 
 
 class UserProfile(Base, UUIDMixin, TimestampMixin):
@@ -64,8 +66,18 @@ class UserProfile(Base, UUIDMixin, TimestampMixin):
     target_locations: Mapped[list[str]] = mapped_column(
         JSON, default=list, nullable=False
     )
+    user_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("user_account.id", ondelete="RESTRICT"),
+        index=True,
+        nullable=True,
+    )
 
     # Relationships
+    user_account: Mapped["UserAccount | None"] = relationship(
+        "UserAccount",
+        back_populates="user_profiles",
+    )
     cv_blocks: Mapped[list["CVBlock"]] = relationship(
         "CVBlock",
         back_populates="user_profile",

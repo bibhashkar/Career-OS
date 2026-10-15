@@ -15,8 +15,7 @@ The ``user_profile_id`` foreign key links feedback directly to the candidate ent
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import JSON, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -40,7 +39,7 @@ class FeedbackLog(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "feedback_log"
 
     user_profile_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        Uuid(as_uuid=True),
         ForeignKey("user_profile.id", ondelete="RESTRICT"),
         index=True,
         nullable=True,

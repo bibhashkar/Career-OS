@@ -51,7 +51,10 @@ def test_location_normalizer_australia():
 
 def test_visa_sponsorship_parser_affirmative():
     parser = VisaSponsorshipParser()
-    desc = "We provide full visa sponsorship and relocation support for qualified H-1B holders."
+    desc = (
+        "We provide full visa sponsorship and relocation support "
+        "for qualified H-1B holders."
+    )
     policy = parser.parse(desc)
     assert policy.status == "yes"
     assert "us_h1b" in policy.visa_types
@@ -59,7 +62,10 @@ def test_visa_sponsorship_parser_affirmative():
 
 def test_visa_sponsorship_parser_negative():
     parser = VisaSponsorshipParser()
-    desc = "Must be legally authorized to work in the US without requiring visa sponsorship now or in the future."
+    desc = (
+        "Must be legally authorized to work in the US without requiring "
+        "visa sponsorship now or in the future."
+    )
     policy = parser.parse(desc)
     assert policy.status == "no"
     assert policy.notes is not None

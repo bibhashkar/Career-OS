@@ -23,6 +23,7 @@ import logging
 import time
 from typing import Annotated
 
+import bcrypt
 from fastapi import Depends, HTTPException, Request, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
@@ -62,6 +63,40 @@ def _b64_decode(data_str: str) -> bytes:
     if rem > 0:
         data_str += "=" * (4 - rem)
     return base64.urlsafe_b64decode(data_str)
+
+
+def hash_password(plain_password: str) -> str:
+    """
+    Generate a salted bcrypt hash of a plaintext password.
+
+    Args:
+        plain_password: Cleartext password string.
+
+    Returns:
+        Salted bcrypt hash string.
+    """
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(plain_password.encode("utf-8"), salt).decode("utf-8")
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    Verify whether a plaintext password matches a stored bcrypt hash.
+
+    Args:
+        plain_password: Cleartext password to check.
+        hashed_password: Stored bcrypt hash string.
+
+    Returns:
+        True if passwords match, False otherwise.
+    """
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
+    except Exception:
+        return False
 
 
 def create_access_token(

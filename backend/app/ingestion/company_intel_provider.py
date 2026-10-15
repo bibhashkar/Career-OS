@@ -156,7 +156,8 @@ class ProvenanceCompanyIntelProvider(CompanyIntelProviderPort):
 
         if not tech_stack and norm_name in MOCK_DOSSIERS:
             mock_entry = MOCK_DOSSIERS[norm_name]
-            # Preserve original list order (e.g. Python first) rather than sorting alphabetically
+            # Preserve original list order (e.g. Python first) rather than
+            # sorting alphabetically
             sorted_stack = list(mock_entry.get("tech_stack", []))
             if not news_items and mock_entry.get("recent_news"):
                 news_items = list(mock_entry["recent_news"])

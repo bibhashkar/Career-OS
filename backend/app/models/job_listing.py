@@ -24,8 +24,8 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from app.models.application import Application
     from app.models.company_dossier import CompanyDossier
     from app.models.ingestion import ATSBoard
+    from app.models.user_account import JobMatchCache
 
 
 class JobListing(Base, UUIDMixin, TimestampMixin):
@@ -59,7 +60,7 @@ class JobListing(Base, UUIDMixin, TimestampMixin):
 
     # Relational Foreign Keys
     ats_board_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        Uuid(as_uuid=True),
         ForeignKey("ats_board.id", ondelete="RESTRICT"),
         index=True,
         nullable=False,
@@ -79,7 +80,7 @@ class JobListing(Base, UUIDMixin, TimestampMixin):
         nullable=False,
     )
     company_dossier_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        Uuid(as_uuid=True),
         ForeignKey("company_dossier.id", ondelete="RESTRICT"),
         nullable=True,
     )
@@ -166,5 +167,9 @@ class JobListing(Base, UUIDMixin, TimestampMixin):
     )
     applications: Mapped[list["Application"]] = relationship(
         "Application",
+        back_populates="job_listing",
+    )
+    match_caches: Mapped[list["JobMatchCache"]] = relationship(
+        "JobMatchCache",
         back_populates="job_listing",
     )

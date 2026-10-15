@@ -3,7 +3,7 @@ Deterministic skills, location, and visa sponsorship taxonomy normalizers.
 
 Maps free-text job attributes into strict relational columns:
 - SKILL_TAXONOMY: Technical skill alias mapping
-- LocationNormalizer: Extracts city, state, country, workplace modality, and remote scope
+- LocationNormalizer: Extracts city, state, country, modality, and scope
 - VisaSponsorshipParser: Multi-jurisdiction immigration classifier (US, CA, UK, AU, EU)
 """
 
@@ -158,7 +158,8 @@ class NormalizedLocation:
     country_code: str | None = None
     primary_region: str | None = None
     workplace_type: str = "on_site"  # on_site, hybrid, remote
-    remote_scope: str = "none"  # none, state_province, country_wide, regional_timezone, worldwide_global
+    # none, state_province, country_wide, regional_timezone, worldwide_global
+    remote_scope: str = "none"
 
 
 class LocationNormalizer:
@@ -406,7 +407,8 @@ class VisaSponsorshipParser:
     """Parses immigration and work authorization terms from job descriptions."""
 
     GATE_REGEX: Final[re.Pattern[str]] = re.compile(
-        r"\b(visa|sponsorship|sponsor|h-?1b|opt|cpt|lmia|skilled worker|subclass 482|blue card)\b",
+        r"\b(visa|sponsorship|sponsor|h-?1b|opt|cpt|lmia|"
+        r"skilled worker|subclass 482|blue card)\b",
         re.IGNORECASE,
     )
 
@@ -423,7 +425,8 @@ class VisaSponsorshipParser:
             r"not (?:currently )?eligible for (?:visa )?sponsorship", re.IGNORECASE
         ),
         re.compile(
-            r"must be (?:legally )?authorized to work in (?:the us|canada|the uk) without",
+            r"must be (?:legally )?authorized to work in "
+            r"(?:the us|canada|the uk) without",
             re.IGNORECASE,
         ),
     ]

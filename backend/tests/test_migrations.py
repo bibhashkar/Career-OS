@@ -30,7 +30,7 @@ def test_migration_files_discovery_and_sequence() -> None:
 
 
 def test_initial_schema_file_contents_and_extensions() -> None:
-    """Verify 0001_initial_schema.sql contains required extensions, tables, and seeds."""
+    """Verify initial schema file contains required extensions, tables, and seeds."""
     initial_sql_path = MIGRATIONS_DIR / "0001_initial_schema.sql"
     assert initial_sql_path.exists(), "0001_initial_schema.sql not found"
 

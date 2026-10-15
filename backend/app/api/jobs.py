@@ -17,18 +17,25 @@ import logging
 import sys
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.tools.company_intel import fetch_company_intel
 from app.agents.tools.job_search import search_jobs
-from app.core.auth import CurrentUser
+from app.core.auth import DEFAULT_DEV_USER_ID, CurrentUser
 from app.core.config import settings
-from app.core.database import get_session_context
-from app.ingestion.adapters.ats import AshbyAdapter, GreenhouseAdapter, LeverAdapter
+from app.core.database import get_db, get_session_context
+from app.ingestion.adapters.ats import (
+    AshbyAdapter,
+    GreenhouseAdapter,
+    LeverAdapter,
+    SmartRecruitersAdapter,
+    WorkableAdapter,
+)
 from app.ingestion.company_intel_provider import ProvenanceCompanyIntelProvider
 from app.ingestion.discovery import BoardDiscoveryEngine
 from app.ingestion.extractor import HybridRequirementsExtractor
@@ -42,7 +49,11 @@ from app.ingestion.security import (
 from app.ingestion.service import compute_content_hash, compute_dedupe_fingerprint
 from app.ingestion.verification import JobVerificationService
 from app.models.company_dossier import CompanyDossier
+from app.models.cv_block import CVBlock
 from app.models.job_listing import JobListing
+from app.models.user_account import CandidatePersona, UserAccount
+from app.services.diagnostics import JobDiagnosticReport, generate_job_diagnostic
+from app.services.matching import JobMatchResult, retrieve_and_rank_jobs
 
 logger = logging.getLogger("career_os.jobs")
 
@@ -104,6 +115,17 @@ class RefreshCompanyResponse(BaseModel):
     refreshed: bool
     message: str
     dossier: dict[str, Any]
+
+
+class JobMatchesResponse(BaseModel):
+    """Paginated response containing matched jobs and active persona metadata."""
+
+    persona_id: str
+    persona_name: str
+    total_count: int
+    page: int
+    page_size: int
+    jobs: list[JobMatchResult]
 
 
 def _format_job_dict(
@@ -503,6 +525,8 @@ async def ingest_job_from_url(
         ATSProvider.GREENHOUSE: GreenhouseAdapter(),
         ATSProvider.LEVER: LeverAdapter(),
         ATSProvider.ASHBY: AshbyAdapter(),
+        ATSProvider.WORKABLE: WorkableAdapter(),
+        ATSProvider.SMARTRECRUITERS: SmartRecruitersAdapter(),
     }
     adapter = adapter_map.get(provider)
     if not adapter:
@@ -855,3 +879,177 @@ async def cross_check_job(
         "job_id": job_id,
         "verification": verification_result,
     }
+
+
+def _get_user_uuid(current_user: CurrentUser) -> uuid.UUID:
+    try:
+        return uuid.UUID(current_user.user_id)
+    except ValueError:
+        return uuid.UUID(DEFAULT_DEV_USER_ID)
+
+
+@router.get(
+    "/matches",
+    response_model=JobMatchesResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_job_matches(
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    persona_id: str | None = Query(
+        None, description="Optional target CandidatePersona ID"
+    ),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    modality: str | None = Query(
+        None, description="Filter: remote, hybrid, or on_site"
+    ),
+    visa_filter: bool | None = Query(
+        None, description="Filter for visa sponsoring roles"
+    ),
+    min_score: float = Query(0.0, ge=0.0, le=1.0),
+) -> JobMatchesResponse:
+    """
+    Two-Stage Job Retrieval and Multi-Factor Probability Reranker (ADR-002).
+    """
+    user_uuid = _get_user_uuid(user)
+
+    # 1. Fetch UserAccount
+    acc_stmt = select(UserAccount).where(UserAccount.id == user_uuid)
+    account = (await db.execute(acc_stmt)).scalar_one_or_none()
+    if account is None:
+        account = UserAccount(
+            id=user_uuid,
+            email=user.email or f"user-{str(user_uuid)[:8]}@career-os.local",
+            full_name="Candidate",
+            visa_status="None",
+            remote_preference="Remote",
+            is_active=True,
+        )
+        db.add(account)
+        await db.flush()
+
+    # 2. Resolve Persona (specified or active default / universal)
+    target_persona: CandidatePersona | None = None
+    if persona_id:
+        try:
+            p_uuid = uuid.UUID(persona_id)
+            p_stmt = select(CandidatePersona).where(
+                CandidatePersona.id == p_uuid,
+                CandidatePersona.user_account_id == account.id,
+            )
+            target_persona = (await db.execute(p_stmt)).scalar_one_or_none()
+        except ValueError:
+            target_persona = None
+
+    if target_persona is None:
+        def_stmt = (
+            select(CandidatePersona)
+            .where(CandidatePersona.user_account_id == account.id)
+            .order_by(
+                CandidatePersona.is_default.desc(),
+                CandidatePersona.is_common_persona.desc(),
+            )
+        )
+        target_persona = (await db.execute(def_stmt)).scalars().first()
+
+    if target_persona is None:
+        target_persona = CandidatePersona(
+            id=uuid.uuid4(),
+            user_account_id=account.id,
+            name="Universal Profile",
+            is_common_persona=True,
+            is_default=True,
+            headline=f"{account.full_name} — Universal Profile",
+            target_roles=["Senior Software Engineer"],
+            target_industries=["technology_software"],
+            years_experience=3,
+            seniority_level="mid",
+        )
+        db.add(target_persona)
+        await db.flush()
+
+    # 3. Fetch candidate CV blocks
+    blocks_stmt = select(CVBlock).where(CVBlock.user_account_id == account.id)
+    blocks = list((await db.execute(blocks_stmt)).scalars().all())
+
+    # 4. Execute Two-Stage Retrieval & Reranker
+    ranked_jobs, total_count = await retrieve_and_rank_jobs(
+        db=db,
+        persona=target_persona,
+        account=account,
+        blocks=blocks,
+        page=page,
+        page_size=page_size,
+        modality_filter=modality,
+        visa_filter=visa_filter,
+        min_score=min_score,
+    )
+
+    return JobMatchesResponse(
+        persona_id=str(target_persona.id),
+        persona_name=target_persona.name,
+        total_count=total_count,
+        page=page,
+        page_size=page_size,
+        jobs=ranked_jobs,
+    )
+
+
+@router.get(
+    "/{job_id}/diagnostics",
+    response_model=JobDiagnosticReport,
+    status_code=status.HTTP_200_OK,
+)
+async def get_job_diagnostics(
+    job_id: str,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    persona_id: str | None = Query(None),
+) -> JobDiagnosticReport:
+    """
+    Tier 1: Detailed diagnostic drilldown for a single job opportunity.
+    """
+    try:
+        j_uuid = uuid.UUID(job_id)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job_id UUID format.",
+        ) from err
+
+    user_uuid = _get_user_uuid(user)
+
+    target_persona_id: uuid.UUID
+    if persona_id:
+        try:
+            target_persona_id = uuid.UUID(persona_id)
+        except ValueError as err:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid persona_id UUID format.",
+            ) from err
+    else:
+        def_stmt = (
+            select(CandidatePersona.id)
+            .where(CandidatePersona.user_account_id == user_uuid)
+            .order_by(
+                CandidatePersona.is_default.desc(),
+                CandidatePersona.is_common_persona.desc(),
+            )
+        )
+        p_res = (await db.execute(def_stmt)).scalars().first()
+        if p_res is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No candidate persona found for current user.",
+            )
+        target_persona_id = p_res
+
+    try:
+        return await generate_job_diagnostic(db, target_persona_id, j_uuid)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc

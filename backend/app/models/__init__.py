@@ -22,6 +22,13 @@ from app.models.ingestion import (
     ProviderUsage,
 )
 from app.models.job_listing import JobListing
+from app.models.user_account import (
+    CandidatePersona,
+    JobMatchCache,
+    PersonaCVBlockRel,
+    PersonaSkill,
+    UserAccount,
+)
 from app.models.user_profile import UserProfile
 
 __all__ = [
@@ -29,6 +36,7 @@ __all__ = [
     "ATSProvider",
     "Application",
     "Base",
+    "CandidatePersona",
     "CompanyDossier",
     "CVBlock",
     "FeedbackLog",
@@ -36,7 +44,11 @@ __all__ = [
     "IngestionRun",
     "IngestionTask",
     "JobListing",
+    "JobMatchCache",
+    "PersonaCVBlockRel",
+    "PersonaSkill",
     "ProviderState",
     "ProviderUsage",
+    "UserAccount",
     "UserProfile",
 ]

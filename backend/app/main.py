@@ -24,6 +24,8 @@ from sqlalchemy import text
 
 from app.agents.graph import close_postgres_saver, init_postgres_saver
 from app.api.applications import router as applications_router
+from app.api.auth import router as auth_router
+from app.api.candidates import router as candidates_router
 from app.api.cv import router as cv_router
 from app.api.feedback import router as feedback_router
 from app.api.interview import router as interview_router
@@ -116,6 +118,8 @@ app.add_middleware(
 
 # Mount API routers. Each router is a thin transport adapter — no business
 # logic lives here; routers delegate directly to compiled LangGraph graphs.
+app.include_router(auth_router)
+app.include_router(candidates_router)
 app.include_router(jobs_router)
 app.include_router(cv_router)
 app.include_router(applications_router)

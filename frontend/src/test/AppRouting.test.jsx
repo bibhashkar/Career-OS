@@ -16,7 +16,7 @@ describe("App Routing and Navigation", () => {
       screen.getByText(/Career Intelligence & Hunter/i)
     ).toBeInTheDocument();
     expect(
-      screen.getByPlaceholderText(/Target role or skills/i)
+      screen.getByText(/High-Probability Matches/i)
     ).toBeInTheDocument();
   });
 

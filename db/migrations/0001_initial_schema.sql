@@ -427,3 +427,120 @@ CREATE TABLE IF NOT EXISTS provider_state (
 
 CREATE UNIQUE INDEX IF NOT EXISTS ix_provider_state_provider ON provider_state (provider);
 
+
+-- =============================================================================
+-- SECTION 6: CANDIDATE ACCOUNTS, MULTI-PERSONA MODELING & MATCH CACHE (ADR-001 / ADR-002)
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- Table: user_account
+-- Description: Central authentication identity, work authorization, and master career profile.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_account (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NULL,
+    full_name VARCHAR(255) NOT NULL,
+    visa_status VARCHAR(100) NOT NULL DEFAULT 'None',
+    citizenship_country_code VARCHAR(10) NULL,
+    preferred_locations JSON NOT NULL DEFAULT '[]'::json,
+    remote_preference VARCHAR(50) NOT NULL DEFAULT 'Remote',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ix_user_account_email ON user_account (email);
+CREATE INDEX IF NOT EXISTS ix_user_account_visa_status ON user_account (visa_status);
+
+-- -----------------------------------------------------------------------------
+-- Table: candidate_persona
+-- Description: Multi-persona career tracks (e.g. Universal Profile, AI Engineer, Java Backend).
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS candidate_persona (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_account_id UUID NOT NULL REFERENCES user_account(id) ON DELETE RESTRICT,
+    name VARCHAR(255) NOT NULL,
+    is_common_persona BOOLEAN NOT NULL DEFAULT FALSE,
+    headline VARCHAR(255) NULL,
+    target_roles JSON NOT NULL DEFAULT '[]'::json,
+    target_industries JSON NOT NULL DEFAULT '[]'::json,
+    years_experience INTEGER NOT NULL DEFAULT 0,
+    seniority_level VARCHAR(50) NOT NULL DEFAULT 'mid',
+    min_salary INTEGER NULL,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_candidate_persona_user_account_id ON candidate_persona (user_account_id);
+CREATE INDEX IF NOT EXISTS ix_candidate_persona_is_common ON candidate_persona (is_common_persona);
+
+-- -----------------------------------------------------------------------------
+-- Table: persona_skill
+-- Description: Normalized skills matrix per candidate persona with proficiency tiers.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS persona_skill (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    persona_id UUID NOT NULL REFERENCES candidate_persona(id) ON DELETE RESTRICT,
+    skill_name VARCHAR(100) NOT NULL,
+    category VARCHAR(50) NOT NULL DEFAULT 'tool',
+    proficiency VARCHAR(50) NOT NULL DEFAULT 'intermediate',
+    years_experience INTEGER NOT NULL DEFAULT 1,
+    is_core BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_persona_skill_unique UNIQUE (persona_id, skill_name)
+);
+
+CREATE INDEX IF NOT EXISTS ix_persona_skill_persona_id ON persona_skill (persona_id);
+CREATE INDEX IF NOT EXISTS ix_persona_skill_skill_name ON persona_skill (skill_name);
+
+-- -----------------------------------------------------------------------------
+-- Table: persona_cv_block_rel
+-- Description: Junction table mapping master cv_blocks to specific candidate personas.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS persona_cv_block_rel (
+    persona_id UUID NOT NULL REFERENCES candidate_persona(id) ON DELETE RESTRICT,
+    cv_block_id UUID NOT NULL REFERENCES cv_block(id) ON DELETE RESTRICT,
+    priority_weight FLOAT NOT NULL DEFAULT 1.0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    PRIMARY KEY (persona_id, cv_block_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_persona_cv_block_rel_block ON persona_cv_block_rel (cv_block_id);
+
+-- -----------------------------------------------------------------------------
+-- Table: job_match_cache
+-- Description: Cached multi-factor match probability and diagnostics per persona-job pair.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS job_match_cache (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    persona_id UUID NOT NULL REFERENCES candidate_persona(id) ON DELETE RESTRICT,
+    job_listing_id UUID NOT NULL REFERENCES job_listing(id) ON DELETE RESTRICT,
+    match_score FLOAT NOT NULL DEFAULT 0.0,
+    hard_gate_pass BOOLEAN NOT NULL DEFAULT TRUE,
+    skill_overlap_score FLOAT NOT NULL DEFAULT 0.0,
+    semantic_score FLOAT NOT NULL DEFAULT 0.0,
+    seniority_score FLOAT NOT NULL DEFAULT 0.0,
+    prestige_booster FLOAT NOT NULL DEFAULT 0.0,
+    achievement_booster FLOAT NOT NULL DEFAULT 0.0,
+    missing_skills JSON NOT NULL DEFAULT '[]'::json,
+    matched_skills JSON NOT NULL DEFAULT '[]'::json,
+    evaluated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_persona_job_match UNIQUE (persona_id, job_listing_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_job_match_cache_persona_score ON job_match_cache (persona_id, match_score DESC);
+CREATE INDEX IF NOT EXISTS ix_job_match_cache_job_listing_id ON job_match_cache (job_listing_id);
+
+-- Link user_profile and cv_block to user_account
+ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS user_account_id UUID NULL REFERENCES user_account(id) ON DELETE RESTRICT;
+CREATE INDEX IF NOT EXISTS ix_user_profile_user_account_id ON user_profile (user_account_id);
+
+ALTER TABLE cv_block ADD COLUMN IF NOT EXISTS user_account_id UUID NULL REFERENCES user_account(id) ON DELETE RESTRICT;
+CREATE INDEX IF NOT EXISTS ix_cv_block_user_account_id ON cv_block (user_account_id);
+ALTER TABLE cv_block ALTER COLUMN user_profile_id DROP NOT NULL;
+ALTER TABLE cv_block ALTER COLUMN organization DROP NOT NULL;
+ALTER TABLE cv_block ALTER COLUMN embedding DROP NOT NULL;
+
+

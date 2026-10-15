@@ -1,14 +1,28 @@
-"""Unit tests for authentication, JWT signing, and WebSocket thread protection."""
+from collections.abc import AsyncGenerator
 
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import (
     create_access_token,
     decode_access_token,
+    hash_password,
+    verify_password,
 )
+from app.core.database import get_db
 from app.main import app
+
+
+def test_hash_and_verify_password() -> None:
+    """Verify bcrypt password hashing and verification."""
+    raw_pw = "SuperSecurePassword123!"
+    pw_hash = hash_password(raw_pw)
+    assert pw_hash != raw_pw
+    assert verify_password(raw_pw, pw_hash) is True
+    assert verify_password("WrongPassword123!", pw_hash) is False
 
 
 def test_create_and_decode_access_token() -> None:
@@ -114,3 +128,77 @@ def test_websocket_prevents_thread_hijacking() -> None:
         err = ws_b.receive_json()
         assert err["type"] == "error"
         assert err["title"] == "Unauthorized"
+
+
+@pytest.mark.asyncio
+async def test_auth_register_login_and_me_flow(
+    db_session: AsyncSession,
+) -> None:
+    """Verify registration, login, and profile retrieval endpoints."""
+
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # 1. Register new user
+            reg_payload = {
+                "email": "cand1@example.com",
+                "password": "StrongPassword123!",
+                "full_name": "Candidate One",
+                "visa_status": "H-1B",
+                "citizenship_country_code": "US",
+                "preferred_locations": ["San Francisco, CA"],
+                "remote_preference": "Remote",
+            }
+            reg_resp = await client.post("/api/auth/register", json=reg_payload)
+            assert reg_resp.status_code == 201
+            reg_data = reg_resp.json()
+            assert "access_token" in reg_data
+            assert reg_data["user"]["email"] == "cand1@example.com"
+            assert len(reg_data["user"]["personas"]) == 1
+            assert reg_data["user"]["personas"][0]["is_common_persona"] is True
+            assert reg_data["user"]["personas"][0]["name"] == "Universal Profile"
+
+            token = reg_data["access_token"]
+
+            # 2. Duplicate registration rejected
+            dup_resp = await client.post("/api/auth/register", json=reg_payload)
+            assert dup_resp.status_code == 400
+
+            # 3. Login with credentials
+            login_resp = await client.post(
+                "/api/auth/login",
+                json={
+                    "email": "cand1@example.com",
+                    "password": "StrongPassword123!",
+                },
+            )
+            assert login_resp.status_code == 200
+            login_data = login_resp.json()
+            assert login_data["user"]["full_name"] == "Candidate One"
+
+            # 4. Login with bad password
+            bad_pw_resp = await client.post(
+                "/api/auth/login",
+                json={
+                    "email": "cand1@example.com",
+                    "password": "WrongPassword",
+                },
+            )
+            assert bad_pw_resp.status_code == 401
+
+            # 5. Access /api/auth/me
+            me_resp = await client.get(
+                "/api/auth/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert me_resp.status_code == 200
+            me_data = me_resp.json()
+            assert me_data["email"] == "cand1@example.com"
+            assert len(me_data["personas"]) == 1
+            assert me_data["personas"][0]["is_common_persona"] is True
+    finally:
+        app.dependency_overrides.pop(get_db, None)
