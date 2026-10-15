@@ -41,6 +41,14 @@ ASHBY_URL_PATTERN = re.compile(
     r"^https?://jobs\.ashbyhq\.com/(?P<slug>[a-zA-Z0-9_\-]+)(?:/(?P<job_id>[a-f0-9\-]+))?",
     re.IGNORECASE,
 )
+WORKABLE_URL_PATTERN = re.compile(
+    r"^https?://apply\.workable\.com/(?P<slug>[a-zA-Z0-9_\-]+)(?:/j/(?P<job_id>[a-zA-Z0-9]+))?",
+    re.IGNORECASE,
+)
+SMARTRECRUITERS_URL_PATTERN = re.compile(
+    r"^https?://(?:jobs|careers)\.smartrecruiters\.com/(?P<slug>[a-zA-Z0-9_\-]+)(?:/(?P<job_id>[a-zA-Z0-9_\-]+))?",
+    re.IGNORECASE,
+)
 
 # Prohibited private / link-local / cloud metadata CIDRs
 PROHIBITED_NETWORKS = [
@@ -149,6 +157,24 @@ def parse_ats_url(raw_url: str) -> tuple[ATSProvider, str, str | None] | None:
             ATSProvider.ASHBY,
             ashby_match.group("slug").lower(),
             ashby_match.group("job_id"),
+        )
+
+    # Check Workable
+    workable_match = WORKABLE_URL_PATTERN.match(cleaned_url)
+    if workable_match:
+        return (
+            ATSProvider.WORKABLE,
+            workable_match.group("slug").lower(),
+            workable_match.group("job_id"),
+        )
+
+    # Check SmartRecruiters
+    smart_match = SMARTRECRUITERS_URL_PATTERN.match(cleaned_url)
+    if smart_match:
+        return (
+            ATSProvider.SMARTRECRUITERS,
+            smart_match.group("slug").lower(),
+            smart_match.group("job_id"),
         )
 
     return None

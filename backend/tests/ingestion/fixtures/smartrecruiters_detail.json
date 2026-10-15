@@ -1,0 +1,27 @@
+{
+  "id": "sr-job-001",
+  "name": "Staff Infrastructure Architect",
+  "releasedDate": "2026-10-11T08:30:00.000Z",
+  "company": {
+    "name": "Delivery Hero"
+  },
+  "location": {
+    "city": "Berlin",
+    "region": "Berlin",
+    "country": "de",
+    "remote": false,
+    "hybrid": true,
+    "fullLocation": "Berlin, Germany"
+  },
+  "jobAd": {
+    "sections": {
+      "jobDescription": {
+        "text": "<p>Lead cloud architecture on Kubernetes across European regions. We offer visa sponsorship and relocation support.</p>"
+      },
+      "qualifications": {
+        "text": "<p>Deep expertise in Docker, Terraform, and high availability systems.</p>"
+      }
+    }
+  }
+}
+

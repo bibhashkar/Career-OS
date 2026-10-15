@@ -22,7 +22,6 @@ import asyncio
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import yaml
 from sqlalchemy import func, select
@@ -47,8 +46,7 @@ async def seed_database_catalog(yaml_path: Path) -> None:
         print(f"❌ Seed catalog file not found: {yaml_path}")
         return
 
-    with open(yaml_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+    data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
 
     boards_data = data.get("boards", [])
     if not boards_data:
@@ -246,8 +244,9 @@ async def crawl_selected_boards(
     region: str | None = None,
     due_only: bool = False,
     limit: int | None = None,
+    concurrency: int = 6,
 ) -> None:
-    """Query ATSBoard table with multi-dimensional criteria and execute sync."""
+    """Query ATSBoard table with multi-dimensional criteria and execute sync with bounded concurrency."""
     async with get_session_context() as session:
         stmt = select(ATSBoard).where(ATSBoard.is_active.is_(True))
 
@@ -282,9 +281,17 @@ async def crawl_selected_boards(
         print("⚠️ No matching boards found in database for the given criteria.")
         return
 
-    print(f"\n🌐 Executing sync for {len(boards)} matching career boards...")
-    for b in boards:
-        await crawl_board(b.provider, b.slug, b.company_name)
+    bounded_concurrency = max(1, min(concurrency, 10))
+    print(
+        f"\n🌐 Executing sync for {len(boards)} matching career boards (concurrency={bounded_concurrency})..."
+    )
+    sem = asyncio.Semaphore(bounded_concurrency)
+
+    async def _crawl_with_sem(b: ATSBoard) -> None:
+        async with sem:
+            await crawl_board(b.provider, b.slug, b.company_name)
+
+    await asyncio.gather(*[_crawl_with_sem(b) for b in boards])
 
     await print_statistics()
 
@@ -310,8 +317,8 @@ async def main() -> None:
     )
     parser.add_argument(
         "--provider",
-        choices=["greenhouse", "lever", "ashby"],
-        help="Filter by ATS Provider (greenhouse, lever, ashby)",
+        choices=["greenhouse", "lever", "ashby", "workable", "smartrecruiters"],
+        help="Filter by ATS Provider (greenhouse, lever, ashby, workable, smartrecruiters)",
     )
     parser.add_argument(
         "--slug",
@@ -347,6 +354,12 @@ async def main() -> None:
         type=int,
         default=None,
         help="Maximum number of boards to crawl in this execution batch",
+    )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=6,
+        help="Concurrent boards to crawl in parallel (default: 6, max: 10)",
     )
 
     args = parser.parse_args()
@@ -390,6 +403,7 @@ async def main() -> None:
             region=args.region,
             due_only=args.due,
             limit=args.limit,
+            concurrency=args.concurrency,
         )
         return
 

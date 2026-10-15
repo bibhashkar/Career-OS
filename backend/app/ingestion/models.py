@@ -52,6 +52,7 @@ class ATSProviderEnum(StrEnum):
     LEVER = "lever"
     ASHBY = "ashby"
     WORKABLE = "workable"
+    SMARTRECRUITERS = "smartrecruiters"
     CUSTOM = "custom"
 
 
@@ -86,6 +87,7 @@ class IngestionTaskType(StrEnum):
     INGEST_TEXT = "ingest_text"
     EXTRACT_REQUIREMENTS = "extract_requirements"
     REFRESH_COMPANY = "refresh_company"
+    CROSS_CHECK_JOB = "cross_check_job"
 
 
 class IngestionTaskStatus(StrEnum):

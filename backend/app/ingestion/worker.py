@@ -8,14 +8,41 @@ and executes board synchronization, URL ingestion, and intelligence updates.
 import asyncio
 import logging
 import signal
+import uuid
+from datetime import UTC, datetime
 from typing import Any
+
+from sqlalchemy import select
 
 from app.core.database import get_session_context
 from app.core.logging import set_correlation_id
 from app.core.tracing import flush_tracing, setup_tracing
+from app.ingestion.adapters.ats import (
+    AshbyAdapter,
+    GreenhouseAdapter,
+    LeverAdapter,
+    SmartRecruitersAdapter,
+    WorkableAdapter,
+)
+from app.ingestion.company_intel_provider import ProvenanceCompanyIntelProvider
+from app.ingestion.discovery import BoardDiscoveryEngine
+from app.ingestion.extractor import HybridRequirementsExtractor
 from app.ingestion.ledger import CircuitBreaker, PersistentBudgetLedger
-from app.ingestion.models import IngestionTaskType
+from app.ingestion.models import (
+    ATSProvider,
+    DataOrigin,
+    IngestionTaskType,
+    SourceConfidence,
+)
 from app.ingestion.queue import IngestionQueue
+from app.ingestion.security import parse_ats_url
+from app.ingestion.service import (
+    BoardSyncService,
+    compute_content_hash,
+    compute_dedupe_fingerprint,
+)
+from app.ingestion.verification import JobVerificationService
+from app.models.job_listing import JobListing
 
 logging.basicConfig(
     level=logging.INFO,
@@ -107,8 +134,6 @@ class IngestionWorker:
                     f"Circuit breaker is active for provider '{provider}'"
                 )
 
-            from app.ingestion.service import BoardSyncService
-
             service = BoardSyncService(session)
             run = await service.sync_board(provider, slug)
             if run.status == "failed":
@@ -121,23 +146,6 @@ class IngestionWorker:
             if not url:
                 raise ValueError("INGEST_URL payload missing url")
 
-            from sqlalchemy import select
-
-            from app.ingestion.adapters.ats import (
-                AshbyAdapter,
-                GreenhouseAdapter,
-                LeverAdapter,
-            )
-            from app.ingestion.discovery import BoardDiscoveryEngine
-            from app.ingestion.extractor import HybridRequirementsExtractor
-            from app.ingestion.models import ATSProvider, DataOrigin, SourceConfidence
-            from app.ingestion.security import parse_ats_url
-            from app.ingestion.service import (
-                compute_content_hash,
-                compute_dedupe_fingerprint,
-            )
-            from app.models.job_listing import JobListing
-
             parsed = parse_ats_url(url)
             if not parsed:
                 raise ValueError(f"URL is not a recognized ATS posting URL: {url}")
@@ -149,6 +157,8 @@ class IngestionWorker:
                 ATSProvider.GREENHOUSE: GreenhouseAdapter(),
                 ATSProvider.LEVER: LeverAdapter(),
                 ATSProvider.ASHBY: AshbyAdapter(),
+                ATSProvider.WORKABLE: WorkableAdapter(),
+                ATSProvider.SMARTRECRUITERS: SmartRecruitersAdapter(),
             }
             adapter = adapter_map.get(provider)
             if not adapter:
@@ -167,8 +177,6 @@ class IngestionWorker:
                 discovered_via="url_ingest",
             )
             if not board:
-                from app.ingestion.service import BoardSyncService
-
                 sync_service = BoardSyncService(session)
                 board = await sync_service.get_or_create_board(provider, slug)
 
@@ -187,7 +195,6 @@ class IngestionWorker:
                 JobListing.source_job_id == job_dto.source_job_id,
             )
             existing = (await session.execute(stmt)).scalar_one_or_none()
-            from datetime import UTC, datetime
 
             now = datetime.now(UTC)
             fingerprint = compute_dedupe_fingerprint(
@@ -273,10 +280,6 @@ class IngestionWorker:
             if not company_name:
                 raise ValueError("REFRESH_COMPANY payload missing company_name")
 
-            from app.ingestion.company_intel_provider import (
-                ProvenanceCompanyIntelProvider,
-            )
-
             intel_provider = ProvenanceCompanyIntelProvider(session)
             await intel_provider.fetch_company_intel(
                 company_name=company_name,
@@ -288,10 +291,6 @@ class IngestionWorker:
             job_id_str = payload.get("job_id", "")
             if not job_id_str:
                 raise ValueError("CROSS_CHECK_JOB payload missing job_id")
-
-            import uuid
-
-            from app.ingestion.verification import JobVerificationService
 
             verification_service = JobVerificationService(session)
             await verification_service.verify_job(uuid.UUID(job_id_str), force=True)

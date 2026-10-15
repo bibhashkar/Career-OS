@@ -1,0 +1,22 @@
+{
+  "totalFound": 1,
+  "content": [
+    {
+      "id": "sr-job-001",
+      "name": "Staff Infrastructure Architect",
+      "releasedDate": "2026-10-11T08:30:00.000Z",
+      "location": {
+        "city": "Berlin",
+        "region": "Berlin",
+        "country": "de",
+        "remote": false,
+        "hybrid": true,
+        "fullLocation": "Berlin, Germany"
+      },
+      "industry": {"label": "Internet"},
+      "department": {"label": "Engineering"},
+      "refNumber": "REF1234"
+    }
+  ]
+}
+

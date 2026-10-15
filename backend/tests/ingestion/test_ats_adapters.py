@@ -7,7 +7,13 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app.ingestion.adapters.ats import AshbyAdapter, GreenhouseAdapter, LeverAdapter
+from app.ingestion.adapters.ats import (
+    AshbyAdapter,
+    GreenhouseAdapter,
+    LeverAdapter,
+    SmartRecruitersAdapter,
+    WorkableAdapter,
+)
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -89,3 +95,63 @@ async def test_ashby_adapter_parses_golden_fixture() -> None:
     assert job.workplace_type == "remote"
     assert "<p>" not in job.raw_description
     assert "Architect autonomous systems" in job.raw_description
+
+
+@pytest.mark.asyncio
+async def test_workable_adapter_parses_golden_fixture() -> None:
+    list_content = (FIXTURES_DIR / "workable_jobs.json").read_text()
+    detail_content = (FIXTURES_DIR / "workable_detail.json").read_text()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/jobs/WRK001" in str(request.url):
+            return httpx.Response(200, text=detail_content)
+        return httpx.Response(200, text=list_content)
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(transport=transport)
+
+    adapter = WorkableAdapter(client=client)
+    jobs = await adapter.fetch_board_jobs("techcorp")
+
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.ats_provider == "workable"
+    assert job.ats_board_slug == "techcorp"
+    assert job.source_job_id == "WRK001"
+    assert job.title == "Senior Distributed Systems Engineer"
+    assert job.city == "London"
+    assert job.country_code == "GB"
+    assert job.workplace_type == "hybrid"
+    assert "event processing pipelines using Python and Kafka" in job.raw_description
+    assert "<p>" not in job.raw_description
+    assert job.visa_sponsorship == "yes"
+
+
+@pytest.mark.asyncio
+async def test_smartrecruiters_adapter_parses_golden_fixture() -> None:
+    list_content = (FIXTURES_DIR / "smartrecruiters_jobs.json").read_text()
+    detail_content = (FIXTURES_DIR / "smartrecruiters_detail.json").read_text()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/postings/sr-job-001" in str(request.url):
+            return httpx.Response(200, text=detail_content)
+        return httpx.Response(200, text=list_content)
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(transport=transport)
+
+    adapter = SmartRecruitersAdapter(client=client)
+    jobs = await adapter.fetch_board_jobs("deliveryhero")
+
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.ats_provider == "smartrecruiters"
+    assert job.ats_board_slug == "deliveryhero"
+    assert job.source_job_id == "sr-job-001"
+    assert job.title == "Staff Infrastructure Architect"
+    assert job.city == "Berlin"
+    assert job.country_code == "DE"
+    assert job.workplace_type == "hybrid"
+    assert "cloud architecture on Kubernetes" in job.raw_description
+    assert "<p>" not in job.raw_description
+    assert job.visa_sponsorship == "yes"

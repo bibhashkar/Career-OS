@@ -9,6 +9,7 @@ All adapters:
 - Integrate LocationNormalizer and VisaSponsorshipParser.
 """
 
+import asyncio
 import html
 import logging
 import re
@@ -404,3 +405,517 @@ class AshbyAdapter(ATSAdapterPort):
             if job.source_job_id == job_id:
                 return job
         return None
+
+
+class WorkableAdapter(ATSAdapterPort):
+    """
+    Adapter for Workable Job Board API.
+    Public list endpoint: POST https://apply.workable.com/api/v3/accounts/{slug}/jobs
+    Public detail endpoint: GET https://apply.workable.com/api/v3/accounts/{slug}/jobs/{shortcode}
+    """
+
+    BASE_URL = "https://apply.workable.com/api/v3/accounts"
+
+    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+        self.client = client
+
+    @property
+    def provider(self) -> ATSProviderEnum:
+        return ATSProviderEnum.WORKABLE
+
+    async def fetch_board_jobs(self, slug: str) -> list[DiscoveredJobDTO]:
+        url = f"{self.BASE_URL}/{slug}/jobs"
+        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            try:
+                resp = await client.post(
+                    url,
+                    json={"query": ""},
+                    headers={"User-Agent": "Career-OS Ingestion/2.0"},
+                )
+            except Exception as exc:
+                logger.error("Workable network error for board '%s': %s", slug, exc)
+                return []
+
+            if resp.status_code == 404:
+                logger.warning("Workable board '%s' not found (404)", slug)
+                return []
+            if resp.status_code != 200:
+                logger.error(
+                    "Workable board '%s' returned status %d", slug, resp.status_code
+                )
+                return []
+
+            data = resp.json()
+            raw_jobs = data.get("results", [])
+            if not raw_jobs:
+                return []
+
+            sem = asyncio.Semaphore(5)
+
+            async def _fetch_detail(item: dict) -> DiscoveredJobDTO | None:
+                shortcode = item.get("shortcode") or item.get("id")
+                if not shortcode:
+                    return None
+
+                title = sanitize_text(item.get("title", ""))
+                if not title:
+                    return None
+
+                city = item.get("city")
+                country = item.get("country")
+                country_code = item.get("countryCode")
+                state = item.get("state")
+                raw_loc = (
+                    ", ".join(
+                        [p for p in [city, state, country] if p and str(p).strip()]
+                    )
+                    or "Remote"
+                )
+
+                loc = LocationNormalizer.normalize(raw_loc)
+                if country_code:
+                    loc.country_code = country_code.upper()
+
+                workplace = (item.get("workplace") or "").lower()
+                if workplace == "remote":
+                    loc.workplace_type = "remote"
+                    if loc.remote_scope == "none":
+                        loc.remote_scope = "country_wide"
+                elif workplace == "hybrid":
+                    loc.workplace_type = "hybrid"
+                elif workplace == "on_site":
+                    loc.workplace_type = "on_site"
+
+                # Fetch rich description from detail endpoint
+                detail_url = f"{self.BASE_URL}/{slug}/jobs/{shortcode}"
+                description = title
+                async with sem:
+                    try:
+                        det_resp = await client.get(
+                            detail_url,
+                            headers={"User-Agent": "Career-OS Ingestion/2.0"},
+                        )
+                        if det_resp.status_code == 200:
+                            det_data = det_resp.json()
+                            raw_desc = det_data.get("description", "")
+                            raw_reqs = det_data.get("requirements", "")
+                            combined = f"{raw_desc}\n\n{raw_reqs}".strip()
+                            if combined:
+                                description = _clean_html_to_text(combined)
+                    except Exception as e:
+                        logger.debug(
+                            "Workable detail fetch failed for %s:%s: %s",
+                            slug,
+                            shortcode,
+                            e,
+                        )
+
+                visa = VisaSponsorshipParser.parse(description)
+                apply_url = (
+                    item.get("applicationUrl")
+                    or item.get("url")
+                    or f"https://apply.workable.com/{slug}/j/{shortcode}/"
+                )
+
+                posted_at: datetime | None = None
+                date_str = item.get("published")
+                if date_str:
+                    try:
+                        posted_at = datetime.fromisoformat(
+                            date_str.replace("Z", "+00:00")
+                        )
+                    except ValueError:
+                        pass
+
+                return DiscoveredJobDTO(
+                    ats_provider="workable",
+                    ats_board_slug=slug,
+                    source_job_id=str(shortcode),
+                    title=title,
+                    company_name=slug.capitalize(),
+                    apply_url=apply_url,
+                    url=item.get("url") or apply_url,
+                    raw_location=loc.raw_location,
+                    city=loc.city,
+                    state_province=loc.state_province,
+                    state_province_code=loc.state_province_code,
+                    country=loc.country,
+                    country_code=loc.country_code,
+                    primary_region=loc.primary_region,
+                    workplace_type=WorkplaceType(loc.workplace_type),
+                    remote_scope=RemoteScope(loc.remote_scope),
+                    raw_description=description or title,
+                    visa_sponsorship=visa.status,
+                    visa_notes=visa.notes,
+                    visa_types=visa.visa_types,
+                    posted_at=posted_at,
+                    data_origin=DataOrigin.LIVE,
+                    source_confidence=SourceConfidence.HIGH,
+                    raw_metadata={"workable_shortcode": shortcode},
+                )
+
+            tasks = [_fetch_detail(item) for item in raw_jobs]
+            results = await asyncio.gather(*tasks)
+            return [r for r in results if r is not None]
+
+    async def fetch_job_detail(self, slug: str, job_id: str) -> DiscoveredJobDTO | None:
+        url = f"{self.BASE_URL}/{slug}/jobs/{job_id}"
+        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            try:
+                resp = await client.get(
+                    url,
+                    headers={"User-Agent": "Career-OS Ingestion/2.0"},
+                )
+                if resp.status_code != 200:
+                    return None
+                data = resp.json()
+                title = sanitize_text(data.get("title", ""))
+                if not title:
+                    return None
+
+                raw_desc = data.get("description", "")
+                raw_reqs = data.get("requirements", "")
+                description = (
+                    _clean_html_to_text(f"{raw_desc}\n\n{raw_reqs}".strip()) or title
+                )
+
+                city = data.get("city")
+                country = data.get("country")
+                country_code = data.get("countryCode")
+                state = data.get("state")
+                raw_loc = (
+                    ", ".join(
+                        [p for p in [city, state, country] if p and str(p).strip()]
+                    )
+                    or "Remote"
+                )
+
+                loc = LocationNormalizer.normalize(raw_loc)
+                if country_code:
+                    loc.country_code = country_code.upper()
+
+                workplace = (data.get("workplace") or "").lower()
+                if workplace == "remote":
+                    loc.workplace_type = "remote"
+                    if loc.remote_scope == "none":
+                        loc.remote_scope = "country_wide"
+                elif workplace == "hybrid":
+                    loc.workplace_type = "hybrid"
+                elif workplace == "on_site":
+                    loc.workplace_type = "on_site"
+
+                visa = VisaSponsorshipParser.parse(description)
+                apply_url = (
+                    data.get("applicationUrl")
+                    or data.get("url")
+                    or f"https://apply.workable.com/{slug}/j/{job_id}/"
+                )
+
+                posted_at: datetime | None = None
+                date_str = data.get("published")
+                if date_str:
+                    try:
+                        posted_at = datetime.fromisoformat(
+                            date_str.replace("Z", "+00:00")
+                        )
+                    except ValueError:
+                        pass
+
+                return DiscoveredJobDTO(
+                    ats_provider="workable",
+                    ats_board_slug=slug,
+                    source_job_id=str(job_id),
+                    title=title,
+                    company_name=slug.capitalize(),
+                    apply_url=apply_url,
+                    url=data.get("url") or apply_url,
+                    raw_location=loc.raw_location,
+                    city=loc.city,
+                    state_province=loc.state_province,
+                    state_province_code=loc.state_province_code,
+                    country=loc.country,
+                    country_code=loc.country_code,
+                    primary_region=loc.primary_region,
+                    workplace_type=WorkplaceType(loc.workplace_type),
+                    remote_scope=RemoteScope(loc.remote_scope),
+                    raw_description=description,
+                    visa_sponsorship=visa.status,
+                    visa_notes=visa.notes,
+                    visa_types=visa.visa_types,
+                    posted_at=posted_at,
+                    data_origin=DataOrigin.LIVE,
+                    source_confidence=SourceConfidence.HIGH,
+                    raw_metadata={"workable_shortcode": job_id},
+                )
+            except Exception as exc:
+                logger.error("Workable detail error for %s:%s: %s", slug, job_id, exc)
+                return None
+
+
+class SmartRecruitersAdapter(ATSAdapterPort):
+    """
+    Adapter for SmartRecruiters Job Board API.
+    Public list endpoint: GET https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100
+    Public detail endpoint: GET https://api.smartrecruiters.com/v1/companies/{slug}/postings/{id}
+    """
+
+    BASE_URL = "https://api.smartrecruiters.com/v1/companies"
+
+    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+        self.client = client
+
+    @property
+    def provider(self) -> ATSProviderEnum:
+        return ATSProviderEnum.SMARTRECRUITERS
+
+    async def fetch_board_jobs(self, slug: str) -> list[DiscoveredJobDTO]:
+        url = f"{self.BASE_URL}/{slug}/postings?limit=100"
+        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            try:
+                resp = await client.get(
+                    url,
+                    headers={"User-Agent": "Career-OS Ingestion/2.0"},
+                )
+            except Exception as exc:
+                logger.error(
+                    "SmartRecruiters network error for board '%s': %s", slug, exc
+                )
+                return []
+
+            if resp.status_code == 404:
+                logger.warning("SmartRecruiters board '%s' not found (404)", slug)
+                return []
+            if resp.status_code != 200:
+                logger.error(
+                    "SmartRecruiters board '%s' returned status %d",
+                    slug,
+                    resp.status_code,
+                )
+                return []
+
+            data = resp.json()
+            raw_jobs = data.get("content", [])
+            if not raw_jobs:
+                return []
+
+            sem = asyncio.Semaphore(5)
+
+            async def _fetch_detail(item: dict) -> DiscoveredJobDTO | None:
+                job_id = str(item.get("id", ""))
+                title = sanitize_text(item.get("name", ""))
+                if not job_id or not title:
+                    return None
+
+                loc_data = item.get("location") or {}
+                city = loc_data.get("city")
+                country_code = loc_data.get("country")
+                region_name = loc_data.get("region")
+                raw_loc = (
+                    loc_data.get("fullLocation")
+                    or ", ".join(
+                        [
+                            p
+                            for p in [city, region_name, country_code]
+                            if p and str(p).strip()
+                        ]
+                    )
+                    or "Remote"
+                )
+
+                loc = LocationNormalizer.normalize(raw_loc)
+                if country_code:
+                    loc.country_code = country_code.upper()
+
+                if loc_data.get("remote"):
+                    loc.workplace_type = "remote"
+                    if loc.remote_scope == "none":
+                        loc.remote_scope = "country_wide"
+                elif loc_data.get("hybrid"):
+                    loc.workplace_type = "hybrid"
+
+                company_name = (item.get("company") or {}).get(
+                    "name"
+                ) or slug.capitalize()
+
+                # Fetch rich description from detail endpoint
+                detail_url = f"{self.BASE_URL}/{slug}/postings/{job_id}"
+                description = title
+                apply_url = f"https://jobs.smartrecruiters.com/{slug}/{job_id}"
+
+                async with sem:
+                    try:
+                        det_resp = await client.get(
+                            detail_url,
+                            headers={"User-Agent": "Career-OS Ingestion/2.0"},
+                        )
+                        if det_resp.status_code == 200:
+                            det_data = det_resp.json()
+                            apply_url = (
+                                det_data.get("applyUrl")
+                                or det_data.get("postingUrl")
+                                or apply_url
+                            )
+                            job_ad = det_data.get("jobAd") or {}
+                            sections = job_ad.get("sections") or {}
+                            job_desc = (sections.get("jobDescription") or {}).get(
+                                "text", ""
+                            )
+                            quals = (sections.get("qualifications") or {}).get(
+                                "text", ""
+                            )
+                            combined = f"{job_desc}\n\n{quals}".strip()
+                            if combined:
+                                description = _clean_html_to_text(combined)
+                    except Exception as e:
+                        logger.debug(
+                            "SmartRecruiters detail fetch failed for %s:%s: %s",
+                            slug,
+                            job_id,
+                            e,
+                        )
+
+                visa = VisaSponsorshipParser.parse(description)
+
+                posted_at: datetime | None = None
+                date_str = item.get("releasedDate")
+                if date_str:
+                    try:
+                        posted_at = datetime.fromisoformat(
+                            date_str.replace("Z", "+00:00")
+                        )
+                    except ValueError:
+                        pass
+
+                return DiscoveredJobDTO(
+                    ats_provider="smartrecruiters",
+                    ats_board_slug=slug,
+                    source_job_id=job_id,
+                    title=title,
+                    company_name=company_name,
+                    apply_url=apply_url,
+                    url=apply_url,
+                    raw_location=loc.raw_location,
+                    city=loc.city,
+                    state_province=loc.state_province,
+                    state_province_code=loc.state_province_code,
+                    country=loc.country,
+                    country_code=loc.country_code,
+                    primary_region=loc.primary_region,
+                    workplace_type=WorkplaceType(loc.workplace_type),
+                    remote_scope=RemoteScope(loc.remote_scope),
+                    raw_description=description or title,
+                    visa_sponsorship=visa.status,
+                    visa_notes=visa.notes,
+                    visa_types=visa.visa_types,
+                    posted_at=posted_at,
+                    data_origin=DataOrigin.LIVE,
+                    source_confidence=SourceConfidence.HIGH,
+                    raw_metadata={"smartrecruiters_id": job_id},
+                )
+
+            tasks = [_fetch_detail(item) for item in raw_jobs]
+            results = await asyncio.gather(*tasks)
+            return [r for r in results if r is not None]
+
+    async def fetch_job_detail(self, slug: str, job_id: str) -> DiscoveredJobDTO | None:
+        url = f"{self.BASE_URL}/{slug}/postings/{job_id}"
+        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            try:
+                resp = await client.get(
+                    url,
+                    headers={"User-Agent": "Career-OS Ingestion/2.0"},
+                )
+                if resp.status_code != 200:
+                    return None
+                det_data = resp.json()
+                title = sanitize_text(det_data.get("name", ""))
+                if not title:
+                    return None
+
+                job_ad = det_data.get("jobAd") or {}
+                sections = job_ad.get("sections") or {}
+                job_desc = (sections.get("jobDescription") or {}).get("text", "")
+                quals = (sections.get("qualifications") or {}).get("text", "")
+                description = (
+                    _clean_html_to_text(f"{job_desc}\n\n{quals}".strip()) or title
+                )
+
+                loc_data = det_data.get("location") or {}
+                city = loc_data.get("city")
+                country_code = loc_data.get("country")
+                region_name = loc_data.get("region")
+                raw_loc = (
+                    loc_data.get("fullLocation")
+                    or ", ".join(
+                        [
+                            p
+                            for p in [city, region_name, country_code]
+                            if p and str(p).strip()
+                        ]
+                    )
+                    or "Remote"
+                )
+
+                loc = LocationNormalizer.normalize(raw_loc)
+                if country_code:
+                    loc.country_code = country_code.upper()
+
+                if loc_data.get("remote"):
+                    loc.workplace_type = "remote"
+                    if loc.remote_scope == "none":
+                        loc.remote_scope = "country_wide"
+                elif loc_data.get("hybrid"):
+                    loc.workplace_type = "hybrid"
+
+                company_name = (det_data.get("company") or {}).get(
+                    "name"
+                ) or slug.capitalize()
+                apply_url = (
+                    det_data.get("applyUrl")
+                    or det_data.get("postingUrl")
+                    or f"https://jobs.smartrecruiters.com/{slug}/{job_id}"
+                )
+
+                visa = VisaSponsorshipParser.parse(description)
+
+                posted_at: datetime | None = None
+                date_str = det_data.get("releasedDate")
+                if date_str:
+                    try:
+                        posted_at = datetime.fromisoformat(
+                            date_str.replace("Z", "+00:00")
+                        )
+                    except ValueError:
+                        pass
+
+                return DiscoveredJobDTO(
+                    ats_provider="smartrecruiters",
+                    ats_board_slug=slug,
+                    source_job_id=job_id,
+                    title=title,
+                    company_name=company_name,
+                    apply_url=apply_url,
+                    url=apply_url,
+                    raw_location=loc.raw_location,
+                    city=loc.city,
+                    state_province=loc.state_province,
+                    state_province_code=loc.state_province_code,
+                    country=loc.country,
+                    country_code=loc.country_code,
+                    primary_region=loc.primary_region,
+                    workplace_type=WorkplaceType(loc.workplace_type),
+                    remote_scope=RemoteScope(loc.remote_scope),
+                    raw_description=description,
+                    visa_sponsorship=visa.status,
+                    visa_notes=visa.notes,
+                    visa_types=visa.visa_types,
+                    posted_at=posted_at,
+                    data_origin=DataOrigin.LIVE,
+                    source_confidence=SourceConfidence.HIGH,
+                    raw_metadata={"smartrecruiters_id": job_id},
+                )
+            except Exception as exc:
+                logger.error(
+                    "SmartRecruiters detail error for %s:%s: %s", slug, job_id, exc
+                )
+                return None

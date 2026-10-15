@@ -15,7 +15,13 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ingestion.adapters.ats import AshbyAdapter, GreenhouseAdapter, LeverAdapter
+from app.ingestion.adapters.ats import (
+    AshbyAdapter,
+    GreenhouseAdapter,
+    LeverAdapter,
+    SmartRecruitersAdapter,
+    WorkableAdapter,
+)
 from app.ingestion.models import (
     ATSProviderEnum,
     DiscoveredJobDTO,
@@ -56,6 +62,8 @@ class BoardSyncService:
             ATSProviderEnum.GREENHOUSE.value: GreenhouseAdapter(),
             ATSProviderEnum.LEVER.value: LeverAdapter(),
             ATSProviderEnum.ASHBY.value: AshbyAdapter(),
+            ATSProviderEnum.WORKABLE.value: WorkableAdapter(),
+            ATSProviderEnum.SMARTRECRUITERS.value: SmartRecruitersAdapter(),
         }
 
     def register_adapter(self, provider: str, adapter: ATSAdapterPort) -> None:

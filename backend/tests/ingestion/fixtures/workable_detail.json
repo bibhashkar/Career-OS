@@ -1,0 +1,14 @@
+{
+  "id": "w-job-001",
+  "shortcode": "WRK001",
+  "title": "Senior Distributed Systems Engineer",
+  "description": "<p>Build high-throughput event processing pipelines using Python and Kafka. Visa sponsorship is provided for qualified candidates.</p>",
+  "requirements": "<p>5+ years experience in distributed systems and PostgreSQL.</p>",
+  "city": "London",
+  "country": "United Kingdom",
+  "countryCode": "GB",
+  "state": "Greater London",
+  "workplace": "hybrid",
+  "published": "2026-10-10T12:00:00Z"
+}
+
