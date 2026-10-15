@@ -2,7 +2,7 @@
 Unit and integration tests for Two-Stage Matching Engine & Three-Tier Diagnostics.
 
 Validates:
-  - ADR-002 mathematical scoring models (prestige, achievement, freshness,
+  - ADR-008 mathematical scoring models (prestige, achievement, freshness,
     skill overlap).
   - Bayesian uncertainty gate (missing visa parameters get 0.85 discount, not 0.0).
   - End-to-end two-stage retrieval & ranking pipeline.

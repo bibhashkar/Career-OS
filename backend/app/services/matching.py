@@ -1,7 +1,7 @@
 """
 Two-stage candidate-to-job retrieval, ranking, and probability scoring engine.
 
-This service implements the algorithms documented in ADR-002:
+This service implements the algorithms documented in ADR-008:
   - Stage 1: Deterministic relational SQL pre-filter (<15ms, bounded to 250 jobs).
   - Stage 2: Multi-factor precision reranker calculating Acceptance
     Probability P(Match).
@@ -529,6 +529,10 @@ async def retrieve_and_rank_jobs(
                     JobListing.visa_sponsorship.is_(None),
                     JobListing.visa_sponsorship != "no",
                 )
+            )
+        if modality_filter:
+            fallback_stmt = fallback_stmt.where(
+                JobListing.workplace_type == modality_filter.lower()
             )
         fallback_result = await db.execute(fallback_stmt)
         candidate_jobs = fallback_result.scalars().all()

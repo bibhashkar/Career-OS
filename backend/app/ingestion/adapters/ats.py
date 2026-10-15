@@ -1,5 +1,6 @@
 """
-Tier-1 ATS client adapters for Greenhouse, Lever, and Ashby public APIs.
+Tier-1 ATS client adapters for Greenhouse, Lever, Ashby, Workable,
+and SmartRecruiters public APIs.
 
 All adapters:
 - Connect directly to official, unauthenticated public endpoints.
