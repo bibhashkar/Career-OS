@@ -12,6 +12,63 @@ const apiClient = axios.create({
   },
 });
 
+// Attach Bearer token to outgoing requests if authenticated
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem("career_os_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Clear token on 401 Unauthorized responses
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem("career_os_token");
+    }
+    return Promise.reject(error);
+  }
+);
+
+/**
+ * Register a new candidate user account and provision Universal Persona.
+ */
+export async function register(payload) {
+  const response = await apiClient.post("/auth/register", payload);
+  if (response.data?.access_token) {
+    localStorage.setItem("career_os_token", response.data.access_token);
+  }
+  return response.data;
+}
+
+/**
+ * Authenticate candidate credentials and issue a signed JWT access token.
+ */
+export async function login(email, password) {
+  const response = await apiClient.post("/auth/login", { email, password });
+  if (response.data?.access_token) {
+    localStorage.setItem("career_os_token", response.data.access_token);
+  }
+  return response.data;
+}
+
+/**
+ * Retrieve candidate profile and personas for the current authenticated principal.
+ */
+export async function getCurrentUser() {
+  const response = await apiClient.get("/auth/me");
+  return response.data;
+}
+
+/**
+ * Clear stored authentication token and end session.
+ */
+export function logout() {
+  localStorage.removeItem("career_os_token");
+}
+
 /**
  * Search jobs with location and visa sponsorship filtering.
  */

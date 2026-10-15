@@ -13,6 +13,9 @@ import {
   Award,
   Layers,
   Sparkles,
+  LogIn,
+  LogOut,
+  User,
 } from "lucide-react";
 import { Dashboard } from "./pages/Dashboard";
 import { CVTailorView } from "./pages/CVTailorView";
@@ -20,6 +23,8 @@ import { InterviewSimulator } from "./pages/InterviewSimulator";
 import { CandidateAuditView } from "./pages/CandidateAuditView";
 import { OnboardingWizard } from "./pages/OnboardingWizard";
 import { PersonaSwitcher } from "./components/PersonaSwitcher";
+import { AuthModal } from "./components/AuthModal";
+import { getCurrentUser, logout } from "./services/api";
 
 function InterviewRouteWrapper({ job, onBack }) {
   const { threadId } = useParams();
@@ -35,7 +40,34 @@ function InterviewRouteWrapper({ job, onBack }) {
 export function App() {
   const [selectedJob, setSelectedJob] = useState(null);
   const [activePersona, setActivePersona] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+    const token = localStorage.getItem("career_os_token");
+    if (token) {
+      getCurrentUser()
+        .then((user) => setCurrentUser(user))
+        .catch(() => {
+          logout();
+          setCurrentUser(null);
+        });
+    }
+  }, []);
+
+  const handleAuthSuccess = (user) => {
+    setCurrentUser(user);
+    if (user?.personas?.length > 0) {
+      const defaultP = user.personas.find((p) => p.is_default) || user.personas[0];
+      setActivePersona(defaultP);
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    setCurrentUser(null);
+  };
 
   const handleSelectJobForCV = (job) => {
     setSelectedJob(job);
@@ -135,13 +167,40 @@ export function App() {
             </NavLink>
           </nav>
 
-          {/* Right Controls: Persona Switcher */}
-          <div className="flex items-center gap-3 shrink-0">
+          {/* Right Controls: Persona Switcher and Account */}
+          <div className="flex items-center gap-2.5 shrink-0">
             <PersonaSwitcher
+              key={currentUser?.id || "default"}
               activePersonaId={activePersona?.id}
               onPersonaChange={handlePersonaChange}
               onOpenAudit={() => navigate("/audit")}
             />
+
+            {currentUser ? (
+              <div className="flex items-center gap-2 bg-slate-800/80 border border-slate-700/60 rounded-xl px-2.5 py-1.5 text-xs text-slate-300">
+                <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-sky-400 to-indigo-500 text-white flex items-center justify-center font-bold text-[10px]">
+                  {currentUser.full_name?.charAt(0).toUpperCase() || "U"}
+                </div>
+                <span className="font-medium hidden sm:inline max-w-[110px] truncate">
+                  {currentUser.full_name}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  title="Sign Out"
+                  className="p-1 hover:text-rose-400 text-slate-400 rounded transition-colors ml-0.5 cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs shadow-sm shadow-sky-500/20 transition-all cursor-pointer"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Sign In</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -196,6 +255,12 @@ export function App() {
             element={<OnboardingWizard />}
           />
         </Routes>
+
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          onSuccess={handleAuthSuccess}
+        />
       </main>
 
       {/* Footer */}
