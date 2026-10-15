@@ -910,7 +910,7 @@ async def get_job_matches(
     min_score: float = Query(0.0, ge=0.0, le=1.0),
 ) -> JobMatchesResponse:
     """
-    Two-Stage Job Retrieval and Multi-Factor Probability Reranker (ADR-002).
+    Two-Stage Job Retrieval and Multi-Factor Probability Reranker (ADR-008).
     """
     user_uuid = _get_user_uuid(user)
 
@@ -1021,14 +1021,15 @@ async def get_job_diagnostics(
     user_uuid = _get_user_uuid(user)
 
     target_persona_id: uuid.UUID
-    if persona_id:
+    resolved_persona_id: uuid.UUID | None = None
+    if persona_id and persona_id.strip().lower() != "universal":
         try:
-            target_persona_id = uuid.UUID(persona_id)
-        except ValueError as err:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid persona_id UUID format.",
-            ) from err
+            resolved_persona_id = uuid.UUID(persona_id)
+        except ValueError:
+            resolved_persona_id = None
+
+    if resolved_persona_id:
+        target_persona_id = resolved_persona_id
     else:
         def_stmt = (
             select(CandidatePersona.id)
@@ -1040,11 +1041,36 @@ async def get_job_diagnostics(
         )
         p_res = (await db.execute(def_stmt)).scalars().first()
         if p_res is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No candidate persona found for current user.",
+            acc_stmt = select(UserAccount).where(UserAccount.id == user_uuid)
+            acc = (await db.execute(acc_stmt)).scalar_one_or_none()
+            if acc is None:
+                acc = UserAccount(
+                    id=user_uuid,
+                    email=user.email or f"user-{str(user_uuid)[:8]}@career-os.local",
+                    full_name="Candidate",
+                    visa_status="None",
+                    remote_preference="Remote",
+                    is_active=True,
+                )
+                db.add(acc)
+                await db.flush()
+            new_persona = CandidatePersona(
+                id=uuid.uuid4(),
+                user_account_id=acc.id,
+                name="Universal Profile",
+                is_common_persona=True,
+                is_default=True,
+                headline=f"{acc.full_name} — Universal Profile",
+                target_roles=["Senior Software Engineer"],
+                target_industries=["technology_software"],
+                years_experience=3,
+                seniority_level="mid",
             )
-        target_persona_id = p_res
+            db.add(new_persona)
+            await db.flush()
+            target_persona_id = new_persona.id
+        else:
+            target_persona_id = p_res
 
     try:
         return await generate_job_diagnostic(db, target_persona_id, j_uuid)

@@ -72,7 +72,7 @@ export function Dashboard({
   // Tab Mode: 'matches' (High-Probability Matches) | 'search' (Direct ATS Search)
   const [activeTab, setActiveTab] = useState(defaultTab);
 
-  // --- Matches Tab State (ADR-002 Engine) ---
+  // --- Matches Tab State (ADR-008 Engine) ---
   const [matches, setMatches] = useState([]);
   const [matchesLoading, setMatchesLoading] = useState(false);
   const [matchesError, setMatchesError] = useState(null);
@@ -105,7 +105,7 @@ export function Dashboard({
         page_size: 25,
         min_score: minScoreFilter,
       };
-      if (activePersona?.id) {
+      if (activePersona?.id && activePersona.id !== "universal") {
         params.persona_id = activePersona.id;
       }
       if (modalityFilter) {
@@ -119,7 +119,9 @@ export function Dashboard({
       setMatches(res?.jobs || []);
       setTotalMatches(res?.total_count || 0);
     } catch (err) {
-      console.warn("Failed to fetch job matches:", err);
+      if (err.code !== "ERR_NETWORK") {
+        console.warn("Failed to fetch job matches:", err);
+      }
       setMatchesError(
         err.response?.data?.detail ||
           "Unable to compute candidate job matches. Ensure database has active listings."
@@ -230,7 +232,7 @@ export function Dashboard({
             <Briefcase className="w-8 h-8 text-sky-400" /> Career Intelligence & Hunter
           </h1>
           <p className="text-sm text-slate-400 max-w-2xl">
-            Rank verified career opportunities using our ADR-002 Bayesian matching engine,
+            Rank verified career opportunities using our ADR-008 Bayesian matching engine,
             or search and ingest live ATS boards directly.
           </p>
         </div>
@@ -288,7 +290,7 @@ export function Dashboard({
       </div>
 
       {/* ============================================================== */}
-      {/* TAB 1: HIGH-PROBABILITY MATCHES (ADR-002 RERANKER)              */}
+      {/* TAB 1: HIGH-PROBABILITY MATCHES (ADR-008 RERANKER)              */}
       {/* ============================================================== */}
       {activeTab === "matches" && (
         <div className="space-y-6">
@@ -352,7 +354,7 @@ export function Dashboard({
             <div className="flex flex-col items-center justify-center py-16 space-y-3">
               <Loader2 className="w-8 h-8 text-sky-400 animate-spin" />
               <p className="text-sm text-slate-400">
-                Executing ADR-002 two-stage retrieval & Bayesian reranker...
+                Executing ADR-008 two-stage retrieval & Bayesian reranker...
               </p>
             </div>
           )}

@@ -29,7 +29,17 @@ export function PersonaSwitcher({ activePersonaId, onPersonaChange, onOpenAudit 
       const data = await getCandidatePersonas();
       setPersonas(data || []);
     } catch (err) {
-      console.error("Failed to load candidate personas:", err);
+      if (err.code !== "ERR_NETWORK") {
+        console.warn("Failed to load candidate personas:", err.message || err);
+      }
+      setPersonas([
+        {
+          id: "universal",
+          name: "Universal Profile",
+          is_common_persona: true,
+          is_default: true,
+        },
+      ]);
     } finally {
       setLoading(false);
     }

@@ -30,7 +30,9 @@ export function JobDiagnosticModal({
       try {
         setLoading(true);
         setError(null);
-        const res = await getJobDiagnostics(jobId, personaId);
+        const sanitizedPersonaId =
+          personaId && personaId !== "universal" ? personaId : undefined;
+        const res = await getJobDiagnostics(jobId, sanitizedPersonaId);
         setData(res);
       } catch (err) {
         console.error("Failed to load job diagnostics:", err);
@@ -55,7 +57,7 @@ export function JobDiagnosticModal({
                 Tier 1 Match Diagnostics
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-                ADR-002 Engine
+                ADR-008 Engine
               </span>
             </div>
             <h2 className="text-base font-bold text-white mt-1">

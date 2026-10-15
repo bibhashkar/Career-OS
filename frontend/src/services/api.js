@@ -106,7 +106,8 @@ export async function getJobMatches(params = {}) {
  * Fetch per-job matching diagnostics and dealbreaker chip analysis.
  */
 export async function getJobDiagnostics(jobId, personaId = null) {
-  const params = personaId ? { persona_id: personaId } : {};
+  const params =
+    personaId && personaId !== "universal" ? { persona_id: personaId } : {};
   const response = await apiClient.get(`/jobs/${jobId}/diagnostics`, { params });
   return response.data;
 }
