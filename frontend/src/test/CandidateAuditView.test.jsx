@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CandidateAuditView } from "../pages/CandidateAuditView";
 import * as api from "../services/api";
 
@@ -106,6 +106,8 @@ describe("CandidateAuditView Component", () => {
     const recalcBtn = screen.getByRole("button", { name: /Recalculate Audit/i });
     fireEvent.click(recalcBtn);
 
-    expect(api.getCandidateAudit).toHaveBeenCalledTimes(2);
+    await waitFor(() => {
+      expect(api.getCandidateAudit).toHaveBeenCalledTimes(2);
+    });
   });
 });
