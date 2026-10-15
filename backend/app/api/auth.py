@@ -3,14 +3,14 @@ Authentication and account management REST API endpoints.
 
 This module provides registration, authentication, and session identity endpoints:
   - ``POST /api/auth/register``: Register a candidate user account and provision
-    its initial Universal / Common Persona (ADR-001).
+    its initial Universal / Common Persona (ADR-007).
   - ``POST /api/auth/login``: Authenticate via email & password and issue JWT token.
   - ``GET /api/auth/me``: Return current authenticated candidate profile and personas.
 """
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -178,7 +178,7 @@ async def register_account(
     )
     db.add(account)
 
-    # Automatically provision the Universal / Common Persona (ADR-001)
+    # Automatically provision the Universal / Common Persona (ADR-007)
     universal_persona_id = uuid.uuid4()
     universal_persona = CandidatePersona(
         id=universal_persona_id,
@@ -334,7 +334,7 @@ async def get_current_user_profile(
             preferred_locations=["San Francisco, CA", "Remote"],
             remote_preference="Remote",
             is_active=True,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
             personas=[mock_persona],
         )
 

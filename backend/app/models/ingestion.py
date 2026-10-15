@@ -29,7 +29,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, UUIDMixin
+from app.models.base import Base, TimestampMixin, UUIDMixin, utc_now
 
 if TYPE_CHECKING:
     from app.models.company_dossier import CompanyDossier
@@ -246,7 +246,7 @@ class IngestionTask(Base, UUIDMixin, TimestampMixin):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     scheduled_for: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
+        default=utc_now,
         index=True,
         nullable=False,
     )

@@ -2,7 +2,7 @@
 Pure domain data transfer objects (DTOs) and enums for data ingestion.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -150,7 +150,7 @@ class FieldProvenanceDTO(BaseModel):
     method: str  # "verified" | "inferred" | "unknown"
     source_urls: list[str] = Field(default_factory=list)
     confidence: float = 1.0
-    fetched_at: datetime = Field(default_factory=datetime.utcnow)
+    fetched_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class CompanyDossierDTO(BaseModel):
