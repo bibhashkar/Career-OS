@@ -41,9 +41,9 @@ flowchart TD
     end
 
     subgraph Ingestion["Ingestion Engine & Crawler"]
-        Catalog["Catalog (data/seed_boards.yaml - 150+ Boards)"]
+        Catalog["Catalog (data/seed_boards.yaml - 1,000+ Boards)"]
         CLI["CLI Crawler (scripts/crawl_jobs.py)"]
-        Adapters["ATS Adapters (Greenhouse, Lever, Ashby)"]
+        Adapters["ATS Adapters (Greenhouse, Lever, Ashby, Workable, SmartRecruiters)"]
         Normalizer["Location & Visa Taxonomy Normalizers"]
         Queue["Ingestion Task Queue (SELECT FOR UPDATE SKIP LOCKED)"]
         Worker["Autonomous Ingestion Worker (worker.py)"]
@@ -52,7 +52,7 @@ flowchart TD
     subgraph Persistence["Storage & Memory Tiers"]
         PGSaver["PostgresSaver (Short-Term Checkpoints)"]
         PGVector["PostgreSQL + pgvector (1536-dim HNSW Vector Store)"]
-        Relational["SQLAlchemy ORM (user_profile, job_listing, ats_board, lookups)"]
+        Relational["SQLAlchemy ORM (user_account, candidate_persona, cv_block, job_listing, ats_board)"]
     end
 
     UI -->|REST with X-Correlation-ID| CORS --> CID --> Auth --> Router
@@ -86,7 +86,7 @@ flowchart TD
 | **Operational Telemetry** | **Prometheus Metrics** (`/metrics`) | Real-time monitoring of HTTP request rates, agent execution latencies, database connection pool saturation, and ATS loop exhaustion trips. |
 | **Short-Term Checkpoints** | `langgraph.checkpoint.postgres.AsyncPostgresSaver` | Pausable, resumable multi-turn WebSocket mock interviews keyed on `thread_id` across reconnections and server restarts. |
 | **Semantic Vector Store** | PostgreSQL + `pgvector` with HNSW Index | 1536-dimensional cosine similarity matching of candidate career blocks (`cv_block`) against job requirements. |
-| **Relational Storage** | PostgreSQL + SQLAlchemy 2.0 Async | Long-term entities: `user_profile`, `job_listing`, `company_dossier`, `cv_block`, `feedback_log`, `job_application`. |
+| **Relational Storage** | PostgreSQL + SQLAlchemy 2.0 Async | 18 core entities: `user_account`, `candidate_persona`, `persona_skill`, `persona_cv_block_rel`, `job_match_cache`, `user_profile`, `job_listing`, `company_dossier`, `cv_block`, `feedback_log`, `application`. |
 
 ---
 
@@ -383,7 +383,7 @@ Observe that `career_os_agent_runs_total{graph="pipeline",status="success"}` has
 
 ## Scaled Ingestion Engine & CLI Crawler
 
-Career-OS indexes public ATS job boards (Greenhouse, Lever, Ashby) without metered rate limits or API keys. The system uses a declarative seed catalog (`data/seed_boards.yaml`) containing 150+ verified employers across high-growth sectors (`hft_quant_trading`, `fintech`, `ai_ml_infra`, `biotech`, `devtools`, `cybersecurity`) and global hubs (US, Canada, UK, Europe, Australia, New Zealand).
+Career-OS indexes public ATS job boards (Greenhouse, Lever, Ashby, Workable, SmartRecruiters) without metered rate limits or API keys. The system uses a declarative seed catalog (`data/seed_boards.yaml`) containing 1,000+ verified employers across high-growth sectors (`hft_quant_trading`, `fintech`, `ai_ml_infra`, `biotech`, `devtools`, `cybersecurity`) and global hubs (US, Canada, UK, Europe, Australia, New Zealand).
 
 All crawled jobs pass through:
 1. **`LocationNormalizer`**: Extracts granular coordinates (`city`, `state_province`, `country_code`, `primary_region`), separating physical modality (`on_site`, `hybrid`, `remote`) from legal jurisdiction scope (`worldwide_global`, `country_wide`, `state_province`, `none`).
@@ -393,7 +393,7 @@ All crawled jobs pass through:
 ### Crawler CLI Usage (`scripts/crawl_jobs.py`)
 
 ```bash
-# 1. Seed the database with the verified 150+ board catalog
+# 1. Seed the database with the verified 1,000+ board catalog
 PYTHONPATH=backend python scripts/crawl_jobs.py --seed-db
 
 # 2. View ingestion telemetry across sectors, countries, modalities, and visa policies
@@ -426,7 +426,7 @@ The background ingestion worker (`python -m app.ingestion.worker`) polls the `in
 - `completed`: Successfully processed; job listings ingested and embedded.
 - `failed`: Tripped an exception; inspect `error_message` for details.
 
-### 2. Inspecting Budget Ledgers & Circuit Breakers
+### 2. Inspecting Quota Usage & Circuit Breakers
 To inspect quota usage and upstream circuit breaker health:
 
 ```bash
@@ -434,10 +434,10 @@ make db-shell
 ```
 ```sql
 -- Check daily request usage against external job APIs
-SELECT provider, call_count, max_budget_per_day, last_reset_at FROM ingestion_budget_ledger;
+SELECT provider, call_count, max_budget_per_day, last_reset_at FROM provider_usage;
 
 -- Check circuit breaker status for ATS providers
-SELECT provider, status, failure_count, last_failure_at FROM ingestion_circuit_breaker;
+SELECT provider, status, failure_count, last_failure_at FROM provider_state;
 ```
 
 ---
@@ -480,7 +480,7 @@ All test suites enforce zero external network calls:
 ```bash
 make test
 ```
-The test configuration automatically detects pytest and forces `PHOENIX_ENABLED=false`, guaranteeing all 176+ tests execute 100% offline without attempting OTLP network calls.
+The test configuration automatically detects pytest and forces `PHOENIX_ENABLED=false`, guaranteeing all 248 tests (208 backend + 40 frontend) execute 100% offline without attempting OTLP network calls.
 
 ---
 
@@ -521,7 +521,7 @@ make format
 # Static linting & Type analysis (ruff + mypy)
 make lint
 
-# Run full hermetic test suite (176+ tests, zero network dependencies)
+# Run full hermetic test suite (248 tests: 208 backend + 40 frontend, zero network dependencies)
 make test
 
 # Build frontend production assets
@@ -532,12 +532,15 @@ make build
 
 ## Architecture Decision Records (ADRs)
 
-Detailed architectural rationale and design choices are documented in `doc/adr/`:
-- [ADR-001: pgvector Schema and 1536-Dimensional Semantic Embeddings](doc/adr/ADR-001-pgvector-schema-and-embedding-dimensions.md)
-- [ADR-002: Checkpointer Persistence and Thread Namespacing](doc/adr/ADR-002-checkpointer-persistence-and-thread-namespacing.md)
-- [ADR-003: Agent Graph Decomposition and ATS Loop Guard](doc/adr/ADR-003-agent-graph-decomposition-and-ats-loop-guard.md)
-- [ADR-004: Foreign Key Strict RESTRICT Deletion Policy](doc/adr/ADR-004-foreign-key-strict-restrict-deletion-policy.md)
-- [ADR-005: LLM Provider Abstraction and Google Gemini Integration](doc/adr/ADR-005-llm-provider-abstraction-and-gemini-integration.md)
+Detailed architectural rationale and design choices are documented in [docs/adr/](docs/adr/):
+- [ADR-001: pgvector Schema and 1536-Dimensional Semantic Embeddings](docs/adr/ADR-001-pgvector-schema-and-embedding-dimensions.md)
+- [ADR-002: Checkpointer Persistence and Thread Namespacing](docs/adr/ADR-002-checkpointer-persistence-and-thread-namespacing.md)
+- [ADR-003: Agent Graph Decomposition and ATS Loop Guard](docs/adr/ADR-003-agent-graph-decomposition-and-ats-loop-guard.md)
+- [ADR-004: Foreign Key Strict RESTRICT Deletion Policy](docs/adr/ADR-004-foreign-key-strict-restrict-deletion-policy.md)
+- [ADR-005: LLM Provider Abstraction and Google Gemini Integration](docs/adr/ADR-005-llm-provider-abstraction-and-gemini-integration.md)
+- [ADR-006: Unmetered Direct-to-ATS Data Ingestion Pipeline](docs/adr/ADR-006-unmetered-data-ingestion-pipeline.md)
+- [ADR-007: Candidate Modeling, Multi-Modal Ingestion & Multi-Persona Architecture](docs/adr/ADR-007-candidate-modeling-multi-persona-and-ingestion.md)
+- [ADR-008: High-Probability Job Matching, Two-Stage Retrieval & Fault-Tolerant Ranking](docs/adr/ADR-008-high-probability-job-matching-and-fault-tolerant-ranking.md)
 
 ---
 

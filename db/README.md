@@ -44,14 +44,19 @@ db/
 
 ## 4. Entity-Relationship & Table Overview
 
-Career-OS enforces strict singular table naming and `ON DELETE RESTRICT` foreign keys across all 13 tables:
+Career-OS enforces strict singular table naming and `ON DELETE RESTRICT` foreign keys across all 18 tables:
 
 | Table | Purpose | Key Relationships |
 | :--- | :--- | :--- |
 | `ats_provider` | Root catalog of ATS engines (Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Custom) | Referenced by `ats_board`, `job_listing`, `ingestion_run` |
 | `industry_sector` | Standardized, snake_case industry categories (e.g. `hft_quant_trading`, `fintech`) | Referenced by `ats_board`, `company_dossier`, `job_listing` |
-| `user_profile` | Candidate profile, preferences, target roles | Parent of `cv_block`, `application`, `feedback_log` |
-| `cv_block` | Candidate experience blocks with 1536-dim vector embeddings | Foreign key to `user_profile` |
+| `user_account` | Master candidate authentication identity, legal work authorization (`visa_status`), and citizenship | Parent of `candidate_persona`, `cv_block`, `user_profile` |
+| `candidate_persona` | Targeted career tracks (Universal Profile + specialized tracks e.g. AI Platform, Python Backend) | Foreign key to `user_account`; Parent of `persona_skill`, `persona_cv_block_rel`, `job_match_cache` |
+| `persona_skill` | Normalized skill matrix per persona with proficiency levels and verification sources | Foreign key to `candidate_persona` |
+| `persona_cv_block_rel` | Priority junction table mapping master CV achievement blocks to specific personas | Foreign key to `candidate_persona`, `cv_block` |
+| `job_match_cache` | Persisted two-stage match probability scores, Bayesian gate factors, and chip diagnostics | Foreign key to `candidate_persona`, `job_listing` |
+| `user_profile` | Candidate profile, tone preferences, target roles (agent state bridge) | Foreign key to `user_account`; Parent of `application`, `feedback_log` |
+| `cv_block` | Master candidate experience blocks with 1536-dim vector embeddings and STAR metrics | Foreign key to `user_account`, `user_profile` |
 | `company_dossier` | Researched company tech stacks, recent news, culture, and provenance | Referenced by `ats_board`, `job_listing` |
 | `ats_board` | Tracked career boards with sync schedule and consecutive failure counters | Foreign key to `ats_provider`, `industry_sector`, `company_dossier` |
 | `job_listing` | Ingested jobs with location hierarchy, workplace modality, remote scope, and visa policies | Foreign key to `ats_board`, `ats_provider`, `industry_sector`, `company_dossier` |
