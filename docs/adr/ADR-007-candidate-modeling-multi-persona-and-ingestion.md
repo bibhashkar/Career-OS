@@ -1,4 +1,4 @@
-# ADR-001: Candidate Modeling, Multi-Modal Ingestion & Multi-Persona Architecture
+# ADR-007: Candidate Modeling, Multi-Modal Ingestion & Multi-Persona Architecture
 
 **Date**: 2026-10-15  
 **Status**: Accepted  

@@ -2,8 +2,8 @@
 UserAccount, CandidatePersona, PersonaSkill, PersonaCVBlockRel, and JobMatchCache.
 
 This module implements the multi-persona candidate modeling layer documented in:
-  - ADR-001: Candidate Modeling, Multi-Modal Ingestion & Multi-Persona Architecture
-  - ADR-002: High-Probability Job Matching, Two-Stage Retrieval & Fault-Tolerant Ranking
+  - ADR-007: Candidate Modeling, Multi-Modal Ingestion & Multi-Persona Architecture
+  - ADR-008: High-Probability Job Matching, Two-Stage Retrieval & Fault-Tolerant Ranking
 
 Architecture Overview:
   - ``UserAccount``: Central authentication identity, legal work authorization

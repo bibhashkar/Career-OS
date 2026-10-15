@@ -1,4 +1,4 @@
-# ADR-002: High-Probability Job Matching, Two-Stage Retrieval & Fault-Tolerant Ranking
+# ADR-008: High-Probability Job Matching, Two-Stage Retrieval & Fault-Tolerant Ranking
 
 **Date**: 2026-10-15  
 **Status**: Accepted  

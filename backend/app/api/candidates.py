@@ -1,7 +1,7 @@
 """
 Candidate profile, multi-modal onboarding, multi-persona, and CV block CRUD API.
 
-This router implements candidate profile workflows documented in ADR-001:
+This router implements candidate profile workflows documented in ADR-007:
   - Document parsing endpoint (PDF, DOCX, LinkedIn PDF, text paste) returning
     staged CV blocks and extracted skills for user verification.
   - Interactive onboarding submission saving verified blocks, skills, and personas.

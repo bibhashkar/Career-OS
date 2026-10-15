@@ -1,7 +1,7 @@
 """
 Resume and document parsing engine for multi-modal candidate onboarding.
 
-This module implements candidate document ingestion documented in ADR-001:
+This module implements candidate document ingestion documented in ADR-007:
   - Positional text extraction from PDF via ``pdfplumber`` (prevents column scrambling).
   - Structured text extraction from DOCX via ``python-docx``.
   - Specialized heuristic detector and parser for LinkedIn "Save to PDF" exports.

@@ -201,7 +201,7 @@ export function App() {
       {/* Footer */}
       <footer className="border-t border-slate-800/80 py-4 px-6 text-center text-xs text-slate-500">
         <p>
-          Career-OS • Multi-Persona Candidate Intelligence • Two-Stage Retrieval (ADR-002) • FastAPI + PostgreSQL pgvector
+          Career-OS • Multi-Persona Candidate Intelligence • Two-Stage Retrieval (ADR-008) • FastAPI + PostgreSQL pgvector
         </p>
       </footer>
     </div>
