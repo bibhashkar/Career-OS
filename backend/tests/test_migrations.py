@@ -54,6 +54,11 @@ def test_initial_schema_file_contents_and_extensions() -> None:
         "ingestion_task",
         "provider_usage",
         "provider_state",
+        "user_account",
+        "candidate_persona",
+        "persona_skill",
+        "persona_cv_block_rel",
+        "job_match_cache",
     ]
     for table in expected_tables:
         assert f"CREATE TABLE IF NOT EXISTS {table}" in content, (

@@ -129,6 +129,11 @@ CREATE TABLE IF NOT EXISTS user_profile (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email VARCHAR(255) NOT NULL,
     full_name VARCHAR(255) NOT NULL,
+    visa_status VARCHAR(100) NOT NULL DEFAULT 'None',
+    remote_preference VARCHAR(50) NOT NULL DEFAULT 'Remote',
+    tone_directives JSON NOT NULL DEFAULT '{}'::json,
+    target_roles JSON NOT NULL DEFAULT '[]'::json,
+    target_locations JSON NOT NULL DEFAULT '[]'::json,
     headline VARCHAR(255) NULL,
     target_role VARCHAR(255) NULL,
     target_location VARCHAR(255) NULL,
@@ -429,7 +434,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ix_provider_state_provider ON provider_state (
 
 
 -- =============================================================================
--- SECTION 6: CANDIDATE ACCOUNTS, MULTI-PERSONA MODELING & MATCH CACHE (ADR-001 / ADR-002)
+-- SECTION 6: CANDIDATE ACCOUNTS, MULTI-PERSONA MODELING & MATCH CACHE (ADR-007 / ADR-008)
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -534,6 +539,11 @@ CREATE INDEX IF NOT EXISTS ix_job_match_cache_persona_score ON job_match_cache (
 CREATE INDEX IF NOT EXISTS ix_job_match_cache_job_listing_id ON job_match_cache (job_listing_id);
 
 -- Link user_profile and cv_block to user_account
+ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS visa_status VARCHAR(100) NOT NULL DEFAULT 'None';
+ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS remote_preference VARCHAR(50) NOT NULL DEFAULT 'Remote';
+ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS tone_directives JSON NOT NULL DEFAULT '{}'::json;
+ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS target_roles JSON NOT NULL DEFAULT '[]'::json;
+ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS target_locations JSON NOT NULL DEFAULT '[]'::json;
 ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS user_account_id UUID NULL REFERENCES user_account(id) ON DELETE RESTRICT;
 CREATE INDEX IF NOT EXISTS ix_user_profile_user_account_id ON user_profile (user_account_id);
 

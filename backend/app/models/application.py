@@ -12,7 +12,7 @@ Tracks the progress of a candidate's applications across canonical stages:
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, ForeignKey, String, Text, Uuid
+from sqlalchemy import JSON, ForeignKey, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -35,6 +35,13 @@ class Application(Base, UUIDMixin, TimestampMixin):
     """
 
     __tablename__ = "application"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_profile_id",
+            "job_listing_id",
+            name="uq_application_user_job",
+        ),
+    )
 
     user_profile_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
