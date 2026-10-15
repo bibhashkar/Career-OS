@@ -287,14 +287,25 @@ def calculate_freshness_score(
 def calculate_skill_overlap(
     candidate_skills: set[str],
     job_skills: list[str],
+    candidate_skills_lower: set[str] | None = None,
 ) -> tuple[float, list[str], list[str], list[dict[str, str]]]:
     """
     Calculate normalized skill overlap and discover cross-technology matches.
 
+    Args:
+        candidate_skills: Set of raw candidate skills.
+        job_skills: List of required job skills.
+        candidate_skills_lower: Optional pre-computed lowercased candidate skill set
+            to eliminate redundant set allocations in tight evaluation loops.
+
     Returns:
         (overlap_ratio, matched_skills, missing_skills, phrasing_equivalents)
     """
-    cand_lower = {s.strip().lower() for s in candidate_skills if s.strip()}
+    cand_lower = (
+        candidate_skills_lower
+        if candidate_skills_lower is not None
+        else {s.strip().lower() for s in candidate_skills if s.strip()}
+    )
     job_lower = [s.strip().lower() for s in job_skills if s.strip()]
 
     if not job_lower:
@@ -546,6 +557,7 @@ async def retrieve_and_rank_jobs(
     organizations = [b.organization for b in blocks if b.organization]
     prestige_score = calculate_prestige_score(organizations)
     achievement_score = calculate_achievement_score(blocks)
+    candidate_skills_lower = {s.strip().lower() for s in persona_skills if s.strip()}
 
     for job in candidate_jobs:
         reqs = job.ats_requirements or {}
@@ -560,7 +572,9 @@ async def retrieve_and_rank_jobs(
 
         # 1. Skill Overlap & Hidden Equivalence Discovery
         s_skills, matched_s, missing_s, equivs = calculate_skill_overlap(
-            persona_skills, job_skills
+            persona_skills,
+            job_skills,
+            candidate_skills_lower=candidate_skills_lower,
         )
 
         # 2. Seniority Calibration

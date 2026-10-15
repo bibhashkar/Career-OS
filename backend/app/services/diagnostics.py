@@ -387,6 +387,7 @@ async def generate_job_diagnostic(
         raise ValueError("Candidate persona or job listing not found.")
 
     persona_skills = {s.skill_name for s in (persona.skills or [])}
+    persona_skills_lower = {s.strip().lower() for s in persona_skills if s.strip()}
     reqs = job.ats_requirements or {}
     job_skills = reqs.get("hard_skills", [])
     if not job_skills:
@@ -398,7 +399,9 @@ async def generate_job_diagnostic(
 
     # Calculate skill overlap and phrasing equivalents
     _, matched_s, missing_s, equivs = calculate_skill_overlap(
-        persona_skills, job_skills
+        persona_skills,
+        job_skills,
+        candidate_skills_lower=persona_skills_lower,
     )
 
     # Check cached match evaluation if available

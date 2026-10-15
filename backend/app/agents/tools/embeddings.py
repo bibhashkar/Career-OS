@@ -97,9 +97,33 @@ def generate_deterministic_embedding(text: str, dim: int = 1536) -> list[float]:
     return [round(v / norm, 6) for v in accum]
 
 
+_EMBEDDING_CACHE_MAX_SIZE = 1024
+_EMBEDDING_CACHE: dict[str, list[float]] = {}
+
+
+def _embedding_cache_key(text: str) -> str:
+    """Generate deterministic SHA-256 hash digest for caching embedding vectors."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def get_cached_embedding(text: str) -> list[float] | None:
+    """Retrieve cached 1536-dim embedding vector if present."""
+    return _EMBEDDING_CACHE.get(_embedding_cache_key(text))
+
+
+def set_cached_embedding(text: str, vec: list[float]) -> None:
+    """Store 1536-dim embedding vector in bounded LRU memory cache."""
+    if len(_EMBEDDING_CACHE) >= _EMBEDDING_CACHE_MAX_SIZE:
+        oldest_key = next(iter(_EMBEDDING_CACHE))
+        _EMBEDDING_CACHE.pop(oldest_key, None)
+    _EMBEDDING_CACHE[_embedding_cache_key(text)] = vec
+
+
 async def embed_text(text: str) -> list[float]:
     """
     Embed a single text string into a 1536-dimensional vector.
+
+    Checks memory cache first to eliminate redundant API latency and token cost.
 
     Args:
         text: Input text to embed.
@@ -107,9 +131,15 @@ async def embed_text(text: str) -> list[float]:
     Returns:
         List of 1536 float values.
     """
+    cached = get_cached_embedding(text)
+    if cached is not None:
+        return cached
+
     is_testing = "PYTEST_CURRENT_TEST" in os.environ or settings.APP_ENV == "test"
     if is_testing or not settings.GEMINI_API_KEY:
-        return generate_deterministic_embedding(text, dim=1536)
+        vec = generate_deterministic_embedding(text, dim=1536)
+        set_cached_embedding(text, vec)
+        return vec
 
     try:
         embeddings_client = GoogleGenerativeAIEmbeddings(  # type: ignore[call-arg]
@@ -121,18 +151,24 @@ async def embed_text(text: str) -> list[float]:
         if len(raw_vec) < 1536:
             raw_vec = (raw_vec + [0.0] * (1536 - len(raw_vec)))[:1536]
         norm = math.sqrt(sum(x * x for x in raw_vec)) or 1.0
-        return [round(x / norm, 6) for x in raw_vec[:1536]]
+        vec = [round(x / norm, 6) for x in raw_vec[:1536]]
+        set_cached_embedding(text, vec)
+        return vec
     except Exception as exc:
         logger.warning(
             f"Google Gemini embeddings API call failed; "
             f"falling back to deterministic embedding: {exc}"
         )
-        return generate_deterministic_embedding(text, dim=1536)
+        vec = generate_deterministic_embedding(text, dim=1536)
+        set_cached_embedding(text, vec)
+        return vec
 
 
 async def embed_texts(texts: Sequence[str]) -> list[list[float]]:
     """
     Embed multiple text strings into a list of 1536-dimensional vectors.
+
+    Leverages in-memory cache and batches uncached items in a single API roundtrip.
 
     Args:
         texts: Sequence of strings to embed.
@@ -140,7 +176,45 @@ async def embed_texts(texts: Sequence[str]) -> list[list[float]]:
     Returns:
         List of 1536-dim float vectors.
     """
-    return [await embed_text(t) for t in texts]
+    results: list[list[float] | None] = [get_cached_embedding(t) for t in texts]
+    missing_indices = [i for i, v in enumerate(results) if v is None]
+
+    if not missing_indices:
+        return [v for v in results if v is not None]
+
+    is_testing = "PYTEST_CURRENT_TEST" in os.environ or settings.APP_ENV == "test"
+    if is_testing or not settings.GEMINI_API_KEY:
+        for idx in missing_indices:
+            v = generate_deterministic_embedding(texts[idx], dim=1536)
+            set_cached_embedding(texts[idx], v)
+            results[idx] = v
+        return [v for v in results if v is not None]
+
+    uncached_texts = [texts[idx] for idx in missing_indices]
+    try:
+        embeddings_client = GoogleGenerativeAIEmbeddings(  # type: ignore[call-arg]
+            model="models/text-embedding-004",
+            google_api_key=settings.GEMINI_API_KEY,
+        )
+        batch_vecs = await embeddings_client.aembed_documents(uncached_texts)
+        for idx, raw_vec in zip(missing_indices, batch_vecs, strict=False):
+            if len(raw_vec) < 1536:
+                raw_vec = (raw_vec + [0.0] * (1536 - len(raw_vec)))[:1536]
+            norm = math.sqrt(sum(x * x for x in raw_vec)) or 1.0
+            processed = [round(x / norm, 6) for x in raw_vec[:1536]]
+            set_cached_embedding(texts[idx], processed)
+            results[idx] = processed
+    except Exception as exc:
+        logger.warning(
+            f"Batch Gemini embeddings API call failed; "
+            f"falling back to deterministic: {exc}"
+        )
+        for idx in missing_indices:
+            v = generate_deterministic_embedding(texts[idx], dim=1536)
+            set_cached_embedding(texts[idx], v)
+            results[idx] = v
+
+    return [v for v in results if v is not None]
 
 
 async def chunk_cv_text(raw_text: str) -> list[dict[str, Any]]:

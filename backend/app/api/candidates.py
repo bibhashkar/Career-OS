@@ -19,7 +19,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.agents.tools.embeddings import embed_text
+from app.agents.tools.embeddings import embed_text, embed_texts
 from app.core.auth import DEFAULT_DEV_USER_ID, CurrentUser
 from app.core.database import get_db
 from app.ingestion.resume_parser import (
@@ -302,10 +302,12 @@ async def commit_onboarding(
         user_prof.target_roles = req.target_roles
         user_prof.target_locations = account.preferred_locations
 
-    # 4. Ingest CV blocks with vector embeddings
+    # 4. Ingest CV blocks with vector embeddings in batch
     saved_blocks: list[CVBlock] = []
-    for b in req.blocks:
-        embedding = await embed_text(b.content)
+    block_contents = [b.content for b in req.blocks]
+    block_embeddings = await embed_texts(block_contents) if block_contents else []
+
+    for b, embedding in zip(req.blocks, block_embeddings, strict=False):
         block = CVBlock(
             id=uuid.uuid4(),
             user_account_id=account.id,
