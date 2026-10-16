@@ -202,6 +202,22 @@ export async function createCandidatePersona(payload) {
 }
 
 /**
+ * Update or rename a candidate persona.
+ */
+export async function updateCandidatePersona(personaId, payload) {
+  const response = await apiClient.put(`/candidates/personas/${personaId}`, payload);
+  return response.data;
+}
+
+/**
+ * Delete a specialized candidate persona.
+ */
+export async function deleteCandidatePersona(personaId) {
+  const response = await apiClient.delete(`/candidates/personas/${personaId}`);
+  return response.data;
+}
+
+/**
  * Parse an uploaded resume (PDF, DOCX, LinkedIn PDF) into staged blocks.
  */
 export async function parseResumeDocument(file) {

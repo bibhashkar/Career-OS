@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
-import { ChevronDown, Globe, Sparkles, Plus, Award, Check } from "lucide-react";
+import { ChevronDown, Globe, Sparkles, Layers, Award, Check } from "lucide-react";
 import { getCandidatePersonas, setDefaultPersona } from "../services/api";
 
-export function PersonaSwitcher({ activePersonaId, onPersonaChange, onOpenAudit }) {
+export function PersonaSwitcher({
+  activePersonaId,
+  onPersonaChange,
+  onOpenAudit,
+  onManagePersonas,
+}) {
   const [personas, setPersonas] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
   const dropdownRef = useRef(null);
 
   useEffect(() => {
@@ -25,7 +29,6 @@ export function PersonaSwitcher({ activePersonaId, onPersonaChange, onOpenAudit 
 
   async function loadPersonas() {
     try {
-      setLoading(true);
       const data = await getCandidatePersonas();
       setPersonas(data || []);
     } catch (err) {
@@ -40,8 +43,6 @@ export function PersonaSwitcher({ activePersonaId, onPersonaChange, onOpenAudit 
           is_default: true,
         },
       ]);
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -150,17 +151,23 @@ export function PersonaSwitcher({ activePersonaId, onPersonaChange, onOpenAudit 
                   setIsOpen(false);
                   onOpenAudit();
                 }}
-                className="flex items-center gap-1.5 text-slate-400 hover:text-sky-400 font-medium px-2 py-1 rounded-lg transition-colors"
+                className="flex items-center gap-1.5 text-slate-400 hover:text-sky-400 font-medium px-2 py-1 rounded-lg transition-colors cursor-pointer"
               >
                 <Award className="w-3.5 h-3.5" /> 360° Audit
               </button>
             )}
-            <a
-              href="/onboarding"
-              className="flex items-center gap-1 text-sky-400 hover:text-sky-300 font-semibold px-2 py-1 rounded-lg transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> New Persona
-            </a>
+            {onManagePersonas && (
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  onManagePersonas();
+                }}
+                data-testid="manage-personas-trigger-btn"
+                className="flex items-center gap-1.5 text-sky-400 hover:text-sky-300 font-semibold px-2 py-1 rounded-lg transition-colors cursor-pointer"
+              >
+                <Layers className="w-3.5 h-3.5" /> Manage Personas
+              </button>
+            )}
           </div>
         </div>
       )}

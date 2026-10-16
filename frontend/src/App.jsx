@@ -12,10 +12,8 @@ import {
   MessageSquare,
   Award,
   Layers,
-  Sparkles,
   LogIn,
   LogOut,
-  User,
 } from "lucide-react";
 import { Dashboard } from "./pages/Dashboard";
 import { CVTailorView } from "./pages/CVTailorView";
@@ -23,6 +21,7 @@ import { InterviewSimulator } from "./pages/InterviewSimulator";
 import { CandidateAuditView } from "./pages/CandidateAuditView";
 import { OnboardingWizard } from "./pages/OnboardingWizard";
 import { PersonaSwitcher } from "./components/PersonaSwitcher";
+import { PersonaManagementModal } from "./components/PersonaManagementModal";
 import { AuthModal } from "./components/AuthModal";
 import { getCurrentUser, logout } from "./services/api";
 
@@ -42,6 +41,7 @@ export function App() {
   const [activePersona, setActivePersona] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isPersonaModalOpen, setIsPersonaModalOpen] = useState(false);
   const navigate = useNavigate();
 
   React.useEffect(() => {
@@ -174,6 +174,7 @@ export function App() {
               activePersonaId={activePersona?.id}
               onPersonaChange={handlePersonaChange}
               onOpenAudit={() => navigate("/audit")}
+              onManagePersonas={() => setIsPersonaModalOpen(true)}
             />
 
             {currentUser ? (
@@ -260,6 +261,24 @@ export function App() {
           isOpen={isAuthModalOpen}
           onClose={() => setIsAuthModalOpen(false)}
           onSuccess={handleAuthSuccess}
+        />
+
+        <PersonaManagementModal
+          isOpen={isPersonaModalOpen}
+          onClose={() => setIsPersonaModalOpen(false)}
+          activePersonaId={activePersona?.id}
+          onPersonaSelect={(persona) => {
+            setActivePersona(persona);
+          }}
+          onPersonasChanged={(personas) => {
+            if (
+              personas.length > 0 &&
+              (!activePersona || !personas.some((p) => p.id === activePersona.id))
+            ) {
+              const def = personas.find((p) => p.is_default) || personas[0];
+              setActivePersona(def);
+            }
+          }}
         />
       </main>
 
