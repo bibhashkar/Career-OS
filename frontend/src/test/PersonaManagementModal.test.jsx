@@ -237,4 +237,81 @@ describe("PersonaManagementModal Component", () => {
       );
     });
   });
+
+  it("hides persona list and footer actions when editing, and returns to list via bottom-left back button", async () => {
+    render(
+      <PersonaManagementModal
+        isOpen={true}
+        onClose={vi.fn()}
+        activePersonaId="p-universal"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("edit-persona-btn-p-specialized-1")).toBeInTheDocument();
+      expect(screen.getByTestId("persona-list")).toBeInTheDocument();
+      expect(screen.getByTestId("add-persona-btn")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+    });
+
+    // Enter edit mode
+    fireEvent.click(screen.getByTestId("edit-persona-btn-p-specialized-1"));
+
+    // In edit mode: edit form is shown, persona list is HIDDEN, and Add/Done footer buttons are REMOVED
+    expect(screen.getByTestId("edit-persona-form")).toBeInTheDocument();
+    expect(screen.queryByTestId("persona-list")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("add-persona-btn")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument();
+
+    // Bottom-left Back to Persona List button is rendered
+    const backBtn = screen.getByTestId("back-to-persona-list-btn");
+    expect(backBtn).toBeInTheDocument();
+    expect(backBtn).toHaveTextContent("Back to Persona List");
+
+    // Click Back to Persona List
+    fireEvent.click(backBtn);
+
+    // Edit form unmounted and Persona list restored
+    expect(screen.queryByTestId("edit-persona-form")).not.toBeInTheDocument();
+    expect(screen.getByTestId("persona-list")).toBeInTheDocument();
+    expect(screen.getByTestId("add-persona-btn")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+  });
+
+  it("hides persona list and footer actions when creating, and returns to list via bottom-left back button", async () => {
+    render(
+      <PersonaManagementModal
+        isOpen={true}
+        onClose={vi.fn()}
+        activePersonaId="p-universal"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("persona-list")).toBeInTheDocument();
+    });
+
+    // Enter create mode
+    fireEvent.click(screen.getByTestId("add-persona-btn"));
+
+    // In create mode: create form is shown, persona list is HIDDEN, and Add/Done footer buttons are REMOVED
+    expect(screen.getByTestId("create-persona-form")).toBeInTheDocument();
+    expect(screen.queryByTestId("persona-list")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("add-persona-btn")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument();
+
+    // Bottom-left Back to Persona List button is rendered
+    const backBtn = screen.getByTestId("back-to-persona-list-btn");
+    expect(backBtn).toBeInTheDocument();
+    expect(backBtn).toHaveTextContent("Back to Persona List");
+
+    // Click Back to Persona List
+    fireEvent.click(backBtn);
+
+    // Create form unmounted and Persona list restored
+    expect(screen.queryByTestId("create-persona-form")).not.toBeInTheDocument();
+    expect(screen.getByTestId("persona-list")).toBeInTheDocument();
+    expect(screen.getByTestId("add-persona-btn")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+  });
 });

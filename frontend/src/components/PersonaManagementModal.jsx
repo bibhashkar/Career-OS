@@ -13,6 +13,7 @@ import {
   Briefcase,
   Calendar,
   Layers,
+  ArrowLeft,
 } from "lucide-react";
 import {
   getCandidatePersonas,
@@ -61,6 +62,15 @@ export function PersonaManagementModal({
   });
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState(null);
+
+  const isModifying = Boolean(editingPersona || isCreating);
+
+  const handleBackToList = () => {
+    setEditingPersona(null);
+    setIsCreating(false);
+    setSaveError(null);
+    setCreateError(null);
+  };
 
   const loadPersonas = useCallback(async () => {
     try {
@@ -269,7 +279,11 @@ export function PersonaManagementModal({
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Manage your Universal Profile baseline and specialized target career tracks
+                {editingPersona
+                  ? `Editing: ${editingPersona.name}`
+                  : isCreating
+                  ? "Define a new specialized career track"
+                  : "Manage your Universal Profile baseline and specialized target career tracks"}
               </p>
             </div>
           </div>
@@ -308,8 +322,8 @@ export function PersonaManagementModal({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setEditingPersona(null)}
-                  className="text-xs text-slate-400 hover:text-slate-200"
+                  onClick={handleBackToList}
+                  className="text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -455,7 +469,7 @@ export function PersonaManagementModal({
                 <div className="flex items-center justify-end gap-2 pt-1">
                   <button
                     type="button"
-                    onClick={() => setEditingPersona(null)}
+                    onClick={handleBackToList}
                     className="px-3 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium cursor-pointer"
                   >
                     Cancel
@@ -489,8 +503,8 @@ export function PersonaManagementModal({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsCreating(false)}
-                  className="text-xs text-slate-400 hover:text-slate-200"
+                  onClick={handleBackToList}
+                  className="text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -615,7 +629,7 @@ export function PersonaManagementModal({
                 <div className="flex items-center justify-end gap-2 pt-1">
                   <button
                     type="button"
-                    onClick={() => setIsCreating(false)}
+                    onClick={handleBackToList}
                     className="px-3 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium cursor-pointer"
                   >
                     Cancel
@@ -634,160 +648,176 @@ export function PersonaManagementModal({
             </div>
           )}
 
-          {/* Persona List */}
-          {loading ? (
-            <div className="py-12 flex flex-col items-center justify-center gap-2 text-slate-400">
-              <Loader2 className="w-6 h-6 animate-spin text-sky-400" />
-              <p className="text-xs">Loading personas...</p>
-            </div>
-          ) : (
-            <div className="space-y-3" data-testid="persona-list">
-              {personas.map((p) => {
-                const isActive = p.id === activePersonaId;
-                return (
-                  <div
-                    key={p.id}
-                    data-testid={`persona-card-${p.id}`}
-                    className={`p-4 rounded-xl border transition-all ${
-                      p.is_default
-                        ? "bg-slate-800/80 border-sky-500/40 shadow-sm"
-                        : "bg-slate-800/40 border-slate-800 hover:border-slate-700"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3">
-                        <div className="mt-1 p-2 rounded-xl bg-slate-900 border border-slate-700/80 text-sky-400">
-                          {p.is_common_persona ? (
-                            <Globe className="w-4 h-4 text-sky-400" />
-                          ) : (
-                            <Sparkles className="w-4 h-4 text-indigo-400" />
-                          )}
-                        </div>
-
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-sm font-bold text-white">
-                              {p.name}
-                            </h3>
-                            {p.is_common_persona && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                                Universal Baseline
-                              </span>
-                            )}
-                            {p.is_default && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                                <Check className="w-2.5 h-2.5" /> Default Lens
-                              </span>
-                            )}
-                            {isActive && !p.is_default && (
-                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">
-                                Currently Active
-                              </span>
+          {/* Persona List (Hidden when actively modifying or creating a persona) */}
+          {!isModifying && (
+            loading ? (
+              <div className="py-12 flex flex-col items-center justify-center gap-2 text-slate-400">
+                <Loader2 className="w-6 h-6 animate-spin text-sky-400" />
+                <p className="text-xs">Loading personas...</p>
+              </div>
+            ) : (
+              <div className="space-y-3" data-testid="persona-list">
+                {personas.map((p) => {
+                  const isActive = p.id === activePersonaId;
+                  return (
+                    <div
+                      key={p.id}
+                      data-testid={`persona-card-${p.id}`}
+                      className={`p-4 rounded-xl border transition-all ${
+                        p.is_default
+                          ? "bg-slate-800/80 border-sky-500/40 shadow-sm"
+                          : "bg-slate-800/40 border-slate-800 hover:border-slate-700"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className="mt-1 p-2 rounded-xl bg-slate-900 border border-slate-700/80 text-sky-400">
+                            {p.is_common_persona ? (
+                              <Globe className="w-4 h-4 text-sky-400" />
+                            ) : (
+                              <Sparkles className="w-4 h-4 text-indigo-400" />
                             )}
                           </div>
 
-                          <p className="text-xs text-slate-300 mt-1">
-                            {p.headline || "No headline configured"}
-                          </p>
-
-                          <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-400 flex-wrap">
-                            <span className="flex items-center gap-1">
-                              <Briefcase className="w-3 h-3 text-slate-500" />
-                              <span className="capitalize">{p.seniority_level}</span>
-                            </span>
-                            <span>•</span>
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3 text-slate-500" />
-                              <span>{p.years_experience}y experience</span>
-                            </span>
-                            <span>•</span>
-                            <span>{p.skill_count} skills</span>
-                            <span>•</span>
-                            <span>{p.block_count} achievement blocks</span>
-                          </div>
-
-                          {p.target_roles?.length > 0 && (
-                            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                              {p.target_roles.map((role, idx) => (
-                                <span
-                                  key={idx}
-                                  className="text-[10px] px-2 py-0.5 rounded bg-slate-900 border border-slate-700/60 text-slate-300"
-                                >
-                                  {role}
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="text-sm font-bold text-white">
+                                {p.name}
+                              </h3>
+                              {p.is_common_persona && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                                  Universal Baseline
                                 </span>
-                              ))}
+                              )}
+                              {p.is_default && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                                  <Check className="w-2.5 h-2.5" /> Default Lens
+                                </span>
+                              )}
+                              {isActive && !p.is_default && (
+                                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">
+                                  Currently Active
+                                </span>
+                              )}
                             </div>
+
+                            <p className="text-xs text-slate-300 mt-1">
+                              {p.headline || "No headline configured"}
+                            </p>
+
+                            <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-400 flex-wrap">
+                              <span className="flex items-center gap-1">
+                                <Briefcase className="w-3 h-3 text-slate-500" />
+                                <span className="capitalize">{p.seniority_level}</span>
+                              </span>
+                              <span>•</span>
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-slate-500" />
+                                <span>{p.years_experience}y experience</span>
+                              </span>
+                              <span>•</span>
+                              <span>{p.skill_count} skills</span>
+                              <span>•</span>
+                              <span>{p.block_count} achievement blocks</span>
+                            </div>
+
+                            {p.target_roles?.length > 0 && (
+                              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                                {p.target_roles.map((role, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="text-[10px] px-2 py-0.5 rounded bg-slate-900 border border-slate-700/60 text-slate-300"
+                                  >
+                                    {role}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Card Action Controls */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => startEditing(p)}
+                            data-testid={`edit-persona-btn-${p.id}`}
+                            title="Edit settings"
+                            className="px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                            <span>Edit</span>
+                          </button>
+
+                          {!p.is_default && (
+                            <button
+                              type="button"
+                              onClick={() => handleSetDefault(p)}
+                              data-testid={`set-default-btn-${p.id}`}
+                              title="Set as login default"
+                              className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
+                            >
+                              Set Default
+                            </button>
+                          )}
+
+                          {!p.is_common_persona && (
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(p)}
+                              data-testid={`delete-persona-btn-${p.id}`}
+                              title="Delete persona"
+                              className="p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           )}
                         </div>
-                      </div>
-
-                      {/* Card Action Controls */}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => startEditing(p)}
-                          data-testid={`edit-persona-btn-${p.id}`}
-                          title="Edit settings"
-                          className="px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                          <span>Edit</span>
-                        </button>
-
-                        {!p.is_default && (
-                          <button
-                            type="button"
-                            onClick={() => handleSetDefault(p)}
-                            data-testid={`set-default-btn-${p.id}`}
-                            title="Set as login default"
-                            className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
-                          >
-                            Set Default
-                          </button>
-                        )}
-
-                        {!p.is_common_persona && (
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(p)}
-                            data-testid={`delete-persona-btn-${p.id}`}
-                            title="Delete persona"
-                            className="p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )
           )}
         </div>
 
         {/* Footer */}
         <div className="p-4 border-t border-slate-800 bg-slate-900/60 flex items-center justify-between shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              setIsCreating(true);
-              setEditingPersona(null);
-            }}
-            data-testid="add-persona-btn"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Specialized Persona</span>
-          </button>
+          {isModifying ? (
+            <button
+              type="button"
+              onClick={handleBackToList}
+              data-testid="back-to-persona-list-btn"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Persona List</span>
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCreating(true);
+                  setEditingPersona(null);
+                }}
+                data-testid="add-persona-btn"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Specialized Persona</span>
+              </button>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-colors cursor-pointer"
-          >
-            Done
-          </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-1.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-colors cursor-pointer"
+              >
+                Done
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
