@@ -908,6 +908,18 @@ async def get_job_matches(
         None, description="Filter for visa sponsoring roles"
     ),
     min_score: float = Query(0.0, ge=0.0, le=1.0),
+    q: str | None = Query(
+        None, description="Search by company name, job title, or description"
+    ),
+    location: str | None = Query(
+        None, description="Filter by city, state, country, or region"
+    ),
+    posted_within: int | None = Query(
+        None, ge=1, le=365, description="Filter for jobs posted within N days"
+    ),
+    sort_by: str = Query(
+        "score", pattern="^(score|date)$", description="Sort by 'score' or 'date'"
+    ),
 ) -> JobMatchesResponse:
     """
     Two-Stage Job Retrieval and Multi-Factor Probability Reranker (ADR-008).
@@ -984,6 +996,10 @@ async def get_job_matches(
         modality_filter=modality,
         visa_filter=visa_filter,
         min_score=min_score,
+        search_query=q,
+        location_filter=location,
+        posted_within_days=posted_within,
+        sort_by=sort_by,
     )
 
     return JobMatchesResponse(

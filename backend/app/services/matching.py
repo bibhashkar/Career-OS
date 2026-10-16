@@ -14,10 +14,10 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -465,6 +465,10 @@ async def retrieve_and_rank_jobs(
     modality_filter: str | None = None,
     visa_filter: bool | None = None,
     min_score: float = 0.0,
+    search_query: str | None = None,
+    location_filter: str | None = None,
+    posted_within_days: int | None = None,
+    sort_by: str = "score",
 ) -> tuple[list[JobMatchResult], int]:
     """
     Execute two-stage job retrieval, reranking, and persistent caching.
@@ -514,6 +518,46 @@ async def retrieve_and_rank_jobs(
             JobListing.workplace_type == modality_filter.lower()
         )
 
+    # Location filter (city, state, country, region, raw location)
+    if location_filter and location_filter.strip():
+        loc_term = f"%{location_filter.strip()}%"
+        loc_code = location_filter.strip()
+        stage1_stmt = stage1_stmt.where(
+            or_(
+                JobListing.city.ilike(loc_term),
+                JobListing.state_province.ilike(loc_term),
+                JobListing.state_province_code.ilike(loc_code),
+                JobListing.country.ilike(loc_term),
+                JobListing.country_code.ilike(loc_code),
+                JobListing.primary_region.ilike(loc_term),
+                JobListing.raw_location.ilike(loc_term),
+            )
+        )
+
+    # Search keyword filter (title, company, description)
+    if search_query and search_query.strip():
+        q_term = f"%{search_query.strip()}%"
+        stage1_stmt = stage1_stmt.where(
+            or_(
+                JobListing.title.ilike(q_term),
+                JobListing.company_name.ilike(q_term),
+                JobListing.raw_description.ilike(q_term),
+            )
+        )
+
+    # Date recency filter
+    if posted_within_days and posted_within_days > 0:
+        cutoff = datetime.now(UTC) - timedelta(days=posted_within_days)
+        stage1_stmt = stage1_stmt.where(
+            or_(
+                JobListing.posted_at >= cutoff,
+                and_(
+                    JobListing.posted_at.is_(None),
+                    JobListing.first_seen_at >= cutoff,
+                ),
+            )
+        )
+
     # Keyword / Role title pre-filtering
     if target_roles:
         role_clauses = [JobListing.title.ilike(f"%{role}%") for role in target_roles]
@@ -544,6 +588,40 @@ async def retrieve_and_rank_jobs(
         if modality_filter:
             fallback_stmt = fallback_stmt.where(
                 JobListing.workplace_type == modality_filter.lower()
+            )
+        if location_filter and location_filter.strip():
+            loc_term = f"%{location_filter.strip()}%"
+            loc_code = location_filter.strip()
+            fallback_stmt = fallback_stmt.where(
+                or_(
+                    JobListing.city.ilike(loc_term),
+                    JobListing.state_province.ilike(loc_term),
+                    JobListing.state_province_code.ilike(loc_code),
+                    JobListing.country.ilike(loc_term),
+                    JobListing.country_code.ilike(loc_code),
+                    JobListing.primary_region.ilike(loc_term),
+                    JobListing.raw_location.ilike(loc_term),
+                )
+            )
+        if search_query and search_query.strip():
+            q_term = f"%{search_query.strip()}%"
+            fallback_stmt = fallback_stmt.where(
+                or_(
+                    JobListing.title.ilike(q_term),
+                    JobListing.company_name.ilike(q_term),
+                    JobListing.raw_description.ilike(q_term),
+                )
+            )
+        if posted_within_days and posted_within_days > 0:
+            cutoff = datetime.now(UTC) - timedelta(days=posted_within_days)
+            fallback_stmt = fallback_stmt.where(
+                or_(
+                    JobListing.posted_at >= cutoff,
+                    and_(
+                        JobListing.posted_at.is_(None),
+                        JobListing.first_seen_at >= cutoff,
+                    ),
+                )
             )
         fallback_result = await db.execute(fallback_stmt)
         candidate_jobs = fallback_result.scalars().all()
@@ -704,8 +782,24 @@ async def retrieve_and_rank_jobs(
 
     await db.commit()
 
-    # Sort candidates by acceptance probability score descending
-    scored_results.sort(key=lambda r: r.match_score, reverse=True)
+    # Dynamic sorting: By date (newest first) or by acceptance probability
+    # score descending
+    if sort_by == "date":
+        min_dt = datetime.min.replace(tzinfo=UTC)
+
+        def _sort_date_key(r: JobMatchResult) -> tuple[datetime, float]:
+            dt = r.posted_at
+            if dt is None:
+                dt_clean = min_dt
+            elif dt.tzinfo is None:
+                dt_clean = dt.replace(tzinfo=UTC)
+            else:
+                dt_clean = dt
+            return (dt_clean, r.match_score)
+
+        scored_results.sort(key=_sort_date_key, reverse=True)
+    else:
+        scored_results.sort(key=lambda r: r.match_score, reverse=True)
 
     total_count = len(scored_results)
     start_idx = (page - 1) * page_size

@@ -338,7 +338,13 @@ async def test_job_matching_and_diagnostics_api_flow(
                 ats_board_slug="stripe",
                 source_job_id="str-101",
                 industry="technology_software",
-                raw_location="Remote",
+                raw_location="San Francisco, CA",
+                city="San Francisco",
+                state_province="California",
+                state_province_code="CA",
+                country="United States",
+                country_code="US",
+                primary_region="north_america",
                 workplace_type="remote",
                 salary_range="$190,000 - $240,000",
                 raw_description="Build real-time event streaming systems with Python.",
@@ -396,6 +402,50 @@ async def test_job_matching_and_diagnostics_api_flow(
 
             # Verify Job 2 (visa='no') was excluded for H-1B candidate
             assert not any(j["job_id"] == str(job2_uuid) for j in data["jobs"])
+
+            # 1b. Test search keyword filtering (company/title)
+            q_match = await client.get("/api/jobs/matches?q=Stripe", headers=headers)
+            assert q_match.status_code == 200
+            assert q_match.json()["total_count"] >= 1
+
+            q_miss = await client.get(
+                "/api/jobs/matches?q=NonexistentCompany", headers=headers
+            )
+            assert q_miss.status_code == 200
+            assert q_miss.json()["total_count"] == 0
+
+            # 1c. Test city/state/region location filtering
+            loc_match = await client.get(
+                "/api/jobs/matches?location=San+Francisco", headers=headers
+            )
+            assert loc_match.status_code == 200
+            assert loc_match.json()["total_count"] >= 1
+
+            loc_miss = await client.get(
+                "/api/jobs/matches?location=Tokyo", headers=headers
+            )
+            assert loc_miss.status_code == 200
+            assert loc_miss.json()["total_count"] == 0
+
+            # 1d. Test posted_within recency filtering
+            date_miss = await client.get(
+                "/api/jobs/matches?posted_within=1", headers=headers
+            )
+            assert date_miss.status_code == 200
+            assert date_miss.json()["total_count"] == 0
+
+            date_hit = await client.get(
+                "/api/jobs/matches?posted_within=7", headers=headers
+            )
+            assert date_hit.status_code == 200
+            assert date_hit.json()["total_count"] >= 1
+
+            # 1e. Test sorting by date
+            sort_date = await client.get(
+                "/api/jobs/matches?sort_by=date", headers=headers
+            )
+            assert sort_date.status_code == 200
+            assert sort_date.json()["total_count"] >= 1
 
             # 2. Test /api/jobs/{job_id}/diagnostics (Tier 1 Breakdown)
             diag_resp = await client.get(
