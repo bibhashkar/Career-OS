@@ -10,7 +10,7 @@ This module provides registration, authentication, and session identity endpoint
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -314,28 +314,10 @@ async def get_current_user_profile(
     account = result.scalar_one_or_none()
 
     if account is None:
-        # Dev fallback: instantiate and return temporary developer context
-        mock_persona = PersonaSummaryResponse(
-            id=str(uuid.uuid4()),
-            name="Universal Profile (Dev)",
-            is_common_persona=True,
-            headline="Developer Sandbox Profile",
-            seniority_level="senior",
-            years_experience=5,
-            target_roles=["Senior Software Engineer"],
-            is_default=True,
-        )
-        return UserAccountResponse(
-            id=str(user_uuid),
-            email=current_user.email or "developer@career-os.local",
-            full_name="Career-OS Developer",
-            visa_status="Citizen",
-            citizenship_country_code="US",
-            preferred_locations=["San Francisco, CA", "Remote"],
-            remote_preference="Remote",
-            is_active=True,
-            created_at=datetime.now(UTC),
-            personas=[mock_persona],
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account not found.",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     return _serialize_user(account)

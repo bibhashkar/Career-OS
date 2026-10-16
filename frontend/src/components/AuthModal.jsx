@@ -6,8 +6,6 @@ import {
   Mail,
   Lock,
   User,
-  Globe,
-  Sparkles,
   AlertCircle,
   Loader2,
 } from "lucide-react";
@@ -58,41 +56,6 @@ export function AuthModal({ isOpen, onClose, onSuccess }) {
           ? "Invalid email or password. Please try again."
           : "Failed to create account. Please check your details.");
       setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleDemoLogin() {
-    setError(null);
-    setLoading(true);
-    const demoEmail = "demo@career-os.local";
-    const demoPassword = "DemoPassword123!";
-
-    try {
-      // Attempt login first
-      try {
-        const res = await login(demoEmail, demoPassword);
-        if (onSuccess) onSuccess(res.user);
-        onClose();
-        return;
-      } catch {
-        // If not registered yet, register the demo user
-        const payload = {
-          email: demoEmail,
-          password: demoPassword,
-          full_name: "Alex Smith (Demo)",
-          visa_status: "Citizen",
-          remote_preference: "Remote",
-          preferred_locations: ["Remote", "San Francisco, CA"],
-        };
-        const res = await register(payload);
-        if (onSuccess) onSuccess(res.user);
-        onClose();
-      }
-    } catch (err) {
-      console.error("Demo login failed:", err);
-      setError("Unable to initialize demo account. Please retry.");
     } finally {
       setLoading(false);
     }
@@ -263,7 +226,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }) {
             </div>
           )}
 
-          <div className="pt-2 space-y-2">
+          <div className="pt-2">
             <button
               type="submit"
               data-testid="auth-submit-btn"
@@ -278,17 +241,6 @@ export function AuthModal({ isOpen, onClose, onSuccess }) {
                   ? "Sign In"
                   : "Create Account"}
               </span>
-            </button>
-
-            <button
-              type="button"
-              data-testid="demo-login-btn"
-              onClick={handleDemoLogin}
-              disabled={loading}
-              className="w-full py-2 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>⚡ One-Click Demo Candidate Login</span>
             </button>
           </div>
         </form>

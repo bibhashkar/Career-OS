@@ -76,16 +76,16 @@ describe("AuthModal Component", () => {
     });
   });
 
-  it("triggers One-Click Demo Candidate login", async () => {
+  it("submits registration details and calls onSuccess", async () => {
     const mockUser = {
-      id: "demo-user",
-      email: "demo@career-os.local",
-      full_name: "Alex Smith (Demo)",
+      id: "u-new",
+      email: "newcand@example.com",
+      full_name: "New Candidate",
     };
-    api.login.mockResolvedValueOnce({
-      access_token: "demo-jwt-token",
+    api.register.mockResolvedValueOnce({
+      access_token: "mock-reg-token",
       user: mockUser,
-      default_persona_id: "demo-persona",
+      default_persona_id: "p-new",
     });
 
     const handleSuccess = vi.fn();
@@ -99,16 +99,58 @@ describe("AuthModal Component", () => {
       />
     );
 
-    const demoBtn = screen.getByTestId("demo-login-btn");
-    fireEvent.click(demoBtn);
+    fireEvent.click(screen.getByTestId("tab-register"));
+
+    fireEvent.change(screen.getByPlaceholderText("e.g. Alex Smith"), {
+      target: { value: "New Candidate" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("name@example.com"), {
+      target: { value: "newcand@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("••••••••"), {
+      target: { value: "SecurePass123!" },
+    });
+
+    fireEvent.click(screen.getByTestId("auth-submit-btn"));
 
     await waitFor(() => {
-      expect(api.login).toHaveBeenCalledWith(
-        "demo@career-os.local",
-        "DemoPassword123!"
-      );
+      expect(api.register).toHaveBeenCalledWith({
+        email: "newcand@example.com",
+        password: "SecurePass123!",
+        full_name: "New Candidate",
+        visa_status: "Citizen",
+        remote_preference: "Remote",
+        preferred_locations: ["Remote", "San Francisco, CA"],
+      });
       expect(handleSuccess).toHaveBeenCalledWith(mockUser);
       expect(handleClose).toHaveBeenCalled();
+    });
+  });
+
+  it("displays error message on authentication failure", async () => {
+    api.login.mockRejectedValueOnce({
+      response: { data: { detail: "Invalid email or password." } },
+    });
+
+    render(
+      <AuthModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("name@example.com"), {
+      target: { value: "wrong@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("••••••••"), {
+      target: { value: "WrongPass" },
+    });
+
+    fireEvent.click(screen.getByTestId("auth-submit-btn"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Invalid email or password.")).toBeInTheDocument();
     });
   });
 });
