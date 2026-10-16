@@ -1,9 +1,9 @@
 {
   "MASTER_SPEC.md": {
-    "mtime": 1789958486.566273,
-    "seen": 1789962762.136712,
-    "ast_hash": "d6fbb7638496f63adcd86a2fe15cad04",
-    "semantic_hash": "d6fbb7638496f63adcd86a2fe15cad04"
+    "mtime": 1789962774.1597602,
+    "seen": 1792112180.0944517,
+    "ast_hash": "4eae9a6436290f31e0ad64b5421429a3",
+    "semantic_hash": ""
   },
   "backend/app/__init__.py": {
     "mtime": 1790539499.5899146,
@@ -1030,5 +1030,125 @@
     "seen": 1792111803.9317281,
     "ast_hash": "738be45b65194293f347ecc664d6ac3f",
     "semantic_hash": "738be45b65194293f347ecc664d6ac3f"
+  },
+  "db/migrations/0001_initial_schema.sql": {
+    "mtime": 1792106671.0061262,
+    "seen": 1792112180.0943835,
+    "ast_hash": "e15b64977f9c33d72fb4042a54d14c38",
+    "semantic_hash": ""
+  },
+  ".github/workflows/ci.yml": {
+    "mtime": 1791264123.6828742,
+    "seen": 1792112180.0944486,
+    "ast_hash": "428287f92e9f4ff1875e63da96b12ae1",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1789963562.4845085,
+    "seen": 1792112180.09445,
+    "ast_hash": "a9c587b9502018770233503456d2a52c",
+    "semantic_hash": ""
+  },
+  "PROJECT_RULES.md": {
+    "mtime": 1789963560.9000793,
+    "seen": 1792112180.0944526,
+    "ast_hash": "448b48cac2a9765f2effc96f8017c6ef",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1792099391.3536584,
+    "seen": 1792112180.094454,
+    "ast_hash": "38591f7cb282b27df7994267e66dd972",
+    "semantic_hash": ""
+  },
+  "backend/requirements-dev.txt": {
+    "mtime": 1791247971.769956,
+    "seen": 1792112180.0944552,
+    "ast_hash": "5b476c3d258672136db0c51765cfa0d6",
+    "semantic_hash": ""
+  },
+  "backend/requirements.txt": {
+    "mtime": 1792041455.700021,
+    "seen": 1792112180.0944567,
+    "ast_hash": "b4752bd9214a3e06a3fcd3f05eba3442",
+    "semantic_hash": ""
+  },
+  "data/seed_boards.yaml": {
+    "mtime": 1792036573.1041648,
+    "seen": 1792112180.0944579,
+    "ast_hash": "5ec5d50c09524c1b8024ee819ab32057",
+    "semantic_hash": ""
+  },
+  "db/README.md": {
+    "mtime": 1792099391.3546584,
+    "seen": 1792112180.094459,
+    "ast_hash": "e364c0612c730b3635ff120d553ed3d0",
+    "semantic_hash": ""
+  },
+  "docker-compose.yml": {
+    "mtime": 1792108519.3275516,
+    "seen": 1792112180.0944602,
+    "ast_hash": "a690677a196afa45310b8243cf49658d",
+    "semantic_hash": ""
+  },
+  "docs/adr/ADR-001-pgvector-schema-and-embedding-dimensions.md": {
+    "mtime": 1791244536.3690934,
+    "seen": 1792112180.0944612,
+    "ast_hash": "6fd2960052059699d7e2a6c2b72a2ba5",
+    "semantic_hash": ""
+  },
+  "docs/adr/ADR-002-checkpointer-persistence-and-thread-namespacing.md": {
+    "mtime": 1791244536.3690934,
+    "seen": 1792112180.0944626,
+    "ast_hash": "0ec82761184f43409c1eb81104b146d3",
+    "semantic_hash": ""
+  },
+  "docs/adr/ADR-003-agent-graph-decomposition-and-ats-loop-guard.md": {
+    "mtime": 1791244536.3690934,
+    "seen": 1792112180.094464,
+    "ast_hash": "7f511a399eadf5a3e084fd9f0c664a75",
+    "semantic_hash": ""
+  },
+  "docs/adr/ADR-004-foreign-key-strict-restrict-deletion-policy.md": {
+    "mtime": 1791244536.3690934,
+    "seen": 1792112180.0944653,
+    "ast_hash": "1e0fcc795ea89e7ed9ee3fef9aa1249a",
+    "semantic_hash": ""
+  },
+  "docs/adr/ADR-005-llm-provider-abstraction-and-gemini-integration.md": {
+    "mtime": 1791244536.3690934,
+    "seen": 1792112180.0944662,
+    "ast_hash": "f31e74db33a4e19467ab386e8e204a90",
+    "semantic_hash": ""
+  },
+  "docs/adr/ADR-006-unmetered-data-ingestion-pipeline.md": {
+    "mtime": 1791539911.0997396,
+    "seen": 1792112180.0944676,
+    "ast_hash": "f59e6839a32754efadd41b08b5f5d3e0",
+    "semantic_hash": ""
+  },
+  "docs/adr/ADR-007-candidate-modeling-multi-persona-and-ingestion.md": {
+    "mtime": 1792096715.854346,
+    "seen": 1792112180.0944686,
+    "ast_hash": "254f9412586caaee9ffe14f33171f781",
+    "semantic_hash": ""
+  },
+  "docs/adr/ADR-008-high-probability-job-matching-and-fault-tolerant-ranking.md": {
+    "mtime": 1792096715.854346,
+    "seen": 1792112180.0944703,
+    "ast_hash": "7ea5bb7eed915febce61cb9a8b4dae37",
+    "semantic_hash": ""
+  },
+  "docs/adr/README.md": {
+    "mtime": 1792098896.4668195,
+    "seen": 1792112180.0944715,
+    "ast_hash": "2d36ae2fdcdd7f7549e95f23c4003523",
+    "semantic_hash": ""
+  },
+  "frontend/index.html": {
+    "mtime": 1790538632.9494998,
+    "seen": 1792112180.0944793,
+    "ast_hash": "1fe7decd1094670f02d6559ef28a59d1",
+    "semantic_hash": ""
   }
 }
