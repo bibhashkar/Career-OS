@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { Dashboard } from "../pages/Dashboard";
 import * as api from "../services/api";
 
@@ -20,6 +21,7 @@ const mockMatchJob = {
   salary_range: "$220,000 - $280,000",
   visa_sponsorship: "yes",
   apply_url: "https://jobs.lever.co/anthropic/001",
+  posted_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
   match_score: 0.88,
   hard_gate_pass: true,
   probability_band: "high",
@@ -40,9 +42,22 @@ const mockMatchJob = {
   gate_notes: ["Hard gates verified"],
 };
 
+function renderDashboard(props = {}, initialEntries = ["/"]) {
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <Dashboard
+        onSelectJob={vi.fn()}
+        onStartInterview={vi.fn()}
+        {...props}
+      />
+    </MemoryRouter>
+  );
+}
+
 describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   describe("High-Probability Matches Tab", () => {
@@ -56,20 +71,18 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
         jobs: [mockMatchJob],
       });
 
-      render(
-        <Dashboard
-          onSelectJob={vi.fn()}
-          onStartInterview={vi.fn()}
-          activePersona={{ id: "persona-123", name: "AI Engineer Lens" }}
-        />
-      );
+      renderDashboard({
+        activePersona: { id: "persona-123", name: "AI Engineer Lens" },
+      });
 
-      expect(api.getJobMatches).toHaveBeenCalledWith(
-        expect.objectContaining({
-          persona_id: "persona-123",
-          min_score: 0.0,
-        })
-      );
+      await waitFor(() => {
+        expect(api.getJobMatches).toHaveBeenCalledWith(
+          expect.objectContaining({
+            persona_id: "persona-123",
+            min_score: 0.0,
+          })
+        );
+      });
 
       expect(await screen.findByText("Senior AI Platform Engineer")).toBeInTheDocument();
       expect(screen.getByText("Anthropic")).toBeInTheDocument();
@@ -79,6 +92,28 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
       expect(screen.getByText("Equiv: AWS → GCP")).toBeInTheDocument();
     });
 
+    it("renders external Apply link and posted date badge on job cards", async () => {
+      api.getJobMatches.mockResolvedValueOnce({
+        jobs: [mockMatchJob],
+        total_count: 1,
+      });
+
+      renderDashboard();
+
+      expect(await screen.findByText("Senior AI Platform Engineer")).toBeInTheDocument();
+
+      // Verify concise 'Apply' button
+      const applyBtn = screen.getByTestId("apply-link-match-job-001");
+      expect(applyBtn).toBeInTheDocument();
+      expect(applyBtn).toHaveAttribute("href", "https://jobs.lever.co/anthropic/001");
+      expect(applyBtn).toHaveAttribute("target", "_blank");
+      expect(applyBtn).toHaveAttribute("rel", "noopener noreferrer");
+      expect(applyBtn).toHaveTextContent("Apply");
+
+      // Verify relative posted date badge (2d ago)
+      expect(screen.getByText("2d ago")).toBeInTheDocument();
+    });
+
     it("triggers onSelectJob when clicking Tailor CV button on a match card", async () => {
       api.getJobMatches.mockResolvedValueOnce({
         jobs: [mockMatchJob],
@@ -86,12 +121,7 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
       });
 
       const handleSelectJob = vi.fn();
-      render(
-        <Dashboard
-          onSelectJob={handleSelectJob}
-          onStartInterview={vi.fn()}
-        />
-      );
+      renderDashboard({ onSelectJob: handleSelectJob });
 
       const tailorBtn = await screen.findByRole("button", { name: /Tailor CV/i });
       fireEvent.click(tailorBtn);
@@ -129,12 +159,7 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
         },
       });
 
-      render(
-        <Dashboard
-          onSelectJob={vi.fn()}
-          onStartInterview={vi.fn()}
-        />
-      );
+      renderDashboard();
 
       const diagBtn = await screen.findByRole("button", { name: /Why this match\?/i });
       fireEvent.click(diagBtn);
@@ -147,19 +172,138 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
         undefined
       );
     });
+
+    it("filters matches by text search keyword query", async () => {
+      api.getJobMatches.mockResolvedValue({
+        jobs: [mockMatchJob],
+        total_count: 1,
+      });
+
+      renderDashboard();
+
+      const searchInput = screen.getByTestId("matches-search-input");
+      fireEvent.change(searchInput, { target: { value: "Anthropic" } });
+
+      await waitFor(() => {
+        expect(api.getJobMatches).toHaveBeenCalledWith(
+          expect.objectContaining({
+            q: "Anthropic",
+          })
+        );
+      });
+    });
+
+    it("filters matches by location query supporting city, state, country, or region", async () => {
+      api.getJobMatches.mockResolvedValue({
+        jobs: [mockMatchJob],
+        total_count: 1,
+      });
+
+      renderDashboard();
+
+      const locationInput = screen.getByTestId("matches-location-input");
+      fireEvent.change(locationInput, { target: { value: "San Francisco, CA" } });
+
+      await waitFor(() => {
+        expect(api.getJobMatches).toHaveBeenCalledWith(
+          expect.objectContaining({
+            location: "San Francisco, CA",
+          })
+        );
+      });
+    });
+
+    it("changes sort order between best match and most recent", async () => {
+      api.getJobMatches.mockResolvedValue({
+        jobs: [mockMatchJob],
+        total_count: 1,
+      });
+
+      renderDashboard();
+
+      const sortSelect = screen.getByLabelText("Sort match opportunities");
+      fireEvent.change(sortSelect, { target: { value: "date" } });
+
+      await waitFor(() => {
+        expect(api.getJobMatches).toHaveBeenCalledWith(
+          expect.objectContaining({
+            sort_by: "date",
+          })
+        );
+      });
+    });
+
+    it("filters matches by posted date range", async () => {
+      api.getJobMatches.mockResolvedValue({
+        jobs: [mockMatchJob],
+        total_count: 1,
+      });
+
+      renderDashboard();
+
+      const postedSelect = screen.getByLabelText("Filter by date posted");
+      fireEvent.change(postedSelect, { target: { value: "7" } });
+
+      await waitFor(() => {
+        expect(api.getJobMatches).toHaveBeenCalledWith(
+          expect.objectContaining({
+            posted_within: 7,
+          })
+        );
+      });
+    });
+
+    it("clears all active filters when clicking Clear All", async () => {
+      api.getJobMatches.mockResolvedValue({
+        jobs: [mockMatchJob],
+        total_count: 1,
+      });
+
+      renderDashboard();
+
+      const searchInput = screen.getByTestId("matches-search-input");
+      fireEvent.change(searchInput, { target: { value: "Anthropic" } });
+
+      const clearBtn = await screen.findByRole("button", { name: /Clear All/i });
+      fireEvent.click(clearBtn);
+
+      await waitFor(() => {
+        expect(searchInput.value).toBe("");
+      });
+    });
+
+    it("initializes filters from URL search parameters", async () => {
+      api.getJobMatches.mockResolvedValue({
+        jobs: [mockMatchJob],
+        total_count: 1,
+      });
+
+      renderDashboard({}, ["/?q=Platform&loc=Seattle&sort=date&posted=14"]);
+
+      await waitFor(() => {
+        expect(api.getJobMatches).toHaveBeenCalledWith(
+          expect.objectContaining({
+            q: "Platform",
+            location: "Seattle",
+            sort_by: "date",
+            posted_within: 14,
+          })
+        );
+      });
+
+      const searchInput = screen.getByTestId("matches-search-input");
+      expect(searchInput.value).toBe("Platform");
+
+      const locationInput = screen.getByTestId("matches-location-input");
+      expect(locationInput.value).toBe("Seattle");
+    });
   });
 
   describe("Direct ATS Search & Ingest Tab", () => {
     it("renders empty state with sample keywords and does not call searchJobs on initial load", () => {
       api.getJobMatches.mockResolvedValueOnce({ jobs: [], total_count: 0 });
 
-      render(
-        <Dashboard
-          defaultTab="search"
-          onSelectJob={vi.fn()}
-          onStartInterview={vi.fn()}
-        />
-      );
+      renderDashboard({ defaultTab: "search" });
 
       expect(
         screen.getByText(/Ready to explore open positions\?/i)
@@ -177,13 +321,7 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
     it("submitting empty search does not trigger searchJobs and maintains clean empty state", () => {
       api.getJobMatches.mockResolvedValueOnce({ jobs: [], total_count: 0 });
 
-      render(
-        <Dashboard
-          defaultTab="search"
-          onSelectJob={vi.fn()}
-          onStartInterview={vi.fn()}
-        />
-      );
+      renderDashboard({ defaultTab: "search" });
 
       const searchButton = screen.getByRole("button", { name: /Search jobs/i });
       fireEvent.click(searchButton);
@@ -211,13 +349,7 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
         ],
       });
 
-      render(
-        <Dashboard
-          defaultTab="search"
-          onSelectJob={vi.fn()}
-          onStartInterview={vi.fn()}
-        />
-      );
+      renderDashboard({ defaultTab: "search" });
 
       const stripeKeywordBtn = screen.getByRole("button", { name: "Stripe" });
       fireEvent.click(stripeKeywordBtn);
@@ -235,12 +367,7 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
     it("can switch between Matches and ATS Search tabs via tab buttons", async () => {
       api.getJobMatches.mockResolvedValueOnce({ jobs: [], total_count: 0 });
 
-      render(
-        <Dashboard
-          onSelectJob={vi.fn()}
-          onStartInterview={vi.fn()}
-        />
-      );
+      renderDashboard();
 
       // Initially on High-Probability Matches tab
       expect(screen.getByText(/High-Probability Matches/i)).toBeInTheDocument();

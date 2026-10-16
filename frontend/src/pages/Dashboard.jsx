@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Search,
   MapPin,
@@ -17,8 +18,10 @@ import {
   TrendingUp,
   SlidersHorizontal,
   RefreshCw,
-  Award,
-  Zap,
+  ExternalLink,
+  Clock,
+  X,
+  Calendar,
 } from "lucide-react";
 import {
   searchJobs,
@@ -63,23 +66,75 @@ function normalizeJobMatch(match) {
   };
 }
 
+function formatRelativeTime(dateString) {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return null;
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  if (diffMs < 0) return "Just now";
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffSecs < 60) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return "1d ago";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+  return `${Math.floor(diffDays / 30)}mo ago`;
+}
+
+const FILTER_STORAGE_KEY = "career_os_feed_filters";
+
 export function Dashboard({
   onSelectJob,
   onStartInterview,
   activePersona,
   defaultTab = "matches",
 }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Helper to read initial state from URL search params or localStorage
+  const getInitialParam = (key, fallback) => {
+    const fromUrl = searchParams.get(key);
+    if (fromUrl !== null) return fromUrl;
+    try {
+      const saved = localStorage.getItem(FILTER_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed[key] !== undefined && parsed[key] !== null) return parsed[key];
+      }
+    } catch {
+      // ignore JSON parse error
+    }
+    return fallback;
+  };
+
   // Tab Mode: 'matches' (High-Probability Matches) | 'search' (Direct ATS Search)
-  const [activeTab, setActiveTab] = useState(defaultTab);
+  const [activeTab, setActiveTab] = useState(() => getInitialParam("tab", defaultTab));
 
   // --- Matches Tab State (ADR-008 Engine) ---
   const [matches, setMatches] = useState([]);
   const [matchesLoading, setMatchesLoading] = useState(false);
   const [matchesError, setMatchesError] = useState(null);
   const [totalMatches, setTotalMatches] = useState(0);
-  const [modalityFilter, setModalityFilter] = useState("");
-  const [matchesVisaFilter, setMatchesVisaFilter] = useState(false);
-  const [minScoreFilter, setMinScoreFilter] = useState(0.0);
+
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState(() => getInitialParam("q", ""));
+  const [locationFilter, setLocationFilter] = useState(() => getInitialParam("loc", ""));
+  const [modalityFilter, setModalityFilter] = useState(() => getInitialParam("modality", ""));
+  const [postedWithinFilter, setPostedWithinFilter] = useState(() => getInitialParam("posted", ""));
+  const [minScoreFilter, setMinScoreFilter] = useState(() => {
+    const val = parseFloat(getInitialParam("min_score", "0.0"));
+    return isNaN(val) ? 0.0 : val;
+  });
+  const [matchesVisaFilter, setMatchesVisaFilter] = useState(
+    () => getInitialParam("visa", "false") === "true"
+  );
+  const [sortBy, setSortBy] = useState(() => getInitialParam("sort", "score"));
   const [selectedJobForDiag, setSelectedJobForDiag] = useState(null);
 
   // --- Search Tab State (Direct ATS Hunter) ---
@@ -94,6 +149,71 @@ export function Dashboard({
   const [crossCheckingIds, setCrossCheckingIds] = useState(new Set());
   const [hasSearched, setHasSearched] = useState(false);
 
+  // Synchronize filter state to URL search parameters and localStorage
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (activeTab && activeTab !== "matches") params.set("tab", activeTab);
+    if (searchQuery.trim()) params.set("q", searchQuery.trim());
+    if (locationFilter.trim()) params.set("loc", locationFilter.trim());
+    if (modalityFilter) params.set("modality", modalityFilter);
+    if (postedWithinFilter) params.set("posted", postedWithinFilter);
+    if (minScoreFilter > 0) params.set("min_score", String(minScoreFilter));
+    if (matchesVisaFilter) params.set("visa", "true");
+    if (sortBy && sortBy !== "score") params.set("sort", sortBy);
+
+    try {
+      const savedState = {
+        tab: activeTab,
+        q: searchQuery,
+        loc: locationFilter,
+        modality: modalityFilter,
+        posted: postedWithinFilter,
+        min_score: minScoreFilter,
+        visa: matchesVisaFilter ? "true" : "false",
+        sort: sortBy,
+      };
+      localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(savedState));
+    } catch {
+      // ignore
+    }
+
+    setSearchParams(params, { replace: true });
+  }, [
+    activeTab,
+    searchQuery,
+    locationFilter,
+    modalityFilter,
+    postedWithinFilter,
+    minScoreFilter,
+    matchesVisaFilter,
+    sortBy,
+    setSearchParams,
+  ]);
+
+  const handleClearFilters = () => {
+    setSearchQuery("");
+    setLocationFilter("");
+    setModalityFilter("");
+    setPostedWithinFilter("");
+    setMinScoreFilter(0.0);
+    setMatchesVisaFilter(false);
+    setSortBy("score");
+    try {
+      localStorage.removeItem(FILTER_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  };
+
+  const activeFilterCount =
+    (searchQuery.trim() ? 1 : 0) +
+    (locationFilter.trim() ? 1 : 0) +
+    (modalityFilter ? 1 : 0) +
+    (postedWithinFilter ? 1 : 0) +
+    (minScoreFilter > 0 ? 1 : 0) +
+    (matchesVisaFilter ? 1 : 0) +
+    (sortBy !== "score" ? 1 : 0);
+
   // Fetch Ranked Matches for active persona
   const fetchMatches = useCallback(async () => {
     if (typeof getJobMatches !== "function") return;
@@ -104,12 +224,22 @@ export function Dashboard({
         page: 1,
         page_size: 25,
         min_score: minScoreFilter,
+        sort_by: sortBy,
       };
       if (activePersona?.id && activePersona.id !== "universal") {
         params.persona_id = activePersona.id;
       }
+      if (searchQuery.trim()) {
+        params.q = searchQuery.trim();
+      }
+      if (locationFilter.trim()) {
+        params.location = locationFilter.trim();
+      }
       if (modalityFilter) {
         params.modality = modalityFilter;
+      }
+      if (postedWithinFilter) {
+        params.posted_within = parseInt(postedWithinFilter, 10);
       }
       if (matchesVisaFilter) {
         params.visa_filter = true;
@@ -129,12 +259,24 @@ export function Dashboard({
     } finally {
       setMatchesLoading(false);
     }
-  }, [activePersona?.id, modalityFilter, matchesVisaFilter, minScoreFilter]);
+  }, [
+    activePersona,
+    searchQuery,
+    locationFilter,
+    modalityFilter,
+    postedWithinFilter,
+    minScoreFilter,
+    matchesVisaFilter,
+    sortBy,
+  ]);
 
-  // Load matches on mount or when activePersona / filters change
+  // Load matches with debounce when activePersona or filters change
   useEffect(() => {
     if (activeTab === "matches") {
-      fetchMatches();
+      const timer = setTimeout(() => {
+        fetchMatches();
+      }, 250);
+      return () => clearTimeout(timer);
     }
   }, [activeTab, fetchMatches]);
 
@@ -295,58 +437,231 @@ export function Dashboard({
       {activeTab === "matches" && (
         <div className="space-y-6">
           {/* Match Filter Controls */}
-          <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Workplace Modality Filter */}
-              <div className="flex items-center gap-2">
-                <SlidersHorizontal className="w-4 h-4 text-slate-400" />
-                <select
-                  value={modalityFilter}
-                  onChange={(e) => setModalityFilter(e.target.value)}
-                  className="bg-slate-900/90 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-                >
-                  <option value="">All Workplaces</option>
-                  <option value="remote">Remote Only</option>
-                  <option value="hybrid">Hybrid</option>
-                  <option value="on_site">On-site Only</option>
-                </select>
+          <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 shadow-xl space-y-3">
+            {/* Row 1: Search Inputs */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Text Search (Company, Title, Keywords) */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by company, title, or keywords (e.g. OpenAI, Tech Lead)..."
+                  aria-label="Search company, job title, or keywords"
+                  data-testid="matches-search-input"
+                  className="w-full pl-10 pr-8 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    aria-label="Clear keyword search"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
-              {/* Minimum Score Filter */}
-              <select
-                value={minScoreFilter}
-                onChange={(e) => setMinScoreFilter(parseFloat(e.target.value))}
-                className="bg-slate-900/90 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-              >
-                <option value={0.0}>All Probability Bands</option>
-                <option value={0.5}>Moderate+ (≥ 50%)</option>
-                <option value={0.75}>High Probability Only (≥ 75%)</option>
-              </select>
-
-              {/* Visa Sponsorship Filter */}
-              <label className="flex items-center gap-2 text-xs font-medium text-slate-300 cursor-pointer bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-700/60">
+              {/* City, State, Country & Region Filter */}
+              <div className="relative">
+                <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
-                  type="checkbox"
-                  checked={matchesVisaFilter}
-                  onChange={(e) => setMatchesVisaFilter(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded bg-slate-900 border-slate-600 text-sky-500 focus:ring-sky-500"
+                  type="text"
+                  value={locationFilter}
+                  onChange={(e) => setLocationFilter(e.target.value)}
+                  list="location-presets"
+                  placeholder="City, State, Country, or Region (e.g. San Francisco, CA, UK)..."
+                  aria-label="Filter by city, state, country, or region"
+                  data-testid="matches-location-input"
+                  className="w-full pl-10 pr-8 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
-                <span className="flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Visa Sponsoring
-                </span>
-              </label>
+                {locationFilter && (
+                  <button
+                    onClick={() => setLocationFilter("")}
+                    aria-label="Clear location filter"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <datalist id="location-presets">
+                  <option value="San Francisco, CA" />
+                  <option value="New York, NY" />
+                  <option value="Seattle, WA" />
+                  <option value="California" />
+                  <option value="United States" />
+                  <option value="London, UK" />
+                  <option value="United Kingdom" />
+                  <option value="Europe" />
+                  <option value="North America" />
+                  <option value="Remote" />
+                </datalist>
+              </div>
             </div>
 
-            <button
-              onClick={fetchMatches}
-              disabled={matchesLoading}
-              className="px-3 py-1.5 bg-slate-700/60 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl transition-colors flex items-center gap-1.5"
-            >
-              <RefreshCw
-                className={`w-3.5 h-3.5 ${matchesLoading ? "animate-spin" : ""}`}
-              />
-              Re-Score
-            </button>
+            {/* Row 2: Secondary Dropdown Filters & Controls */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Workplace Modality Filter */}
+                <div className="flex items-center gap-1.5">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+                  <select
+                    value={modalityFilter}
+                    onChange={(e) => setModalityFilter(e.target.value)}
+                    aria-label="Workplace modality filter"
+                    className="bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  >
+                    <option value="">All Workplaces</option>
+                    <option value="remote">Remote Only</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="on_site">On-site Only</option>
+                  </select>
+                </div>
+
+                {/* Posting Date Filter */}
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                  <select
+                    value={postedWithinFilter}
+                    onChange={(e) => setPostedWithinFilter(e.target.value)}
+                    aria-label="Filter by date posted"
+                    className="bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  >
+                    <option value="">Any Time</option>
+                    <option value="1">Past 24 Hours</option>
+                    <option value="7">Past Week</option>
+                    <option value="14">Past 2 Weeks</option>
+                    <option value="30">Past Month</option>
+                  </select>
+                </div>
+
+                {/* Minimum Score Filter */}
+                <select
+                  value={minScoreFilter}
+                  onChange={(e) => setMinScoreFilter(parseFloat(e.target.value))}
+                  aria-label="Minimum probability band filter"
+                  className="bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                >
+                  <option value={0.0}>All Probability Bands</option>
+                  <option value={0.5}>Moderate+ (≥ 50%)</option>
+                  <option value={0.75}>High Probability Only (≥ 75%)</option>
+                </select>
+
+                {/* Visa Sponsorship Filter */}
+                <label className="flex items-center gap-1.5 text-xs font-medium text-slate-300 cursor-pointer bg-slate-900/60 px-2.5 py-1.5 rounded-xl border border-slate-700/60">
+                  <input
+                    type="checkbox"
+                    checked={matchesVisaFilter}
+                    onChange={(e) => setMatchesVisaFilter(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded bg-slate-900 border-slate-600 text-sky-500 focus:ring-sky-500"
+                  />
+                  <span className="flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Visa
+                  </span>
+                </label>
+              </div>
+
+              {/* Right Side: Sort & Actions */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <span>Sort:</span>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    aria-label="Sort match opportunities"
+                    className="bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  >
+                    <option value="score">Best Match</option>
+                    <option value="date">Most Recent</option>
+                  </select>
+                </div>
+
+                {activeFilterCount > 0 && (
+                  <button
+                    onClick={handleClearFilters}
+                    title="Reset all filters to defaults"
+                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-xs font-medium rounded-xl border border-slate-700 transition-colors"
+                  >
+                    Clear All
+                  </button>
+                )}
+
+                <button
+                  onClick={fetchMatches}
+                  disabled={matchesLoading}
+                  className="px-3 py-1.5 bg-slate-700/60 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl transition-colors flex items-center gap-1.5"
+                >
+                  <RefreshCw
+                    className={`w-3.5 h-3.5 ${matchesLoading ? "animate-spin" : ""}`}
+                  />
+                  Re-Score
+                </button>
+              </div>
+            </div>
+
+            {/* Active Filter Tags */}
+            {activeFilterCount > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-slate-400 border-t border-slate-700/50">
+                <span className="text-slate-500">Active:</span>
+                {searchQuery.trim() && (
+                  <span className="px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-300 border border-sky-500/20 flex items-center gap-1">
+                    Keyword: "{searchQuery.trim()}"
+                    <button onClick={() => setSearchQuery("")} className="hover:text-white">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {locationFilter.trim() && (
+                  <span className="px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 flex items-center gap-1">
+                    Location: "{locationFilter.trim()}"
+                    <button onClick={() => setLocationFilter("")} className="hover:text-white">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {modalityFilter && (
+                  <span className="px-2 py-0.5 rounded-md bg-slate-700/60 text-slate-300 border border-slate-600 flex items-center gap-1">
+                    Workplace: {modalityFilter}
+                    <button onClick={() => setModalityFilter("")} className="hover:text-white">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {postedWithinFilter && (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 flex items-center gap-1">
+                    Posted: Past {postedWithinFilter === "1" ? "24h" : `${postedWithinFilter}d`}
+                    <button onClick={() => setPostedWithinFilter("")} className="hover:text-white">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {minScoreFilter > 0 && (
+                  <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20 flex items-center gap-1">
+                    Score: ≥ {Math.round(minScoreFilter * 100)}%
+                    <button onClick={() => setMinScoreFilter(0.0)} className="hover:text-white">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {matchesVisaFilter && (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 flex items-center gap-1">
+                    Visa Sponsoring
+                    <button onClick={() => setMatchesVisaFilter(false)} className="hover:text-white">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {sortBy !== "score" && (
+                  <span className="px-2 py-0.5 rounded-md bg-slate-700/60 text-slate-300 border border-slate-600 flex items-center gap-1">
+                    Sorted by: Most Recent
+                    <button onClick={() => setSortBy("score")} className="hover:text-white">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Loading State */}
@@ -433,13 +748,36 @@ export function Dashboard({
                               {matchPct}% Match
                             </span>
 
-                            <h3 className="text-lg font-bold text-white">
-                              {match.title}
-                            </h3>
+                            {match.apply_url ? (
+                              <a
+                                href={match.apply_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-lg font-bold text-white hover:text-sky-300 transition-colors inline-flex items-center gap-1.5 group"
+                                title="Open original job posting in new tab"
+                              >
+                                <span>{match.title}</span>
+                                <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-sky-400 transition-colors shrink-0" />
+                              </a>
+                            ) : (
+                              <h3 className="text-lg font-bold text-white">
+                                {match.title}
+                              </h3>
+                            )}
 
                             {match.workplace_type && (
                               <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-700">
                                 {match.workplace_type}
+                              </span>
+                            )}
+
+                            {match.posted_at && (
+                              <span
+                                title={`Posted on ${new Date(match.posted_at).toLocaleString()}`}
+                                className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-700 flex items-center gap-1"
+                              >
+                                <Clock className="w-3 h-3 text-slate-500" />
+                                {formatRelativeTime(match.posted_at)}
                               </span>
                             )}
 
@@ -501,6 +839,20 @@ export function Dashboard({
                           >
                             <MessageSquare className="w-3.5 h-3.5" /> Mock Interview
                           </button>
+
+                          {match.apply_url && (
+                            <a
+                              href={match.apply_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              data-testid={`apply-link-${match.job_id}`}
+                              title="Open original job application in new tab"
+                              className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              <span>Apply</span>
+                            </a>
+                          )}
                         </div>
                       </div>
 
@@ -832,6 +1184,7 @@ export function Dashboard({
           jobId={selectedJobForDiag.job_id}
           jobTitle={selectedJobForDiag.title}
           companyName={selectedJobForDiag.company_name}
+          applyUrl={selectedJobForDiag.apply_url}
           personaId={activePersona?.id}
           onClose={() => setSelectedJobForDiag(null)}
           onTailorCV={() => {

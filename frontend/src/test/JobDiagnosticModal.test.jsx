@@ -119,5 +119,24 @@ describe("JobDiagnosticModal Component", () => {
     expect(handleClose).toHaveBeenCalledTimes(1);
     expect(handleInterview).toHaveBeenCalledTimes(1);
   });
+
+  it("renders external Apply link when applyUrl is provided", async () => {
+    api.getJobDiagnostics.mockResolvedValueOnce(mockDiagnosticData);
+
+    render(
+      <JobDiagnosticModal
+        jobId="job-100"
+        jobTitle="Principal ML Engineer"
+        companyName="OpenAI"
+        applyUrl="https://careers.openai.com/jobs/100"
+        onClose={vi.fn()}
+      />
+    );
+
+    const applyLink = await screen.findByTestId("diagnostic-apply-btn");
+    expect(applyLink).toBeInTheDocument();
+    expect(applyLink).toHaveAttribute("href", "https://careers.openai.com/jobs/100");
+    expect(applyLink).toHaveAttribute("target", "_blank");
+  });
 });
 

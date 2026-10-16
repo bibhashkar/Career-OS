@@ -9,6 +9,7 @@ import {
   Sparkles,
   ArrowRight,
   TrendingUp,
+  ExternalLink,
 } from "lucide-react";
 import { getJobDiagnostics } from "../services/api";
 
@@ -16,6 +17,7 @@ export function JobDiagnosticModal({
   jobId,
   jobTitle,
   companyName,
+  applyUrl,
   personaId,
   onClose,
   onTailorCV,
@@ -240,6 +242,18 @@ export function JobDiagnosticModal({
             Close
           </button>
           <div className="flex items-center gap-2">
+            {applyUrl && (
+              <a
+                href={applyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="diagnostic-apply-btn"
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600/90 hover:bg-emerald-500 text-white transition-colors flex items-center gap-1.5 shadow-sm"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Apply</span>
+              </a>
+            )}
             {onStartInterview && (
               <button
                 onClick={() => {
