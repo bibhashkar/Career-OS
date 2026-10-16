@@ -15,7 +15,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -31,6 +31,7 @@ from app.ingestion.resume_parser import (
 from app.models.cv_block import CVBlock
 from app.models.user_account import (
     CandidatePersona,
+    JobMatchCache,
     PersonaCVBlockRel,
     PersonaSkill,
     UserAccount,
@@ -65,6 +66,28 @@ class CreateSpecializedPersonaRequest(BaseModel):
     target_industries: list[str] = Field(default_factory=list)
     seniority_level: str = Field(default="mid")
     years_experience: int = Field(default=3)
+    skills: list[str] = Field(default_factory=list)
+
+
+class UpdatePersonaRequest(BaseModel):
+    """Payload for updating or renaming a candidate persona."""
+
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        examples=["AI Platform Engineer"],
+    )
+    headline: str | None = Field(
+        None,
+        max_length=255,
+        examples=["Specializing in Large-Scale AI Orchestration"],
+    )
+    target_roles: list[str] = Field(default_factory=list)
+    target_industries: list[str] = Field(default_factory=list)
+    seniority_level: str = Field(default="mid")
+    years_experience: int = Field(default=0, ge=0)
+    min_salary: int | None = Field(default=None, ge=0)
     skills: list[str] = Field(default_factory=list)
 
 
@@ -476,11 +499,33 @@ async def create_persona(
     user_uuid = _get_user_uuid(current_user)
     account = await _get_or_create_account(db, user_uuid, current_user.email)
 
+    clean_name = req.name.strip()
+    if not clean_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Persona name cannot be empty.",
+        )
+
+    # Enforce case-insensitive duplicate name check per candidate account
+    dup_stmt = select(CandidatePersona).where(
+        CandidatePersona.user_account_id == account.id,
+        func.lower(CandidatePersona.name) == clean_name.lower(),
+    )
+    dup_res = await db.execute(dup_stmt)
+    if dup_res.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"A persona with the name '{clean_name}' already exists "
+                "for this account."
+            ),
+        )
+
     persona_id = uuid.uuid4()
     persona = CandidatePersona(
         id=persona_id,
         user_account_id=account.id,
-        name=req.name.strip(),
+        name=clean_name,
         is_common_persona=False,
         is_default=False,
         headline=req.headline,
@@ -523,6 +568,129 @@ async def create_persona(
 
 
 @router.put(
+    "/personas/{persona_id}",
+    response_model=PersonaDetailResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def update_persona(
+    persona_id: str,
+    req: UpdatePersonaRequest,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> PersonaDetailResponse:
+    """
+    Update or rename a candidate persona.
+
+    Guards:
+      - Universal Profile name is fixed and cannot be renamed.
+      - Case-insensitive uniqueness for persona names per candidate account.
+    """
+    user_uuid = _get_user_uuid(current_user)
+    try:
+        p_uuid = uuid.UUID(persona_id)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid persona_id UUID format.",
+        ) from err
+
+    stmt = (
+        select(CandidatePersona)
+        .options(
+            selectinload(CandidatePersona.skills),
+            selectinload(CandidatePersona.cv_block_rels),
+        )
+        .where(
+            CandidatePersona.id == p_uuid,
+            CandidatePersona.user_account_id == user_uuid,
+        )
+    )
+    result = await db.execute(stmt)
+    persona = result.scalar_one_or_none()
+    if persona is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Persona not found or access denied.",
+        )
+
+    clean_name = req.name.strip()
+    if not clean_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Persona name cannot be empty.",
+        )
+
+    # 1. Enforce that Universal Persona cannot be renamed
+    if persona.is_common_persona and clean_name.lower() != persona.name.lower():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The Universal Profile name is fixed and cannot be renamed.",
+        )
+
+    # 2. Check for duplicate name among other personas of this account
+    if clean_name.lower() != persona.name.lower():
+        dup_stmt = select(CandidatePersona).where(
+            CandidatePersona.user_account_id == user_uuid,
+            func.lower(CandidatePersona.name) == clean_name.lower(),
+            CandidatePersona.id != p_uuid,
+        )
+        dup_res = await db.execute(dup_stmt)
+        if dup_res.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"A persona with the name '{clean_name}' already exists "
+                    "for this account."
+                ),
+            )
+
+    # 3. Update fields (name only updated if not universal profile)
+    if not persona.is_common_persona:
+        persona.name = clean_name
+
+    persona.headline = req.headline
+    persona.target_roles = req.target_roles
+    persona.target_industries = req.target_industries
+    persona.seniority_level = req.seniority_level
+    persona.years_experience = req.years_experience
+    persona.min_salary = req.min_salary
+
+    # 4. Sync skills if provided
+    if req.skills:
+        existing_skills = {s.skill_name.lower(): s for s in (persona.skills or [])}
+        for s in req.skills:
+            s_clean = s.strip()
+            if s_clean and s_clean.lower() not in existing_skills:
+                new_skill = PersonaSkill(
+                    id=uuid.uuid4(),
+                    persona_id=persona.id,
+                    skill_name=s_clean,
+                    category="tool",
+                    proficiency="intermediate",
+                    years_experience=max(1, req.years_experience),
+                    is_core=True,
+                )
+                db.add(new_skill)
+
+    await db.commit()
+    await db.refresh(persona, attribute_names=["skills", "cv_block_rels"])
+
+    return PersonaDetailResponse(
+        id=str(persona.id),
+        name=persona.name,
+        is_common_persona=persona.is_common_persona,
+        headline=persona.headline,
+        seniority_level=persona.seniority_level,
+        years_experience=persona.years_experience,
+        target_roles=list(persona.target_roles or []),
+        target_industries=list(persona.target_industries or []),
+        is_default=persona.is_default,
+        skill_count=len(persona.skills or []),
+        block_count=len(persona.cv_block_rels or []),
+    )
+
+
+@router.put(
     "/personas/{persona_id}/default",
     status_code=status.HTTP_200_OK,
 )
@@ -556,6 +724,74 @@ async def set_default_persona(
     await db.commit()
 
     return {"status": "success", "default_persona_id": persona_id}
+
+
+@router.delete(
+    "/personas/{persona_id}",
+    status_code=status.HTTP_200_OK,
+)
+async def delete_persona(
+    persona_id: str,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> dict[str, str]:
+    """
+    Delete a specialized candidate persona.
+
+    Guards:
+      - Universal Profile (is_common_persona = True) cannot be deleted.
+      - If deleting the default persona, falls back to the Universal Profile.
+    """
+    user_uuid = _get_user_uuid(current_user)
+    try:
+        p_uuid = uuid.UUID(persona_id)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid persona_id UUID format.",
+        ) from err
+
+    stmt = select(CandidatePersona).where(
+        CandidatePersona.id == p_uuid,
+        CandidatePersona.user_account_id == user_uuid,
+    )
+    result = await db.execute(stmt)
+    persona = result.scalar_one_or_none()
+    if persona is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Persona not found or access denied.",
+        )
+
+    if persona.is_common_persona:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The Universal Profile cannot be deleted.",
+        )
+
+    was_default = persona.is_default
+
+    # Delete relational children
+    await db.execute(delete(PersonaSkill).where(PersonaSkill.persona_id == p_uuid))
+    await db.execute(
+        delete(PersonaCVBlockRel).where(PersonaCVBlockRel.persona_id == p_uuid)
+    )
+    await db.execute(delete(JobMatchCache).where(JobMatchCache.persona_id == p_uuid))
+    await db.execute(delete(CandidatePersona).where(CandidatePersona.id == p_uuid))
+
+    # If deleted persona was default, designate Universal Persona as new default
+    if was_default:
+        await db.execute(
+            update(CandidatePersona)
+            .where(
+                CandidatePersona.user_account_id == user_uuid,
+                CandidatePersona.is_common_persona.is_(True),
+            )
+            .values(is_default=True)
+        )
+
+    await db.commit()
+    return {"status": "deleted", "persona_id": persona_id}
 
 
 @router.get(

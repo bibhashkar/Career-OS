@@ -27,10 +27,12 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -121,6 +123,21 @@ class CandidatePersona(Base, UUIDMixin, TimestampMixin):
     """
 
     __tablename__ = "candidate_persona"
+    __table_args__ = (
+        Index(
+            "uq_candidate_persona_account_name",
+            "user_account_id",
+            text("lower(name)"),
+            unique=True,
+        ),
+        Index(
+            "uq_candidate_persona_universal_per_account",
+            "user_account_id",
+            unique=True,
+            postgresql_where=text("is_common_persona = TRUE"),
+            sqlite_where=text("is_common_persona = 1"),
+        ),
+    )
 
     user_account_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),

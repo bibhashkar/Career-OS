@@ -269,3 +269,192 @@ async def test_candidate_onboarding_and_persona_api_flow(
             assert del_resp.json()["status"] == "deleted"
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.mark.asyncio
+async def test_persona_management_and_uniqueness_flow(
+    db_session: AsyncSession,
+) -> None:
+    """
+    Verify persona editing, renaming, case-insensitive duplicate guards,
+    and Universal Profile rename/delete protections.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    engine = db_session.bind
+    session_maker = async_sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        async with session_maker() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            user_id = "22222222-3333-4444-5555-666666666666"
+            token = create_access_token(
+                user_id=user_id,
+                email="persona_mgr@example.com",
+            )
+            headers = {"Authorization": f"Bearer {token}"}
+
+            # 1. Onboard candidate to create root account and Universal Profile
+            onboard_payload = {
+                "full_name": "Persona Manager Test",
+                "visa_status": "Citizen",
+                "target_roles": ["Software Engineer"],
+                "years_experience": 5,
+                "skills": ["Python", "FastAPI"],
+            }
+            onb_res = await client.post(
+                "/api/candidates/onboard",
+                headers=headers,
+                json=onboard_payload,
+            )
+            assert onb_res.status_code == 200
+
+            # 2. Retrieve personas (initially contains Universal Profile)
+            list_res = await client.get("/api/candidates/personas", headers=headers)
+            assert list_res.status_code == 200
+            personas = list_res.json()
+            assert len(personas) == 1
+            universal_p = personas[0]
+            assert universal_p["is_common_persona"] is True
+            assert universal_p["name"] == "Universal Profile"
+
+            # 3. Create a specialized persona "AI Engineer"
+            create_payload = {
+                "name": "AI Engineer",
+                "headline": "LLM Infrastructure Specialist",
+                "target_roles": ["AI Engineer"],
+                "seniority_level": "senior",
+                "years_experience": 4,
+                "skills": ["PyTorch", "vLLM"],
+            }
+            create_res = await client.post(
+                "/api/candidates/personas",
+                headers=headers,
+                json=create_payload,
+            )
+            assert create_res.status_code == 201
+            ai_persona = create_res.json()
+            assert ai_persona["name"] == "AI Engineer"
+
+            # 4. Attempt to create duplicate name (case-insensitive "ai engineer")
+            dup_create_res = await client.post(
+                "/api/candidates/personas",
+                headers=headers,
+                json={"name": "ai engineer", "skills": ["Python"]},
+            )
+            assert dup_create_res.status_code == 400
+            assert "already exists" in dup_create_res.json()["detail"]
+
+            # 5. Create a second specialized persona "Backend Specialist"
+            create_res2 = await client.post(
+                "/api/candidates/personas",
+                headers=headers,
+                json={"name": "Backend Specialist", "skills": ["Go", "Kafka"]},
+            )
+            assert create_res2.status_code == 201
+            backend_persona = create_res2.json()
+
+            # 6. Rename "Backend Specialist" to "Distributed Systems Architect"
+            update_payload = {
+                "name": "Distributed Systems Architect",
+                "headline": "High-Throughput Systems",
+                "target_roles": ["Principal Architect"],
+                "seniority_level": "principal",
+                "years_experience": 10,
+                "skills": ["Go", "Kafka", "Rust"],
+            }
+            update_res = await client.put(
+                f"/api/candidates/personas/{backend_persona['id']}",
+                headers=headers,
+                json=update_payload,
+            )
+            assert update_res.status_code == 200
+            updated_p = update_res.json()
+            assert updated_p["name"] == "Distributed Systems Architect"
+            assert updated_p["years_experience"] == 10
+
+            # 7. Attempt to rename to "ai engineer" (conflict with Persona 1)
+            conflict_update_res = await client.put(
+                f"/api/candidates/personas/{backend_persona['id']}",
+                headers=headers,
+                json={
+                    "name": "ai engineer",
+                    "headline": "Conflicting",
+                    "target_roles": [],
+                },
+            )
+            assert conflict_update_res.status_code == 400
+            assert "already exists" in conflict_update_res.json()["detail"]
+
+            # 8. Attempt to rename the Universal Profile (must be rejected)
+            universal_rename_res = await client.put(
+                f"/api/candidates/personas/{universal_p['id']}",
+                headers=headers,
+                json={
+                    "name": "Custom Profile Name",
+                    "headline": "Changed headline",
+                    "target_roles": ["CTO"],
+                },
+            )
+            assert universal_rename_res.status_code == 400
+            assert "cannot be renamed" in universal_rename_res.json()["detail"]
+
+            # 9. Modifying settings of Universal Profile with same name succeeds
+            universal_update_res = await client.put(
+                f"/api/candidates/personas/{universal_p['id']}",
+                headers=headers,
+                json={
+                    "name": "Universal Profile",
+                    "headline": "Updated Universal Headline",
+                    "target_roles": ["Director of Engineering"],
+                    "seniority_level": "lead",
+                    "years_experience": 8,
+                    "skills": ["Python", "FastAPI", "PostgreSQL"],
+                },
+            )
+            assert universal_update_res.status_code == 200
+            upd_univ = universal_update_res.json()
+            assert upd_univ["headline"] == "Updated Universal Headline"
+            assert upd_univ["seniority_level"] == "lead"
+
+            # 10. Attempt to delete Universal Profile (must be rejected)
+            del_univ_res = await client.delete(
+                f"/api/candidates/personas/{universal_p['id']}",
+                headers=headers,
+            )
+            assert del_univ_res.status_code == 400
+            assert "cannot be deleted" in del_univ_res.json()["detail"]
+
+            # 11. Set specialized persona as default, then delete it
+            await client.put(
+                f"/api/candidates/personas/{ai_persona['id']}/default",
+                headers=headers,
+            )
+            del_ai_res = await client.delete(
+                f"/api/candidates/personas/{ai_persona['id']}",
+                headers=headers,
+            )
+            assert del_ai_res.status_code == 200
+            assert del_ai_res.json()["status"] == "deleted"
+
+            # 12. Verify Universal Profile is automatically restored as default
+            list_res2 = await client.get("/api/candidates/personas", headers=headers)
+            personas2 = list_res2.json()
+            univ_after = next(p for p in personas2 if p["is_common_persona"])
+            assert univ_after["is_default"] is True
+    finally:
+        app.dependency_overrides.pop(get_db, None)

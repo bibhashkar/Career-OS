@@ -480,6 +480,8 @@ CREATE TABLE IF NOT EXISTS candidate_persona (
 
 CREATE INDEX IF NOT EXISTS ix_candidate_persona_user_account_id ON candidate_persona (user_account_id);
 CREATE INDEX IF NOT EXISTS ix_candidate_persona_is_common ON candidate_persona (is_common_persona);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_candidate_persona_account_name ON candidate_persona (user_account_id, lower(name));
+CREATE UNIQUE INDEX IF NOT EXISTS uq_candidate_persona_universal_per_account ON candidate_persona (user_account_id) WHERE is_common_persona = TRUE;
 
 -- -----------------------------------------------------------------------------
 -- Table: persona_skill
