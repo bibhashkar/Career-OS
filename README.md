@@ -85,8 +85,8 @@ flowchart TD
 | **Model & Agent Observability** | **Arize Phoenix** (Self-Hosted OTLP) | Full execution trace visualization, nested agent flame graphs, token accounting, latency profiling, and PII-free prompt debugging. |
 | **Operational Telemetry** | **Prometheus Metrics** (`/metrics`) | Real-time monitoring of HTTP request rates, agent execution latencies, database connection pool saturation, and ATS loop exhaustion trips. |
 | **Short-Term Checkpoints** | `langgraph.checkpoint.postgres.AsyncPostgresSaver` | Pausable, resumable multi-turn WebSocket mock interviews keyed on `thread_id` across reconnections and server restarts. |
-| **Semantic Vector Store** | PostgreSQL + `pgvector` with HNSW Index | 1536-dimensional cosine similarity matching of candidate career blocks (`cv_block`) against job requirements. |
-| **Relational Storage** | PostgreSQL + SQLAlchemy 2.0 Async | 18 core entities: `user_account`, `candidate_persona`, `persona_skill`, `persona_cv_block_rel`, `job_match_cache`, `user_profile`, `job_listing`, `company_dossier`, `cv_block`, `feedback_log`, `application`. |
+| **Semantic Vector Store** | PostgreSQL + `pgvector` with HNSW Index | 1536-dimensional cosine similarity matching of candidate career blocks (`cv_block`) and job listings (`job_listing`) with sub-millisecond HNSW indexes. |
+| **Relational & Inverted Index Storage** | PostgreSQL + SQLAlchemy 2.0 Async + JSONB GIN Indexes | 18 core entities: `user_account`, `candidate_persona`, `persona_skill`, `persona_cv_block_rel`, `job_match_cache`, `user_profile`, `job_listing`, `company_dossier`, `cv_block`, `feedback_log`, `application` with GIN inverted indexes on requirements and matched skills. |
 
 ---
 
@@ -178,7 +178,7 @@ make run-frontend   # Starts Vite React dev server on http://localhost:5173
 ## Database Migrations, Tracing & Profiling
 
 ### 1. Running Database Migrations (Pure SQL Runner)
-Career-OS manages relational and vector schema versions using sequential pure SQL scripts (`db/migrations/0001_initial_schema.sql`) and a lightweight tracking runner:
+Career-OS manages relational, vector, and inverted index schema versions using sequential pure SQL scripts (`db/migrations/0001_initial_schema.sql`, `db/migrations/0002_matching_engine_v2_schema.sql`) and a lightweight tracking runner:
 
 ```bash
 # Apply all pending migrations sequentially to the database

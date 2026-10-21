@@ -17,15 +17,19 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
     Uuid,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin, utc_now
@@ -108,9 +112,17 @@ class JobListing(Base, UUIDMixin, TimestampMixin):
 
     # Compensation & Content
     salary_range: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    salary_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    salary_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    salary_currency: Mapped[str] = mapped_column(
+        String(10), default="USD", nullable=False
+    )
+    is_salary_estimated: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     raw_description: Mapped[str] = mapped_column(Text, nullable=False)
     ats_requirements: Mapped[dict[str, Any]] = mapped_column(
-        JSON, default=dict, nullable=False
+        JSON().with_variant(JSONB, "postgresql"), default=dict, nullable=False
     )
 
     # Multi-Jurisdiction Visa Sponsorship Attributes
@@ -124,7 +136,11 @@ class JobListing(Base, UUIDMixin, TimestampMixin):
     fingerprint: Mapped[str | None] = mapped_column(
         String(64), index=True, nullable=True
     )
+    content_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), index=True, nullable=True
+    )
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    embedding: Mapped[Any | None] = mapped_column(Vector(1536), nullable=True)
     status: Mapped[str] = mapped_column(
         String(50), default="active", index=True, nullable=False
     )

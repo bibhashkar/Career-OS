@@ -106,6 +106,35 @@ To prevent missing data from breaking the matching engine, all parameters follow
 
 ---
 
+## Evolution: Matching Engine v2.0 (Industrial-Grade Hybrid Retrieval)
+
+**Date**: 2026-10-21  
+**Status**: Accepted & In Implementation  
+
+To address semantic double-counting, recency starvation in Stage 1, symmetric equivalence errors, and uniform 1/N skill weighting, the matching engine was upgraded to v2.0 per `MATCHING_ENGINE_SPEC.md`:
+
+### 1. Stage 1: Hybrid Inverted Index & Reciprocal Rank Fusion (RRF)
+- Replaces naive `created_at DESC LIMIT 250` with a three-way Reciprocal Rank Fusion of:
+  1. `JSONB` GIN Skill Inverted Index (`idx_job_listing_ats_requirements_gin`) on `ats_requirements`.
+  2. Dense 1536-dimensional `pgvector` HNSW index (`idx_job_listing_embedding_hnsw`) on `job_listing.embedding`.
+  3. Posting recency scoring.
+- Guarantees the 250 candidates retrieved for Stage 2 reranking represent the highest-recall subset across the entire corpus.
+
+### 2. Stage 2: Asymmetric Skill Graph & Specificity Weighting
+- **Asymmetric Transfer Matrix $T(u \to v)$ (`skill_graph.py`):** Replaces symmetric equivalence sets with directional transfers (e.g. `Kubernetes -> Docker` = 0.90; `Docker -> Kubernetes` = 0.35).
+- **IDF Specificity Weights $w(s)$:** Deep architectural skills (`rust`, `cuda`, `langgraph`, `kafka`, `kubernetes`) carry $w \in [1.8, 2.2]$, while commodity boilerplate (`git`, `json`, `agile`) carries $w \in [0.4, 0.6]$, eliminating the 1/N keyword-stuffing fallacy.
+- **Core Dealbreaker Multiplier $D_{\text{core}} \in [0.25, 1.0]$:** Penalizes missing non-negotiable core skills exponentially.
+- **Cold-Start Implied DAG Expansion:** Sparse profiles ($< 3$ CV blocks) automatically expand implied prerequisite skills with a neutral 0.65 prior floor.
+
+### 3. Upgraded Multi-Factor Reranking Formula
+$$P(\text{Match}) = (G_{\text{prob}} \times D_{\text{core}}) \times \left[ 0.25 S_{\text{skills}} + 0.25 S_{\text{semantic}} + 0.15 S_{\text{seniority}} + 0.15 S_{\text{archetype}} + 0.10 S_{\text{comp}} + 0.10 S_{\text{freshness}} \right]$$
+
+### 4. Compensation Normalization ($S_{\text{comp}}$) & Deduplication
+- Normalized annualized USD salary bounds (`salary_min`, `salary_max`, `salary_currency`, `is_salary_estimated`) with DOL/USCIS H-1B prevailing wage fallback estimation.
+- Cross-ATS deduplication fingerprint (`content_fingerprint` = `SHA256(company_slug + normalized_title + location_code)`).
+
+---
+
 ## References
 
 1. LinkedIn Engineering: *Galene: A Framework for Search Architecture* (LinkedIn Tech Blog).

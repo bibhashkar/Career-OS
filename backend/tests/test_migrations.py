@@ -71,6 +71,37 @@ def test_initial_schema_file_contents_and_extensions() -> None:
     assert "ON DELETE RESTRICT" in content
 
 
+def test_v2_schema_expansion_migration() -> None:
+    """
+    Verify 0002_matching_engine_v2_schema.sql contains required v2 columns.
+    """
+    v2_sql_path = MIGRATIONS_DIR / "0002_matching_engine_v2_schema.sql"
+    assert v2_sql_path.exists(), "0002_matching_engine_v2_schema.sql not found"
+
+    content = v2_sql_path.read_text(encoding="utf-8")
+    # Verify compensation & fingerprint columns
+    assert "salary_min INTEGER" in content
+    assert "salary_max INTEGER" in content
+    assert "content_fingerprint VARCHAR(64)" in content
+    assert "embedding vector(1536)" in content
+
+    # Verify JSONB conversion and GIN indexes
+    assert "idx_job_listing_ats_requirements_gin" in content
+    assert "idx_job_listing_embedding_hnsw" in content
+    assert "idx_job_match_cache_matched_skills_gin" in content
+
+    # Verify v2 diagnostic scores
+    assert "d_core FLOAT NOT NULL DEFAULT 1.0" in content
+    assert "archetype_score FLOAT" in content
+    assert "comp_score FLOAT" in content
+    assert "freshness_score FLOAT" in content
+
+    # Verify checksum calculation
+    checksum = migrate.calculate_checksum(v2_sql_path)
+    assert len(checksum) == 64
+    assert checksum == hashlib.sha256(v2_sql_path.read_bytes()).hexdigest()
+
+
 def test_checksum_calculation() -> None:
     """Verify SHA-256 calculation matches file hash."""
     initial_sql_path = MIGRATIONS_DIR / "0001_initial_schema.sql"

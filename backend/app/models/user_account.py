@@ -34,6 +34,7 @@ from sqlalchemy import (
     Uuid,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin, utc_now
@@ -319,11 +320,15 @@ class JobMatchCache(Base, UUIDMixin):
         Float, default=0.0, nullable=False
     )
     missing_skills: Mapped[list[str]] = mapped_column(
-        JSON, default=list, nullable=False
+        JSON().with_variant(JSONB, "postgresql"), default=list, nullable=False
     )
     matched_skills: Mapped[list[str]] = mapped_column(
-        JSON, default=list, nullable=False
+        JSON().with_variant(JSONB, "postgresql"), default=list, nullable=False
     )
+    d_core: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    archetype_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    comp_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    freshness_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     evaluated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utc_now,
