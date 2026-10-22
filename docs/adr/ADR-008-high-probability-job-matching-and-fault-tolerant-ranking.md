@@ -109,7 +109,7 @@ To prevent missing data from breaking the matching engine, all parameters follow
 ## Evolution: Matching Engine v2.0 (Industrial-Grade Hybrid Retrieval)
 
 **Date**: 2026-10-21  
-**Status**: Accepted & In Implementation  
+**Status**: Accepted & Implemented (Engine Core Steps 1–3 Complete)  
 
 To address semantic double-counting, recency starvation in Stage 1, symmetric equivalence errors, and uniform 1/N skill weighting, the matching engine was upgraded to v2.0 per `MATCHING_ENGINE_SPEC.md`:
 

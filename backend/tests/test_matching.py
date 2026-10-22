@@ -19,6 +19,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.agents.tools.embeddings import generate_deterministic_embedding
 from app.core.auth import create_access_token
 from app.core.database import get_db
 from app.main import app
@@ -28,11 +29,16 @@ from app.models.job_listing import JobListing
 from app.models.user_account import CandidatePersona, PersonaSkill, UserAccount
 from app.services.matching import (
     calculate_achievement_score,
+    calculate_archetype_score,
+    calculate_compensation_score,
     calculate_freshness_score,
     calculate_prestige_score,
     calculate_probabilistic_gate,
+    calculate_semantic_top3_score,
     calculate_seniority_score,
     calculate_skill_overlap,
+    normalize_job_compensation,
+    retrieve_stage1_candidates,
 )
 
 
@@ -487,3 +493,279 @@ async def test_job_matching_and_diagnostics_api_flow(
 
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+def test_semantic_vector_top3_max_sim_no_double_counting() -> None:
+    """
+    Verify S_semantic uses vector cosine similarity over CVBlock embeddings.
+
+    Ensures that when jobs have identical skills declared, the semantic score
+    discriminates accurately based on actual content embeddings rather than
+    merely repeating S_skills (eliminating the double-counting bug).
+    """
+    # Candidate with distributed AI infra achievement block
+    block_text = (
+        "Optimized high-throughput tensor parallel model inference "
+        "with Python and CUDA."
+    )
+    block = CVBlock(
+        title="Distributed Model Inference",
+        content=block_text,
+        embedding=generate_deterministic_embedding(block_text),
+    )
+
+    # Job A: Distributed AI Infra (high semantic similarity)
+    job_ai_text = (
+        "AI Infrastructure Engineer Build distributed inference "
+        "pipelines and GPU tensor."
+    )
+    job_ai = JobListing(
+        title="AI Infrastructure Engineer",
+        raw_description=job_ai_text,
+        ats_requirements={"hard_skills": ["Python"]},
+        embedding=generate_deterministic_embedding(job_ai_text),
+    )
+
+    # Job B: Frontend Web (low semantic similarity, despite sharing 'Python' skill)
+    job_fe_text = (
+        "Frontend Web Developer Design user interfaces in React, HTML, CSS with Python."
+    )
+    job_fe = JobListing(
+        title="Frontend Web Developer",
+        raw_description=job_fe_text,
+        ats_requirements={"hard_skills": ["Python"]},
+        embedding=generate_deterministic_embedding(job_fe_text),
+    )
+
+    target_roles = ["AI Infrastructure Engineer"]
+    score_ai = calculate_semantic_top3_score([block], job_ai, target_roles)
+    score_fe = calculate_semantic_top3_score([block], job_fe, target_roles)
+
+    # Semantic score for AI job must significantly exceed frontend job
+    assert score_ai > score_fe
+    assert score_ai >= 0.45
+    assert score_fe < 0.30
+
+
+def test_compensation_normalization_and_exponential_penalty() -> None:
+    """
+    Verify salary extraction, prevailing wage fallback, and exponential penalty.
+    """
+    # 1. Explicit bounds
+    job_explicit = JobListing(
+        title="Senior Engineer",
+        salary_min=180000,
+        salary_max=220000,
+        salary_currency="USD",
+        is_salary_estimated=False,
+        raw_description="Senior roles.",
+    )
+    c_min, c_max, is_est = normalize_job_compensation(job_explicit)
+    assert c_min == 180000
+    assert c_max == 220000
+    assert is_est is False
+
+    # 2. String parsing from salary_range
+    job_str1 = JobListing(
+        title="Staff Engineer",
+        salary_range="$190,000 - $240,000",
+        raw_description="Staff roles.",
+    )
+    _, max1, est1 = normalize_job_compensation(job_str1)
+    assert max1 == 240000
+    assert est1 is False
+
+    job_str2 = JobListing(
+        title="Mid Engineer",
+        salary_range="$140k - $160k",
+        raw_description="Mid roles.",
+    )
+    _, max2, est2 = normalize_job_compensation(job_str2)
+    assert max2 == 160000
+    assert est2 is False
+
+    # 3. Prevailing wage fallback for undisclosed compensation
+    job_undisclosed = JobListing(
+        title="Senior Engineer",
+        salary_range=None,
+        ats_requirements={"seniority_level": "senior"},
+        industry="technology_software",
+        raw_description="Senior roles.",
+    )
+    _, max_undisc, est_undisc = normalize_job_compensation(job_undisclosed)
+    assert max_undisc > 150000
+    assert est_undisc is True
+
+    # 4. Feasibility scores:
+    # No min salary declared -> 1.0
+    assert calculate_compensation_score(None, job_str1) == 1.0
+    assert calculate_compensation_score(0, job_str1) == 1.0
+
+    # Salary target met ($200k target vs $240k max) -> 1.0
+    assert calculate_compensation_score(200000, job_str1) == 1.0
+
+    # Salary target unmet ($200k target vs $160k max):
+    # shortfall = (200k - 160k) / 200k = 0.20
+    # exp(-3.0 * 0.20) = exp(-0.60) ~= 0.5488
+    score_unmet = calculate_compensation_score(200000, job_str2)
+    assert 0.50 <= score_unmet <= 0.60
+
+
+def test_archetype_alignment_job_variance() -> None:
+    """
+    Verify S_archetype produces job-discriminating scores across company archetypes.
+
+    Candidate has Tier 1 pedigree and high-scale low-latency proof, but modest OSS.
+    HFT Quant and Tier 1 Scaleup jobs must score higher than an OSS DevTools role.
+    """
+    block_scale = CVBlock(
+        category="work_experience",
+        title="Core Infrastructure Engineer",
+        organization="Google",
+        content=(
+            "Engineered low latency cache. Decreased p99 latency under 200k req/s."
+        ),
+        metrics={"throughput_or_latency": "200k req/s", "p99": "2ms"},
+    )
+
+    prestige = 1.0  # Google pedigree
+    achievement = 0.20  # Standard achievement baseline
+
+    job_hft = JobListing(
+        title="Quant Systems Engineer",
+        company_name="Citadel",
+        industry="hft_quant_trading",
+        raw_description="Ultra low latency C++ trading systems with microsecond scale.",
+    )
+
+    job_oss = JobListing(
+        title="Open Source Developer Advocate",
+        company_name="DevCommunity",
+        industry="devtools",
+        raw_description="Maintain public open source community repos and sdks.",
+    )
+
+    score_hft = calculate_archetype_score(job_hft, prestige, achievement, [block_scale])
+    score_oss = calculate_archetype_score(job_oss, prestige, achievement, [block_scale])
+
+    # HFT rewards candidate's pedigree and scale proof; OSS role scores lower
+    assert score_hft > score_oss
+    assert score_hft >= 0.70
+    assert score_oss < 0.55
+
+
+@pytest.mark.asyncio
+async def test_stage1_rrf_prevents_recency_starvation(
+    db_session: AsyncSession,
+) -> None:
+    """
+    Verify Stage 1 RRF retrieves older, high-match jobs even when newer
+    low-relevance jobs fill the catalog (defeating recency starvation).
+    """
+    user_uuid = uuid.uuid4()
+    persona_uuid = uuid.uuid4()
+    board_uuid = uuid.uuid4()
+
+    provider = ATSProvider(
+        code="greenhouse_rrf",
+        name="Greenhouse RRF",
+        api_base_url="https://boards-api.greenhouse.io/v1",
+        auth_type="public_api",
+        default_rate_limit_rps=5.0,
+        is_active=True,
+    )
+    board = ATSBoard(
+        id=board_uuid,
+        provider="greenhouse_rrf",
+        slug="techcorp",
+        company_name="TechCorp",
+        tier=1,
+        priority=10,
+        is_active=True,
+    )
+    account = UserAccount(
+        id=user_uuid,
+        email="rrf.test@example.com",
+        full_name="Alex RRF",
+        visa_status="Citizen",
+        preferred_locations=["Remote"],
+        remote_preference="Remote",
+        is_active=True,
+    )
+    persona = CandidatePersona(
+        id=persona_uuid,
+        user_account_id=user_uuid,
+        name="Distributed Systems Specialist",
+        is_common_persona=True,
+        is_default=True,
+        headline="Distributed Systems Specialist",
+        target_roles=["Distributed Systems Engineer"],
+        years_experience=5,
+        seniority_level="senior",
+    )
+    db_session.add_all([provider, board, account, persona])
+    await db_session.flush()
+
+    now = datetime.now(UTC)
+
+    # 1. Older High-Match Job (posted 25 days ago)
+    old_high_match_id = uuid.uuid4()
+    old_high_job = JobListing(
+        id=old_high_match_id,
+        title="Senior Distributed Systems Engineer",
+        company_name="TechCorp",
+        ats_board_id=board_uuid,
+        ats_provider="greenhouse_rrf",
+        ats_board_slug="techcorp",
+        source_job_id="dist-old-1",
+        industry="technology_software",
+        raw_location="Remote",
+        workplace_type="remote",
+        raw_description="Build distributed consensus and Kafka streaming systems.",
+        ats_requirements={"hard_skills": ["Kafka", "Python", "Kubernetes"]},
+        status="active",
+        posted_at=now - timedelta(days=25),
+        created_at=now - timedelta(days=25),
+    )
+    db_session.add(old_high_job)
+
+    # 2. Ten Newer Irrelevant Jobs (posted 1 hour ago)
+    for i in range(10):
+        new_job = JobListing(
+            id=uuid.uuid4(),
+            title=f"Marketing Assistant {i}",
+            company_name="Retail Brand",
+            ats_board_id=board_uuid,
+            ats_provider="greenhouse_rrf",
+            ats_board_slug="techcorp",
+            source_job_id=f"mkt-{i}",
+            industry="technology_software",
+            raw_location="Remote",
+            workplace_type="remote",
+            raw_description="Social media and flyer designs.",
+            ats_requirements={"hard_skills": ["Photoshop", "Canva"]},
+            status="active",
+            posted_at=now - timedelta(hours=i + 1),
+            created_at=now - timedelta(hours=i + 1),
+        )
+        db_session.add(new_job)
+
+    await db_session.commit()
+
+    candidate_skills = {"kafka", "python", "kubernetes"}
+    candidate_skills_lower = {"kafka", "python", "kubernetes"}
+
+    # Retrieve candidates bounded to limit 5
+    retrieved = await retrieve_stage1_candidates(
+        db=db_session,
+        persona=persona,
+        account=account,
+        blocks=[],
+        persona_skills=candidate_skills,
+        candidate_skills_lower=candidate_skills_lower,
+        limit=5,
+    )
+
+    retrieved_ids = [j.id for j in retrieved]
+    # The older, highly relevant job MUST be in the top 5 retrieved candidates
+    assert old_high_match_id in retrieved_ids
