@@ -126,14 +126,14 @@
     "semantic_hash": "473cdc6a4469c29968bf62fd135eb16a"
   },
   "backend/app/api/auth.py": {
-    "mtime": 1792108216.7000918,
-    "seen": 1792111803.9314852,
+    "mtime": 1792192142.9875946,
+    "seen": 1792696831.120172,
     "ast_hash": "5e8d22855684955a7275560ba59f7f70",
     "semantic_hash": "5e8d22855684955a7275560ba59f7f70"
   },
   "backend/app/api/candidates.py": {
-    "mtime": 1792108216.7050908,
-    "seen": 1792111803.9314873,
+    "mtime": 1792192142.9886518,
+    "seen": 1792696831.1201732,
     "ast_hash": "0daf481f05f587a988846b066edfc391",
     "semantic_hash": "0daf481f05f587a988846b066edfc391"
   },
@@ -414,16 +414,16 @@
     "semantic_hash": "b9ac4aa46946406978f8d4f46826a459"
   },
   "backend/app/models/job_listing.py": {
-    "mtime": 1792096715.848346,
-    "seen": 1792111803.9315622,
-    "ast_hash": "141d9645bab9311607910e3c9da53ca0",
-    "semantic_hash": "141d9645bab9311607910e3c9da53ca0"
+    "mtime": 1792570212.0127263,
+    "seen": 1792696831.1202178,
+    "ast_hash": "3a326f7280f6de833e7d2d3961b1ad13",
+    "semantic_hash": ""
   },
   "backend/app/models/user_account.py": {
-    "mtime": 1792106923.0534847,
-    "seen": 1792111803.931564,
-    "ast_hash": "8fb81233addde12d6ff021168567b4ac",
-    "semantic_hash": "8fb81233addde12d6ff021168567b4ac"
+    "mtime": 1792570212.208358,
+    "seen": 1792696831.1202192,
+    "ast_hash": "26451c14fb9fe3a3023e46c8ebb5399a",
+    "semantic_hash": ""
   },
   "backend/app/models/user_profile.py": {
     "mtime": 1792050902.6562836,
@@ -444,10 +444,10 @@
     "semantic_hash": "86d918c9f9828c851e4e559502c15ff3"
   },
   "backend/app/services/matching.py": {
-    "mtime": 1792111641.8430443,
-    "seen": 1792111803.9315705,
-    "ast_hash": "123cda62aa05046106f41e22a53166fc",
-    "semantic_hash": "123cda62aa05046106f41e22a53166fc"
+    "mtime": 1792696475.575583,
+    "seen": 1792696831.1202233,
+    "ast_hash": "ff2f74621e98a4715be3511c71d7a0af",
+    "semantic_hash": ""
   },
   "backend/pyproject.toml": {
     "mtime": 1792041460.5960116,
@@ -612,14 +612,14 @@
     "semantic_hash": "b15e48e1f94b9c269076190ccee49fa5"
   },
   "backend/tests/test_auth.py": {
-    "mtime": 1792050902.6662836,
-    "seen": 1792111803.9316175,
+    "mtime": 1792192142.9891326,
+    "seen": 1792696831.1202545,
     "ast_hash": "cc79cad530421480b5ca5e7c921f175c",
     "semantic_hash": "cc79cad530421480b5ca5e7c921f175c"
   },
   "backend/tests/test_candidates.py": {
-    "mtime": 1792106884.7481375,
-    "seen": 1792111803.9316192,
+    "mtime": 1792192142.989237,
+    "seen": 1792696831.1202552,
     "ast_hash": "d401148cb9a5b0082c9f116bf547242e",
     "semantic_hash": "d401148cb9a5b0082c9f116bf547242e"
   },
@@ -708,10 +708,10 @@
     "semantic_hash": "2af10f72087849d39f75f8296ad8662b"
   },
   "backend/tests/test_matching.py": {
-    "mtime": 1792111641.8437169,
-    "seen": 1792111803.9316432,
-    "ast_hash": "878529eb9b0e23ac3c28d022a723a864",
-    "semantic_hash": "878529eb9b0e23ac3c28d022a723a864"
+    "mtime": 1792696665.5476594,
+    "seen": 1792696831.120268,
+    "ast_hash": "0ed3b7a9a9e36c7dfbf01ffe06ab03f0",
+    "semantic_hash": ""
   },
   "backend/tests/test_metrics.py": {
     "mtime": 1791327637.9054596,
@@ -720,10 +720,10 @@
     "semantic_hash": "86ae984622f628d29faeed7e173c507a"
   },
   "backend/tests/test_migrations.py": {
-    "mtime": 1792096022.984563,
-    "seen": 1792111803.9316463,
-    "ast_hash": "631d30212797c064dc63e2180fde9461",
-    "semantic_hash": "631d30212797c064dc63e2180fde9461"
+    "mtime": 1792569612.4821017,
+    "seen": 1792696831.1202698,
+    "ast_hash": "b3a373f407b731438fe870127aa640ca",
+    "semantic_hash": ""
   },
   "backend/tests/test_models.py": {
     "mtime": 1792040407.4728522,
@@ -846,10 +846,10 @@
     "semantic_hash": "357447bdd5cf8af3f4f7f7cec7d7fa22"
   },
   "frontend/src/components/PersonaManagementModal.jsx": {
-    "mtime": 1792109283.748827,
-    "seen": 1792111803.9316795,
-    "ast_hash": "9d0735a9be52add67cb2228b38037440",
-    "semantic_hash": "9d0735a9be52add67cb2228b38037440"
+    "mtime": 1792192142.9894445,
+    "seen": 1792696831.1202908,
+    "ast_hash": "6a82b73e15589f7943286770332d7529",
+    "semantic_hash": ""
   },
   "frontend/src/components/PersonaSwitcher.jsx": {
     "mtime": 1792109283.748827,
@@ -876,8 +876,8 @@
     "semantic_hash": "39095f4f4a2cbb02150942caeca2bae3"
   },
   "frontend/src/pages/CandidateAuditView.jsx": {
-    "mtime": 1792050902.6712837,
-    "seen": 1792111803.9316876,
+    "mtime": 1792192142.9895465,
+    "seen": 1792696831.1202946,
     "ast_hash": "6b8df1b146b206c44c121fae6fd53d10",
     "semantic_hash": "6b8df1b146b206c44c121fae6fd53d10"
   },
@@ -894,8 +894,8 @@
     "semantic_hash": "e96e4966f4bf58e0a6c6418f0eff553e"
   },
   "frontend/src/pages/OnboardingWizard.jsx": {
-    "mtime": 1792043834.5067148,
-    "seen": 1792111803.9316921,
+    "mtime": 1792192142.989671,
+    "seen": 1792696831.1202972,
     "ast_hash": "6263959abf0c482149007ad3ec6d9b21",
     "semantic_hash": "6263959abf0c482149007ad3ec6d9b21"
   },
@@ -978,10 +978,10 @@
     "semantic_hash": "2b2f24fed91aee77191129ba74013e4d"
   },
   "frontend/src/test/PersonaManagementModal.test.jsx": {
-    "mtime": 1792108216.7097268,
-    "seen": 1792111803.9317143,
-    "ast_hash": "a78133e55e041022e8cf8360da0ae938",
-    "semantic_hash": "a78133e55e041022e8cf8360da0ae938"
+    "mtime": 1792192142.9897537,
+    "seen": 1792696831.1203094,
+    "ast_hash": "b667dcfa5aba80023ab4987102af0bb2",
+    "semantic_hash": ""
   },
   "frontend/src/test/PersonaSwitcher.test.jsx": {
     "mtime": 1792050902.6792836,
@@ -1056,9 +1056,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1792099391.3536584,
-    "seen": 1792112180.094454,
-    "ast_hash": "38591f7cb282b27df7994267e66dd972",
+    "mtime": 1792570211.8692322,
+    "seen": 1792696831.120321,
+    "ast_hash": "d2d4eb4ec802e511535f2782287d8dc8",
     "semantic_hash": ""
   },
   "backend/requirements-dev.txt": {
@@ -1080,9 +1080,9 @@
     "semantic_hash": ""
   },
   "db/README.md": {
-    "mtime": 1792099391.3546584,
-    "seen": 1792112180.094459,
-    "ast_hash": "e364c0612c730b3635ff120d553ed3d0",
+    "mtime": 1792570213.954842,
+    "seen": 1792696831.1203244,
+    "ast_hash": "6a93c691ecf32e6ae21cfdb2d4bf1ccd",
     "semantic_hash": ""
   },
   "docker-compose.yml": {
@@ -1134,9 +1134,9 @@
     "semantic_hash": ""
   },
   "docs/adr/ADR-008-high-probability-job-matching-and-fault-tolerant-ranking.md": {
-    "mtime": 1792096715.854346,
-    "seen": 1792112180.0944703,
-    "ast_hash": "7ea5bb7eed915febce61cb9a8b4dae37",
+    "mtime": 1792696718.5151663,
+    "seen": 1792696831.1203322,
+    "ast_hash": "08b28cf7be0b3b80236a1e963de40bed",
     "semantic_hash": ""
   },
   "docs/adr/README.md": {
@@ -1149,6 +1149,30 @@
     "mtime": 1790538632.9494998,
     "seen": 1792112180.0944793,
     "ast_hash": "1fe7decd1094670f02d6559ef28a59d1",
+    "semantic_hash": ""
+  },
+  "backend/app/services/skill_graph.py": {
+    "mtime": 1792570212.6078439,
+    "seen": 1792696831.1202245,
+    "ast_hash": "c24f3f3783efcfffefe1db0bedf02d44",
+    "semantic_hash": ""
+  },
+  "backend/tests/test_skill_graph.py": {
+    "mtime": 1792570212.9591396,
+    "seen": 1792696831.1202757,
+    "ast_hash": "7f992c1d82c98e00eeb5074e7093f72a",
+    "semantic_hash": ""
+  },
+  "db/migrations/0002_matching_engine_v2_schema.sql": {
+    "mtime": 1792570214.164842,
+    "seen": 1792696831.1202805,
+    "ast_hash": "9bf00d728af83068e281b5b3e1e9131e",
+    "semantic_hash": ""
+  },
+  "MATCHING_ENGINE_SPEC.md": {
+    "mtime": 1792570211.693845,
+    "seen": 1792696831.1203196,
+    "ast_hash": "e8a1a3400ae12f3fceb496d564828373",
     "semantic_hash": ""
   }
 }
