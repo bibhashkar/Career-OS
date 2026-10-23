@@ -149,15 +149,15 @@ TECH_EQUIVALENCES: dict[str, set[str]] = {
 # Seniority weights
 SENIORITY_RANKS = {
     "intern": 0,
+    "entry": 0,
     "junior": 1,
-    "entry": 1,
     "mid": 2,
     "mid-level": 2,
     "senior": 3,
-    "lead": 4,
-    "staff": 5,
-    "principal": 6,
-    "director": 7,
+    "lead": 3,
+    "staff": 4,
+    "principal": 5,
+    "director": 6,
 }
 
 # ---------------------------------------------------------------------------
@@ -694,6 +694,15 @@ def calculate_match_upgraded(
     )
     s_skills = eval_res.skill_score
     d_core = eval_res.d_core
+    if core_skills and len(core_skills) >= 2:
+        cand_lower = {s.lower() for s in cand_skills}
+        matched_core_count = sum(
+            1
+            for cs in core_skills
+            if cs.lower() in cand_lower or cs.lower() in eval_res.matched_skills
+        )
+        if matched_core_count == 0:
+            d_core = min(d_core, 0.20)
 
     # 2. Semantic
     s_semantic = calculate_semantic_top3_score(
@@ -711,6 +720,11 @@ def calculate_match_upgraded(
         job_seniority=job_sen,
         job_min_years=job_exp_years,
     )
+    cand_sen_rank = SENIORITY_RANKS.get(persona.seniority_level.lower(), 2)
+    job_sen_rank = SENIORITY_RANKS.get((job_sen or "").lower(), cand_sen_rank)
+    if abs(cand_sen_rank - job_sen_rank) >= 3 or s_seniority <= 0.15:
+        # Severe experience or hierarchy mismatch (e.g. Junior vs Staff)
+        d_core = min(d_core, 0.25)
 
     # 4. Archetype & Domain alignment
     organizations = [b.organization for b in active_blocks if b.organization]
@@ -728,6 +742,17 @@ def calculate_match_upgraded(
         job=job,
     )
     s_context = (1.0 - beta_domain) * s_archetype + beta_domain * s_domain
+    if beta_domain == 1.0 and s_domain == 0.0:
+        # Candidate has zero verified history or tenure in a strictly mandated vertical
+        d_core = min(d_core, 0.25)
+    elif (
+        beta_domain >= 0.5
+        and s_domain == 0.0
+        and str(job.industry_vertical or "").lower()
+        in ("hft_quant_trading", "healthtech", "cybersecurity")
+    ):
+        # Candidate has zero history in a specialized/regulated vertical
+        d_core = min(d_core, 0.35)
 
     # 5. Compensation
     s_comp = calculate_compensation_score(
@@ -952,21 +977,28 @@ def calculate_seniority_score(
     if diff == 0:
         base_score = 1.0
     elif diff == 1:
-        base_score = 0.90  # Slightly senior for role
+        base_score = 0.85  # Slightly senior for role
     elif diff == -1:
         base_score = 0.75  # Slightly junior
-    elif diff > 1:
-        base_score = 0.70  # Overqualified
+    elif diff == 2:
+        base_score = 0.50  # Overqualified by 2 levels (e.g. Senior applying to Junior)
+    elif diff == -2:
+        base_score = 0.40  # Underqualified by 2 levels
+    elif diff >= 3:
+        base_score = 0.10  # Extreme overqualification (Senior/Staff applying to Entry)
     else:
-        base_score = 0.40  # Significantly under-tenured
+        base_score = (
+            0.10  # Extreme underqualification (Junior applying to Staff/Principal)
+        )
 
     # Factor in explicit years of experience if declared
     if job_min_years is not None and job_min_years > 0:
         if candidate_years >= job_min_years:
-            base_score = min(1.0, base_score + 0.1)
+            if diff <= 2:
+                base_score = min(1.0, base_score + 0.1)
         else:
             shortfall = job_min_years - candidate_years
-            base_score = max(0.2, base_score - (0.15 * shortfall))
+            base_score = max(0.1, base_score - (0.15 * shortfall))
 
     return max(0.0, min(1.0, base_score))
 
@@ -1029,23 +1061,34 @@ def calculate_probabilistic_gate(
     workplace_lower = (job_workplace or "").lower()
     cand_pref_lower = candidate_remote.strip().lower()
 
-    if cand_pref_lower == "remote":
-        if workplace_lower == "remote" or "remote" in job_loc_lower:
-            notes.append("Remote modality aligned.")
-        elif workplace_lower == "on_site":
-            # Check if candidate listed this city explicitly
-            matched_loc = any(
-                loc.lower() in job_loc_lower
-                for loc in candidate_locations
-                if loc.lower() != "remote"
+    is_remote_job = (workplace_lower == "remote") or ("remote" in job_loc_lower)
+
+    if is_remote_job:
+        notes.append("Remote modality aligned.")
+    else:
+        # Job requires physical office presence (on_site or hybrid)
+        matched_loc = any(
+            loc.lower() in job_loc_lower
+            for loc in candidate_locations
+            if loc.lower() != "remote"
+        )
+        if not matched_loc:
+            g_prob = 0.0
+            hard_pass = False
+            notes.append(
+                f"{workplace_lower.capitalize()} in {job_location} "
+                "outside candidate commuting zone."
             )
-            if not matched_loc:
-                g_prob = 0.0
-                hard_pass = False
-                notes.append("On-site requirement outside target commuting zone.")
         else:
-            g_prob *= 0.90
-            notes.append("Hybrid or flexible workplace arrangement.")
+            if cand_pref_lower == "remote":
+                if workplace_lower == "hybrid":
+                    g_prob *= 0.85
+                    notes.append("Hybrid arrangement in candidate home metro area.")
+                else:
+                    g_prob *= 0.70
+                    notes.append("On-site requirement in candidate home metro area.")
+            else:
+                notes.append(f"Physical location match in {job_location}.")
 
     return g_prob, hard_pass, notes
 
