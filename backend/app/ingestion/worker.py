@@ -250,6 +250,8 @@ class IngestionWorker:
                     or str(reqs.visa_sponsorship),
                     visa_notes=job_dto.visa_notes,
                     visa_types=job_dto.visa_types,
+                    industry_vertical=reqs.industry_vertical,
+                    domain_strictness=reqs.domain_strictness,
                     ats_requirements=reqs.model_dump(),
                     verification={},
                 )
@@ -258,6 +260,8 @@ class IngestionWorker:
                 existing.last_seen_at = now
                 existing.last_fetched_at = now
                 existing.raw_description = job_dto.raw_description
+                existing.industry_vertical = reqs.industry_vertical
+                existing.domain_strictness = reqs.domain_strictness
                 existing.ats_requirements = reqs.model_dump()
                 if job_dto.visa_sponsorship:
                     existing.visa_sponsorship = job_dto.visa_sponsorship

@@ -62,6 +62,35 @@ SKILL_TAXONOMY: Final[dict[str, list[str]]] = {
     "Tailwind CSS": ["tailwind", "tailwindcss"],
     "GraphQL": ["graphql"],
     "REST": ["rest", "restful", "rest api"],
+    # HealthTech & Clinical Regulatory Protocols
+    "EDI 837": ["edi 837", "837p", "837i", "837d", "x12 837", "edi 837 claims"],
+    "EDI 835": ["edi 835", "835 era", "x12 835", "electronic remittance advice"],
+    "HL7": ["hl7", "hl7v2", "hl7 v2", "hl7 standards"],
+    "FHIR": ["fhir", "hl7 fhir", "smart on fhir", "fhir api"],
+    "DICOM": ["dicom", "dicom protocol", "medical imaging protocol"],
+    "HIPAA": ["hipaa", "hipaa compliance", "phi protection", "hitech act"],
+    "ICD-10": ["icd-10", "icd10", "cpt codes", "hcpcs"],
+    "Prior Authorization": [
+        "prior authorization",
+        "prior auth",
+        "claims adjudication",
+        "utilization management",
+    ],
+    "EHR": [
+        "ehr",
+        "emr",
+        "electronic health records",
+        "epic systems",
+        "cerner",
+    ],
+    # FinTech & Capital Markets Protocols
+    "PCI-DSS": ["pci-dss", "pci compliance", "pci dss"],
+    "FIX Protocol": ["fix protocol", "financial information exchange", "fix engine"],
+    "ISO 20022": ["iso 20022", "swift messaging", "ach processing"],
+    "KYC/AML": ["kyc", "aml", "anti-money laundering", "know your customer"],
+    # Security, Compliance & GovTech Protocols
+    "FedRAMP": ["fedramp", "fedramp high", "fedramp moderate", "il4", "il5"],
+    "SOC 2": ["soc 2", "soc2", "soc 2 type ii", "soc2 type 2"],
 }
 
 

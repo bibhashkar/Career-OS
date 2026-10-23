@@ -102,6 +102,33 @@ def test_v2_schema_expansion_migration() -> None:
     assert checksum == hashlib.sha256(v2_sql_path.read_bytes()).hexdigest()
 
 
+def test_v3_domain_alignment_schema_migration() -> None:
+    """
+    Verify 0003_domain_alignment_schema.sql contains required domain alignment columns.
+    """
+    v3_sql_path = MIGRATIONS_DIR / "0003_domain_alignment_schema.sql"
+    assert v3_sql_path.exists(), "0003_domain_alignment_schema.sql not found"
+
+    content = v3_sql_path.read_text(encoding="utf-8")
+    # Verify job_listing domain attributes
+    assert "industry_vertical VARCHAR(64)" in content
+    assert "domain_strictness FLOAT NOT NULL DEFAULT 0.5" in content
+    assert "idx_job_listing_industry_vertical" in content
+
+    # Verify cv_block industry tags
+    assert "industry_tags JSONB NOT NULL DEFAULT '[]'::jsonb" in content
+    assert "idx_cv_block_industry_tags_gin" in content
+
+    # Verify job_match_cache domain telemetry
+    assert "domain_score FLOAT NOT NULL DEFAULT 0.0" in content
+    assert "context_score FLOAT NOT NULL DEFAULT 0.0" in content
+
+    # Verify checksum calculation
+    checksum = migrate.calculate_checksum(v3_sql_path)
+    assert len(checksum) == 64
+    assert checksum == hashlib.sha256(v3_sql_path.read_bytes()).hexdigest()
+
+
 def test_checksum_calculation() -> None:
     """Verify SHA-256 calculation matches file hash."""
     initial_sql_path = MIGRATIONS_DIR / "0001_initial_schema.sql"

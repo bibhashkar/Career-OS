@@ -327,6 +327,8 @@ class JobMatchCache(Base, UUIDMixin):
     )
     d_core: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     archetype_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    domain_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    context_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     comp_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     freshness_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     evaluated_at: Mapped[datetime] = mapped_column(

@@ -22,6 +22,10 @@ from app.ingestion.adapters.ats import (
     SmartRecruitersAdapter,
     WorkableAdapter,
 )
+from app.ingestion.deterministic_extractor import (
+    classify_industry_vertical,
+    extract_domain_strictness,
+)
 from app.ingestion.models import (
     ATSProviderEnum,
     DiscoveredJobDTO,
@@ -200,6 +204,10 @@ class BoardSyncService:
             else str(dto.remote_scope)
         )
         job_industry = board.industry or dto.industry or "enterprise_saas"
+        vertical = classify_industry_vertical(
+            dto.title, dto.raw_description, board.company_name or dto.company_name
+        )
+        strictness = extract_domain_strictness(dto.title, dto.raw_description, vertical)
 
         if existing is None:
             new_job = JobListing(
@@ -208,6 +216,8 @@ class BoardSyncService:
                 ats_board_slug=dto.ats_board_slug,
                 source_job_id=dto.source_job_id,
                 industry=job_industry,
+                industry_vertical=vertical,
+                domain_strictness=strictness,
                 company_dossier_id=board.company_dossier_id,
                 title=dto.title,
                 company_name=board.company_name or dto.company_name,
@@ -260,6 +270,9 @@ class BoardSyncService:
             existing.visa_sponsorship = dto.visa_sponsorship
             existing.visa_notes = dto.visa_notes
             existing.visa_types = dto.visa_types
+        if not existing.industry_vertical:
+            existing.industry_vertical = vertical
+            existing.domain_strictness = strictness
 
         if existing.content_hash != content_hash:
             existing.raw_description = dto.raw_description

@@ -25,6 +25,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.agents.tools.embeddings import generate_deterministic_embedding
+from app.ingestion.deterministic_extractor import (
+    classify_industry_vertical,
+    extract_domain_strictness,
+)
 from app.models.cv_block import CVBlock
 from app.models.job_listing import JobListing
 from app.models.user_account import (
@@ -186,6 +190,12 @@ class MatchFactorBreakdown(BaseModel):
     d_core: float = Field(1.0, description="Core dealbreaker multiplier [0.25, 1.0].")
     archetype_score: float = Field(
         0.0, description="Company trait & candidate proof alignment."
+    )
+    domain_score: float = Field(
+        0.0, description="Domain alignment factor S_domain [0.0, 1.0]."
+    )
+    context_score: float = Field(
+        0.0, description="Blended context alignment factor S_context [0.0, 1.0]."
     )
     comp_score: float = Field(
         1.0, description="Compensation feasibility factor [0.0, 1.0]."
@@ -509,6 +519,265 @@ def calculate_archetype_score(
     dot = sum(a * p for a, p in zip(a_job, p_cand, strict=False))
     norm = sum(a_job)
     return max(0.0, min(1.0, dot / max(0.001, norm)))
+
+
+# ---------------------------------------------------------------------------
+# Explicit Domain Alignment Engine (S_domain & S_context)
+# ---------------------------------------------------------------------------
+def derive_candidate_domain_profile(
+    persona: CandidatePersona,
+    blocks: list[CVBlock],
+) -> tuple[dict[str, float], dict[str, float]]:
+    """
+    Derive candidate's normalized domain distribution vector D_cand and tenure.
+
+    For each block b in blocks:
+      - Determines block vertical tags from b.industry_tags or classifies via
+        classify_industry_vertical(b.title, b.content, b.organization).
+      - Determines duration Duration(b) (from b.metrics['duration_years'], defaulting to
+        persona.years_experience / max(1, len(blocks))).
+      - Applies age decay gamma = 0.90 based on block chronological order.
+
+    Returns:
+      (domain_distribution: dict[str, float], yoe_domain: dict[str, float])
+    """
+    if not blocks:
+        # Fallback to persona headline, target roles, and summary
+        persona_text = (
+            f"{persona.headline or ''} {' '.join(persona.target_roles or [])}"
+        )
+        detected = classify_industry_vertical(persona.headline or "", persona_text)
+        if detected != "general_saas":
+            yoe = float(persona.years_experience or 0)
+            return {detected: 1.0}, {detected: yoe}
+        return {}, {}
+
+    gamma = 0.90
+    decayed_weights: dict[str, float] = {}
+    total_yoe: dict[str, float] = {}
+    default_duration = max(
+        0.5, float(persona.years_experience or 1.0) / max(1, len(blocks))
+    )
+
+    for idx, b in enumerate(blocks):
+        # 1. Resolve vertical tags
+        tags: list[str] = list(getattr(b, "industry_tags", []) or [])
+        if not tags:
+            detected = classify_industry_vertical(
+                b.title or "", b.content or "", b.organization or ""
+            )
+            tags = [detected]
+
+        # 2. Resolve block duration
+        metrics = b.metrics or {}
+        duration = float(
+            metrics.get("duration_years") or metrics.get("years") or default_duration
+        )
+
+        # 3. Recency decay weight: Age index idx (0 is newest, 1 is older, etc.)
+        age_weight = duration * (gamma**idx)
+
+        # Distribute weight evenly across block's industry tags
+        tag_share = 1.0 / max(1, len(tags))
+        for tag in tags:
+            tag_norm = tag.lower().strip()
+            decayed_weights[tag_norm] = decayed_weights.get(tag_norm, 0.0) + (
+                age_weight * tag_share
+            )
+            total_yoe[tag_norm] = total_yoe.get(tag_norm, 0.0) + (duration * tag_share)
+
+    # Normalize decayed distribution vector D_cand
+    total_decayed = sum(decayed_weights.values())
+    domain_dist: dict[str, float] = {}
+    if total_decayed > 0:
+        for k, v in decayed_weights.items():
+            domain_dist[k] = v / total_decayed
+
+    return domain_dist, total_yoe
+
+
+def calculate_domain_score(
+    persona: CandidatePersona,
+    blocks: list[CVBlock],
+    job: JobListing,
+    candidate_domain_profile: tuple[dict[str, float], dict[str, float]] | None = None,
+) -> tuple[float, float]:
+    """
+    Compute candidate's Domain Match Score S_domain and strictness beta_domain.
+
+    S_domain = (D_cand . D_job) * TenureBonus(YoE_domain)
+    TenureBonus(YoE) = min(1.0, 0.50 + 0.10 * min(YoE, 5) + 0.02 * max(0, YoE - 5))
+
+    Returns:
+        (s_domain: float, beta_domain: float)
+    """
+    # 1. Resolve job industry vertical and strictness
+    vertical = (job.industry_vertical or "").strip().lower()
+    strictness = getattr(job, "domain_strictness", None)
+
+    if not vertical or vertical == "general_saas":
+        detected_v = classify_industry_vertical(
+            job.title or "", job.raw_description or "", job.company_name or ""
+        )
+        if detected_v != "general_saas":
+            vertical = detected_v
+        else:
+            vertical = "general_saas"
+
+    if strictness is None:
+        strictness = extract_domain_strictness(
+            job.title or "", job.raw_description or "", vertical
+        )
+    beta = float(strictness)
+
+    # If role is domain-agnostic SaaS or strictness is 0, domain score is neutral
+    if vertical == "general_saas" or beta <= 0.0:
+        return 0.50, 0.0
+
+    # 2. Get candidate domain distribution and tenure
+    if candidate_domain_profile is not None:
+        domain_dist, total_yoe = candidate_domain_profile
+    else:
+        domain_dist, total_yoe = derive_candidate_domain_profile(persona, blocks)
+
+    d_cand = domain_dist.get(vertical, 0.0)
+    yoe = total_yoe.get(vertical, 0.0)
+
+    # 3. TenureBonus curve
+    if yoe <= 0.0 or d_cand <= 0.0:
+        return 0.0, beta
+
+    tenure_bonus = min(1.0, 0.50 + 0.10 * min(yoe, 5.0) + 0.02 * max(0.0, yoe - 5.0))
+    s_domain = max(0.0, min(1.0, d_cand * tenure_bonus))
+
+    return s_domain, beta
+
+
+def calculate_match_upgraded(
+    persona: CandidatePersona,
+    job: JobListing,
+    blocks: list[CVBlock] | None = None,
+    persona_skills: set[str] | None = None,
+    account: UserAccount | None = None,
+) -> tuple[float, MatchFactorBreakdown]:
+    """
+    Pure evaluation function computing P(Match) with full factor breakdown:
+    P(Match) = (G_prob * D_core) * [
+        0.25 * S_skills + 0.25 * S_semantic + 0.15 * S_seniority
+        + 0.15 * S_context + 0.10 * S_comp + 0.10 * S_freshness
+    ]
+    where S_context = (1 - beta_domain) * S_archetype + beta_domain * S_domain.
+    """
+    active_blocks = blocks or []
+    target_roles = [r.lower() for r in (persona.target_roles or [])]
+
+    # Resolve candidate skills
+    cand_skills: set[str] = set(persona_skills or set())
+    for b in active_blocks:
+        for s in b.skills or []:
+            cand_skills.add(s)
+
+    reqs = job.ats_requirements or {}
+    job_skills = reqs.get("hard_skills", [])
+    if not job_skills:
+        job_skills = [
+            s for s in cand_skills if s.lower() in (job.raw_description or "").lower()
+        ]
+
+    # 1. Asymmetric skills
+    core_skills = reqs.get("core_skills") or reqs.get("dealbreakers")
+    eval_res = compute_asymmetric_skill_score(
+        candidate_skills=cand_skills,
+        job_skills=job_skills,
+        core_job_skills=core_skills,
+        cv_block_count=len(active_blocks),
+    )
+    s_skills = eval_res.skill_score
+    d_core = eval_res.d_core
+
+    # 2. Semantic
+    s_semantic = calculate_semantic_top3_score(
+        blocks=active_blocks,
+        job=job,
+        target_roles=target_roles,
+    )
+
+    # 3. Seniority
+    job_exp_years = reqs.get("years_experience_min")
+    job_sen = reqs.get("seniority_level")
+    s_seniority = calculate_seniority_score(
+        candidate_years=persona.years_experience,
+        candidate_seniority=persona.seniority_level,
+        job_seniority=job_sen,
+        job_min_years=job_exp_years,
+    )
+
+    # 4. Archetype & Domain alignment
+    organizations = [b.organization for b in active_blocks if b.organization]
+    prestige_score = calculate_prestige_score(organizations)
+    achievement_score = calculate_achievement_score(active_blocks)
+    s_archetype = calculate_archetype_score(
+        job=job,
+        prestige_score=prestige_score,
+        achievement_score=achievement_score,
+        blocks=active_blocks,
+    )
+    s_domain, beta_domain = calculate_domain_score(
+        persona=persona,
+        blocks=active_blocks,
+        job=job,
+    )
+    s_context = (1.0 - beta_domain) * s_archetype + beta_domain * s_domain
+
+    # 5. Compensation
+    s_comp = calculate_compensation_score(
+        persona_min_salary=persona.min_salary,
+        job=job,
+    )
+
+    # 6. Freshness
+    s_freshness = calculate_freshness_score(job.posted_at, job.created_at)
+
+    # 7. Gate
+    if account is not None:
+        g_prob, _, _ = calculate_probabilistic_gate(
+            candidate_visa=account.visa_status,
+            job_visa=job.visa_sponsorship,
+            candidate_locations=account.preferred_locations,
+            candidate_remote=account.remote_preference,
+            job_location=job.raw_location,
+            job_workplace=job.workplace_type,
+            job_country_code=job.country_code,
+        )
+    else:
+        g_prob = 1.0
+
+    # 8. Master Equation
+    weighted_core = (
+        (0.25 * s_skills)
+        + (0.25 * s_semantic)
+        + (0.15 * s_seniority)
+        + (0.15 * s_context)
+        + (0.10 * s_comp)
+        + (0.10 * s_freshness)
+    )
+    p_match = round((g_prob * d_core) * weighted_core, 4)
+
+    breakdown = MatchFactorBreakdown(
+        g_prob=round(g_prob, 2),
+        skill_score=round(s_skills, 2),
+        semantic_score=round(s_semantic, 2),
+        seniority_score=round(s_seniority, 2),
+        prestige_booster=round(prestige_score, 2),
+        achievement_booster=round(achievement_score, 2),
+        freshness_booster=round(s_freshness, 2),
+        d_core=round(d_core, 2),
+        archetype_score=round(s_archetype, 2),
+        domain_score=round(s_domain, 2),
+        context_score=round(s_context, 2),
+        comp_score=round(s_comp, 2),
+    )
+    return p_match, breakdown
 
 
 # ---------------------------------------------------------------------------
@@ -1042,6 +1311,7 @@ async def retrieve_and_rank_jobs(
     organizations = [b.organization for b in blocks if b.organization]
     prestige_score = calculate_prestige_score(organizations)
     achievement_score = calculate_achievement_score(blocks)
+    candidate_domain_profile = derive_candidate_domain_profile(persona, blocks)
 
     for job in candidate_jobs:
         reqs = job.ats_requirements or {}
@@ -1111,6 +1381,15 @@ async def retrieve_and_rank_jobs(
             blocks=blocks,
         )
 
+        # 4b. Explicit Domain Alignment & Context Blending
+        s_domain, beta_domain = calculate_domain_score(
+            persona=persona,
+            blocks=blocks,
+            job=job,
+            candidate_domain_profile=candidate_domain_profile,
+        )
+        s_context = (1.0 - beta_domain) * s_archetype + beta_domain * s_domain
+
         # 5. Compensation Normalization & Feasibility (0.10 weight)
         s_comp = calculate_compensation_score(
             persona_min_salary=persona.min_salary,
@@ -1134,13 +1413,13 @@ async def retrieve_and_rank_jobs(
         # 8. Unified Master Reranking Equation
         # P(Match) = (G_prob * D_core) * [
         #     0.25*S_skills + 0.25*S_sem + 0.15*S_sen
-        #     + 0.15*S_archetype + 0.10*S_comp + 0.10*S_fresh
+        #     + 0.15*S_context + 0.10*S_comp + 0.10*S_fresh
         # ]
         weighted_core = (
             (0.25 * s_skills)
             + (0.25 * s_semantic)
             + (0.15 * s_seniority)
-            + (0.15 * s_archetype)
+            + (0.15 * s_context)
             + (0.10 * s_comp)
             + (0.10 * s_freshness)
         )
@@ -1167,6 +1446,8 @@ async def retrieve_and_rank_jobs(
             freshness_booster=round(s_freshness, 2),
             d_core=round(d_core, 2),
             archetype_score=round(s_archetype, 2),
+            domain_score=round(s_domain, 2),
+            context_score=round(s_context, 2),
             comp_score=round(s_comp, 2),
         )
 
@@ -1215,6 +1496,8 @@ async def retrieve_and_rank_jobs(
                 matched_skills=matched_s,
                 d_core=d_core,
                 archetype_score=s_archetype,
+                domain_score=s_domain,
+                context_score=s_context,
                 comp_score=s_comp,
                 freshness_score=s_freshness,
                 evaluated_at=datetime.now(UTC),
@@ -1232,6 +1515,8 @@ async def retrieve_and_rank_jobs(
             existing_cache.matched_skills = matched_s
             existing_cache.d_core = d_core
             existing_cache.archetype_score = s_archetype
+            existing_cache.domain_score = s_domain
+            existing_cache.context_score = s_context
             existing_cache.comp_score = s_comp
             existing_cache.freshness_score = s_freshness
             existing_cache.evaluated_at = datetime.now(UTC)

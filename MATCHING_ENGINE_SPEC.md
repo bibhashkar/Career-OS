@@ -36,13 +36,28 @@ Replaces recency ordering with a PG GIN Skill Index + HNSW Vector Index + Recenc
 
 ### 3.2 Stage 2: Unified Multi-Factor Reranking Equation
 
-P(\defaultpMatch) = (G_prob \times D_core) \times [
-	0.25 \times S_skills (Asymmetric DAG + IDF Weights) +
-	0.25 \times S_semantic (Top-3 Block Max-Sim) +
-	0.15 \times S_seniority (Rank Delta + YoE Penalties) +
-	0.15 \times S_archetype (Dot Product of Company Traits & Candidate Proof) +
-	0.10 \times S_comp (Compensation Feasibility) +
-	0.10 \times S_freshness (Exponential Age Decay)]
+$$P(\text{Match}) = (G_{\text{prob}} \cdot D_{\text{core}}) \times \Big[
+	0.25 \cdot S_{\text{skills}} +
+	0.25 \cdot S_{\text{semantic}} +
+	0.15 \cdot S_{\text{seniority}} +
+	0.15 \cdot S_{\text{context}} +
+	0.10 \cdot S_{\text{comp}} +
+	0.10 \cdot S_{\text{freshness}} \Big]$$
+
+#### Context & Domain Alignment Blending ($S_{\text{context}}$)
+To eliminate vertical domain blindness in heavily regulated sectors (HealthTech, FinTech, Defense), the $0.15$ context slice unifies company archetype and explicit industry domain mastery regulated by the job's Domain Strictness Tier ($\beta_{\text{domain}} \in [0.0, 1.0]$):
+
+$$S_{\text{context}} = (1 - \beta_{\text{domain}}) \cdot S_{\text{archetype}} + \beta_{\text{domain}} \cdot S_{\text{domain}}$$
+
+Where:
+- Candidate Domain Profile $\vec{D}_{\text{cand}}$ is computed from verified `cv_block` history with recency decay $\gamma = 0.90$.
+- Domain Match Score: $S_{\text{domain}} = (\vec{D}_{\text{cand}} \cdot \vec{D}_{\text{job}}) \times \text{TenureBonus}(\text{YoE}_{\text{domain}})$
+- Piecewise saturating tenure curve:
+  $$\text{TenureBonus}(\text{YoE}) = \min(1.0, \; 0.50 + 0.10 \cdot \min(\text{YoE}, 5) + 0.02 \cdot \max(0, \text{YoE} - 5))$$
+- Strictness Tiers:
+  - $\beta = 1.0$ (Strict/Regulated): Explicit mandates or deep regulatory protocols (`EDI 837/835`, `HL7/FHIR`, `DICOM`, `PCI-DSS`, `FedRAMP`).
+  - $\beta = 0.5$ (Preferred): Industry-specific roles without hard regulatory prerequisites.
+  - $\beta = 0.0$ (Domain Agnostic): General SaaS or commodity tech where $S_{\text{context}} = S_{\text{archetype}}$.
 
 ---
 

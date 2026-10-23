@@ -85,6 +85,23 @@ CANONICAL_SKILL_ALIASES: dict[str, str] = {
     "kafka streams": "kafka",
     "rabbit": "rabbitmq",
     "rabbit mq": "rabbitmq",
+    # HealthTech & Clinical Standards
+    "837p": "edi 837",
+    "837i": "edi 837",
+    "x12 837": "edi 837",
+    "835 era": "edi 835",
+    "x12 835": "edi 835",
+    "hl7v2": "hl7",
+    "hl7 v2": "hl7",
+    "hl7 fhir": "fhir",
+    "smart on fhir": "fhir",
+    "hipaa compliance": "hipaa",
+    "icd10": "icd-10",
+    # FinTech, Compliance & Security Standards
+    "pci dss": "pci-dss",
+    "pci compliance": "pci-dss",
+    "fix engine": "fix protocol",
+    "soc2": "soc 2",
 }
 
 # ---------------------------------------------------------------------------
@@ -380,6 +397,56 @@ DIRECT_TRANSFER_MATRIX: dict[str, dict[str, float]] = {
         "numpy": 0.85,
         "scikit-learn": 0.50,
     },
+    # -----------------------------------------------------------------------
+    # HealthTech, Clinical & Regulatory Protocols
+    # -----------------------------------------------------------------------
+    "edi 837": {
+        "edi 835": 0.85,
+        "hipaa": 0.90,
+        "prior authorization": 0.80,
+        "claims adjudication": 0.85,
+    },
+    "edi 835": {
+        "edi 837": 0.85,
+        "hipaa": 0.90,
+        "claims adjudication": 0.80,
+    },
+    "fhir": {
+        "hl7": 0.85,
+        "ehr": 0.85,
+        "hipaa": 0.80,
+        "rest api": 0.80,
+    },
+    "hl7": {
+        "fhir": 0.75,
+        "ehr": 0.80,
+        "hipaa": 0.75,
+    },
+    "prior authorization": {
+        "edi 837": 0.80,
+        "hipaa": 0.85,
+        "claims adjudication": 0.90,
+    },
+    "dicom": {
+        "medical imaging": 0.95,
+        "hipaa": 0.80,
+    },
+    # -----------------------------------------------------------------------
+    # FinTech, Compliance & Security Protocols
+    # -----------------------------------------------------------------------
+    "pci-dss": {
+        "compliance": 0.90,
+        "security": 0.85,
+    },
+    "fix protocol": {
+        "financial information exchange": 0.95,
+        "hft": 0.75,
+    },
+    "fedramp": {
+        "soc 2": 0.90,
+        "compliance": 0.90,
+        "security": 0.90,
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -449,6 +516,22 @@ SPECIFICITY_TIERS: dict[str, float] = {
     "clickhouse": 1.9,
     "concurrency": 1.8,
     "memory management": 1.9,
+    # Domain-specific & Regulatory protocols (High Specificity w = 1.5 - 2.2)
+    "edi 837": 2.2,
+    "edi 835": 2.2,
+    "fhir": 2.0,
+    "hl7": 1.9,
+    "dicom": 2.0,
+    "icd-10": 1.9,
+    "prior authorization": 1.8,
+    "fix protocol": 2.2,
+    "pci-dss": 1.8,
+    "fedramp": 2.2,
+    "hipaa": 1.6,
+    "ehr": 1.5,
+    "soc 2": 1.5,
+    "iso 20022": 1.8,
+    "kyc/aml": 1.6,
     # Standard Production Stack (w = 1.0 - 1.4)
     "python": 1.3,
     "typescript": 1.3,

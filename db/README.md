@@ -13,7 +13,8 @@ db/
 ├── README.md                          # Architecture documentation and operation guide
 └── migrations/
     ├── 0001_initial_schema.sql         # Baseline schema DDL: extensions, 18 tables, initial seeds
-    └── 0002_matching_engine_v2_schema.sql # Matching v2: GIN indexes, job HNSW vector index, salary & fingerprint
+    ├── 0002_matching_engine_v2_schema.sql # Matching v2: GIN indexes, job HNSW vector index, salary & fingerprint
+    └── 0003_domain_alignment_schema.sql   # Matching v2.1: Domain alignment (industry_vertical, strictness, tags)
 ```
 
 ---
@@ -55,12 +56,12 @@ Career-OS enforces strict singular table naming and `ON DELETE RESTRICT` foreign
 | `candidate_persona` | Targeted career tracks (Universal Profile + specialized tracks e.g. AI Platform, Python Backend) | Foreign key to `user_account`; Parent of `persona_skill`, `persona_cv_block_rel`, `job_match_cache` |
 | `persona_skill` | Normalized skill matrix per persona with proficiency levels and verification sources | Foreign key to `candidate_persona` |
 | `persona_cv_block_rel` | Priority junction table mapping master CV achievement blocks to specific personas | Foreign key to `candidate_persona`, `cv_block` |
-| `job_match_cache` | Persisted two-stage match probability scores, Bayesian gate factors, D_core, and chip diagnostics (JSONB + GIN index) | Foreign key to `candidate_persona`, `job_listing` |
+| `job_match_cache` | Persisted two-stage match probability scores, Bayesian gate factors, D_core, archetype, domain_score, context_score, and chip diagnostics (JSONB + GIN index) | Foreign key to `candidate_persona`, `job_listing` |
 | `user_profile` | Candidate profile, tone preferences, target roles (agent state bridge) | Foreign key to `user_account`; Parent of `application`, `feedback_log` |
-| `cv_block` | Master candidate experience blocks with 1536-dim vector embeddings and STAR metrics | Foreign key to `user_account`, `user_profile` |
+| `cv_block` | Master candidate experience blocks with 1536-dim vector embeddings, STAR metrics, and JSONB GIN-indexed industry_tags | Foreign key to `user_account`, `user_profile` |
 | `company_dossier` | Researched company tech stacks, recent news, culture, and provenance | Referenced by `ats_board`, `job_listing` |
 | `ats_board` | Tracked career boards with sync schedule and consecutive failure counters | Foreign key to `ats_provider`, `industry_sector`, `company_dossier` |
-| `job_listing` | Ingested jobs with location hierarchy, workplace modality, remote scope, normalized salary, content fingerprint, JSONB GIN index, and 1536-dim HNSW vector embedding | Foreign key to `ats_board`, `ats_provider`, `industry_sector`, `company_dossier` |
+| `job_listing` | Ingested jobs with location hierarchy, workplace modality, remote scope, normalized salary, content fingerprint, JSONB GIN index, 1536-dim HNSW vector embedding, industry_vertical, and domain_strictness | Foreign key to `ats_board`, `ats_provider`, `industry_sector`, `company_dossier` |
 | `application` | User job applications and stage status | Foreign key to `user_profile`, `job_listing` |
 | `feedback_log` | Candidate feedback for prompt weight optimization | Foreign key to `user_profile` |
 | `ingestion_run` | Telemetry for board sync runs (new, updated, closed counts, latency) | Foreign key to `ats_board`, `ats_provider` |

@@ -22,6 +22,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -83,6 +84,10 @@ class JobListing(Base, UUIDMixin, TimestampMixin):
         index=True,
         nullable=False,
     )
+    industry_vertical: Mapped[str | None] = mapped_column(
+        String(64), index=True, nullable=True
+    )
+    domain_strictness: Mapped[float] = mapped_column(Float, default=0.5, nullable=False)
     company_dossier_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("company_dossier.id", ondelete="RESTRICT"),

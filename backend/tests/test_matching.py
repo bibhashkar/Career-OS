@@ -11,9 +11,11 @@ Validates:
   - Tier 2 persona market benchmark API.
 """
 
+import json
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -22,6 +24,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.agents.tools.embeddings import generate_deterministic_embedding
 from app.core.auth import create_access_token
 from app.core.database import get_db
+from app.ingestion.deterministic_extractor import (
+    classify_industry_vertical,
+    extract_domain_strictness,
+)
 from app.main import app
 from app.models.cv_block import CVBlock
 from app.models.ingestion import ATSBoard, ATSProvider, IndustrySector
@@ -31,7 +37,9 @@ from app.services.matching import (
     calculate_achievement_score,
     calculate_archetype_score,
     calculate_compensation_score,
+    calculate_domain_score,
     calculate_freshness_score,
+    calculate_match_upgraded,
     calculate_prestige_score,
     calculate_probabilistic_gate,
     calculate_semantic_top3_score,
@@ -769,3 +777,269 @@ async def test_stage1_rrf_prevents_recency_starvation(
     retrieved_ids = [j.id for j in retrieved]
     # The older, highly relevant job MUST be in the top 5 retrieved candidates
     assert old_high_match_id in retrieved_ids
+
+
+def test_classify_industry_vertical_and_strictness() -> None:
+    """Verify deterministic industry classification and domain strictness extraction."""
+    # 1. HealthTech strict
+    ht_desc = "Build HIPAA-compliant claims engine with EDI 837 and FHIR pipelines."
+    ht_vertical = classify_industry_vertical(
+        title="Senior Platform Engineer",
+        raw_description=ht_desc,
+        company_name="Optum",
+    )
+    assert ht_vertical == "healthtech"
+    ht_strictness = extract_domain_strictness(
+        title="Senior Platform Engineer",
+        raw_description=ht_desc,
+        industry_vertical=ht_vertical,
+    )
+    assert ht_strictness == 1.0
+
+    # 2. Gaming
+    gaming_vertical = classify_industry_vertical(
+        title="Gameplay Backend Engineer",
+        raw_description="Unreal Engine and multiplayer game server matchmaking.",
+        company_name="Riot Games",
+    )
+    assert gaming_vertical == "gaming"
+
+    # 3. Domain-agnostic SaaS
+    saas_vertical = classify_industry_vertical(
+        title="Senior Backend Engineer",
+        raw_description="Build microservices using Python, FastAPI, and PostgreSQL.",
+        company_name="Acme Inc",
+    )
+    assert saas_vertical == "general_saas"
+    saas_strictness = extract_domain_strictness(
+        title="Senior Backend Engineer",
+        raw_description="Build microservices using Python, FastAPI, and PostgreSQL.",
+        industry_vertical=saas_vertical,
+    )
+    assert saas_strictness == 0.0
+
+
+def test_domain_tenure_bonus_curve() -> None:
+    """
+    Verify piecewise linear saturating tenure bonus curve:
+    TenureBonus(YoE) = min(1.0, 0.50 + 0.10 * min(YoE, 5) + 0.02 * max(0, YoE - 5))
+    """
+    job = JobListing(
+        title="HealthTech Backend Engineer",
+        company_name="Optum",
+        industry_vertical="healthtech",
+        domain_strictness=1.0,
+        raw_description="HIPAA EDI 837 required",
+    )
+
+    # 0 YoE
+    p0 = CandidatePersona(
+        name="Zero Domain",
+        years_experience=5,
+        seniority_level="mid",
+    )
+    b0 = [
+        CVBlock(
+            title="SaaS Dev",
+            content="General SaaS development",
+            industry_tags=["general_saas"],
+            metrics={"duration_years": 5},
+        )
+    ]
+    s_dom_0, _ = calculate_domain_score(p0, b0, job)
+    assert s_dom_0 == 0.0
+
+    # 3 YoE: 0.50 + 0.10 * 3 = 0.80
+    p3 = CandidatePersona(
+        name="3 YoE HealthTech",
+        years_experience=3,
+        seniority_level="mid",
+    )
+    b3 = [
+        CVBlock(
+            title="Health Systems Dev",
+            content="HIPAA claims processing",
+            industry_tags=["healthtech"],
+            metrics={"duration_years": 3},
+        )
+    ]
+    s_dom_3, _ = calculate_domain_score(p3, b3, job)
+    assert round(s_dom_3, 2) == 0.80
+
+    # 5 YoE: 0.50 + 0.10 * 5 = 1.00
+    p5 = CandidatePersona(
+        name="5 YoE HealthTech",
+        years_experience=5,
+        seniority_level="senior",
+    )
+    b5 = [
+        CVBlock(
+            title="Health Systems Dev",
+            content="HIPAA claims processing",
+            industry_tags=["healthtech"],
+            metrics={"duration_years": 5},
+        )
+    ]
+    s_dom_5, _ = calculate_domain_score(p5, b5, job)
+    assert round(s_dom_5, 2) == 1.00
+
+    # 12 YoE: saturates at 1.00
+    p12 = CandidatePersona(
+        name="12 YoE HealthTech",
+        years_experience=12,
+        seniority_level="lead",
+    )
+    b12 = [
+        CVBlock(
+            title="Health Systems Lead",
+            content="HIPAA claims processing",
+            industry_tags=["healthtech"],
+            metrics={"duration_years": 12},
+        )
+    ]
+    s_dom_12, _ = calculate_domain_score(p12, b12, job)
+    assert round(s_dom_12, 2) == 1.00
+
+
+def test_healthtech_vs_gaming_domain_alignment_separation() -> None:
+    """
+    Dedicated benchmark test:
+    Two 12-YoE candidates with identical senior backend stacks (Java/Python/AWS).
+    - Candidate 1: 12 years deep HealthTech domain history (Optum, Epic, EDI, FHIR).
+    - Candidate 2: 12 years Gaming/AdTech domain history (Riot Games, Trade Desk).
+
+    Target Job: Optum Senior Backend Engineer (HealthTech strictness beta = 1.0).
+    Verify that HealthTech candidate scores >= 12% (>= 0.12) higher in P(Match)
+    than the Gaming candidate.
+    Also verify parity on a domain-agnostic SaaS listing (beta = 0.0).
+    """
+    dataset_path = (
+        Path(__file__).parent / "eval" / "datasets" / "healthtech_domain_benchmark.json"
+    )
+    assert dataset_path.exists(), f"Benchmark dataset missing at {dataset_path}"
+
+    with open(dataset_path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    # 1. Build HealthTech Candidate
+    ht_raw = data["candidates"]["healthtech_veteran"]
+    ht_persona = CandidatePersona(
+        name=ht_raw["name"],
+        headline=ht_raw["headline"],
+        years_experience=ht_raw["years_experience"],
+        seniority_level=ht_raw["seniority_level"],
+        target_roles=ht_raw["target_roles"],
+    )
+    ht_blocks = [
+        CVBlock(
+            title=b["title"],
+            organization=b["organization"],
+            content=b["content"],
+            industry_tags=b["industry_tags"],
+            metrics=b.get("metrics", {}),
+            skills=b.get("skills", []),
+        )
+        for b in ht_raw["blocks"]
+    ]
+    ht_skills = set(ht_raw["skills"])
+
+    # 2. Build Gaming Candidate
+    gm_raw = data["candidates"]["gaming_veteran"]
+    gm_persona = CandidatePersona(
+        name=gm_raw["name"],
+        headline=gm_raw["headline"],
+        years_experience=gm_raw["years_experience"],
+        seniority_level=gm_raw["seniority_level"],
+        target_roles=gm_raw["target_roles"],
+    )
+    gm_blocks = [
+        CVBlock(
+            title=b["title"],
+            organization=b["organization"],
+            content=b["content"],
+            industry_tags=b["industry_tags"],
+            metrics=b.get("metrics", {}),
+            skills=b.get("skills", []),
+        )
+        for b in gm_raw["blocks"]
+    ]
+    gm_skills = set(gm_raw["skills"])
+
+    # 3. Build Jobs
+    optum_raw = data["jobs"]["optum_healthtech_strict"]
+    optum_job = JobListing(
+        title=optum_raw["title"],
+        company_name=optum_raw["company_name"],
+        industry=optum_raw["industry"],
+        industry_vertical=optum_raw["industry_vertical"],
+        domain_strictness=optum_raw["domain_strictness"],
+        raw_description=optum_raw["raw_description"],
+        ats_requirements=optum_raw["ats_requirements"],
+    )
+
+    saas_raw = data["jobs"]["general_saas_agnostic"]
+    saas_job = JobListing(
+        title=saas_raw["title"],
+        company_name=saas_raw["company_name"],
+        industry=saas_raw["industry"],
+        industry_vertical=saas_raw["industry_vertical"],
+        domain_strictness=saas_raw["domain_strictness"],
+        raw_description=saas_raw["raw_description"],
+        ats_requirements=saas_raw["ats_requirements"],
+    )
+
+    # 4. Evaluate both on HealthTech Job
+    ht_score, ht_breakdown = calculate_match_upgraded(
+        persona=ht_persona,
+        job=optum_job,
+        blocks=ht_blocks,
+        persona_skills=ht_skills,
+    )
+
+    gm_score, gm_breakdown = calculate_match_upgraded(
+        persona=gm_persona,
+        job=optum_job,
+        blocks=gm_blocks,
+        persona_skills=gm_skills,
+    )
+
+    # Verify Domain & Context score separation
+    assert ht_breakdown.domain_score == 1.0, (
+        f"Expected 1.0, got {ht_breakdown.domain_score}"
+    )
+    assert gm_breakdown.domain_score == 0.0, (
+        f"Expected 0.0, got {gm_breakdown.domain_score}"
+    )
+    assert ht_breakdown.context_score == 1.0, (
+        f"Expected 1.0, got {ht_breakdown.context_score}"
+    )
+    assert gm_breakdown.context_score == 0.0, (
+        f"Expected 0.0, got {gm_breakdown.context_score}"
+    )
+
+    score_diff = ht_score - gm_score
+    # Verify HealthTech candidate scores at least 12% (0.12) higher in overall P(Match)
+    assert score_diff >= 0.12, (
+        f"Expected score difference >= 0.12 (12%), got {score_diff:.4f} "
+        f"(HealthTech: {ht_score}, Gaming: {gm_score})"
+    )
+
+    # 5. Evaluate both on Domain-Agnostic SaaS Job
+    ht_saas_score, ht_saas_breakdown = calculate_match_upgraded(
+        persona=ht_persona,
+        job=saas_job,
+        blocks=ht_blocks,
+        persona_skills=ht_skills,
+    )
+    gm_saas_score, gm_saas_breakdown = calculate_match_upgraded(
+        persona=gm_persona,
+        job=saas_job,
+        blocks=gm_blocks,
+        persona_skills=gm_skills,
+    )
+
+    # On domain agnostic SaaS (beta = 0.0), context score falls back to archetype
+    assert ht_saas_breakdown.context_score == ht_saas_breakdown.archetype_score
+    assert gm_saas_breakdown.context_score == gm_saas_breakdown.archetype_score
+    # Both candidates have identical stack; delta should be minimal (<= 0.02)
+    assert abs(ht_saas_score - gm_saas_score) <= 0.02

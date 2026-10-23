@@ -141,6 +141,8 @@ class ParsedRequirementsDTO(BaseModel):
     extraction_version: str = "v2"
     confidence_score: float = 1.0
     needs_review: bool = False
+    industry_vertical: str = "general_saas"
+    domain_strictness: float = 0.5
     evidence: dict[str, list[str]] = Field(default_factory=dict)
 
 

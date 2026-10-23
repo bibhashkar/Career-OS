@@ -81,7 +81,9 @@ class HybridRequirementsExtractor(RequirementsExtractorPort):
         company_name: str,
     ) -> ParsedRequirementsDTO:
         # Pass 1: Deterministic extraction (always runs)
-        deterministic_res = extract_deterministic_requirements(title, raw_description)
+        deterministic_res = extract_deterministic_requirements(
+            title, raw_description, company_name
+        )
         combined_text = f"{title}\n{raw_description}"
 
         # If LLM is not provided, initialize standard Gemini LLM
@@ -145,6 +147,8 @@ class HybridRequirementsExtractor(RequirementsExtractorPort):
                 extraction_version="v1-hybrid",
                 confidence_score=0.98 if merged_required else 0.6,
                 needs_review=False,
+                industry_vertical=deterministic_res.industry_vertical,
+                domain_strictness=deterministic_res.domain_strictness,
                 evidence=deterministic_res.evidence,
             )
 

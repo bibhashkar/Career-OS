@@ -1,0 +1,102 @@
+{
+  "description": "Evaluation benchmark dataset for domain alignment and context score separation",
+  "version": "1.0",
+  "candidates": {
+    "healthtech_veteran": {
+      "name": "Sarah Chen",
+      "headline": "Senior Healthcare Backend Platform Architect",
+      "years_experience": 12,
+      "seniority_level": "senior",
+      "target_roles": ["Senior Backend Platform Engineer", "Healthcare Infrastructure Engineer"],
+      "skills": ["Java", "Python", "AWS", "PostgreSQL", "Kafka", "EDI 837", "EDI 835", "FHIR", "HL7", "HIPAA"],
+      "blocks": [
+        {
+          "title": "Principal Health Systems Engineer",
+          "organization": "Optum",
+          "content": "Architected distributed HIPAA-compliant claims processing platform ingesting 15M daily EDI 837 claims and EDI 835 remittance transactions. Implemented FHIR REST APIs and ICD-10 medical validation services with sub-50ms p99 latency.",
+          "industry_tags": ["healthtech"],
+          "metrics": {
+            "duration_years": 7,
+            "qps": 5000,
+            "throughput_or_latency": "p99 45ms"
+          },
+          "skills": ["Java", "Python", "AWS", "PostgreSQL", "Kafka", "EDI 837", "EDI 835", "FHIR", "HIPAA"]
+        },
+        {
+          "title": "Senior Clinical Data Engineer",
+          "organization": "Epic Systems",
+          "content": "Engineered electronic health record (EHR) ingestion microservices transforming HL7 v2 and DICOM feeds into relational PostgreSQL data models with end-to-end PHI encryption.",
+          "industry_tags": ["healthtech"],
+          "metrics": {
+            "duration_years": 5,
+            "throughput_or_latency": "100MB/s throughput"
+          },
+          "skills": ["Java", "Python", "PostgreSQL", "HL7", "HIPAA", "EHR"]
+        }
+      ]
+    },
+    "gaming_veteran": {
+      "name": "Marcus Vance",
+      "headline": "Senior Multiplayer Systems & Telemetry Architect",
+      "years_experience": 12,
+      "seniority_level": "senior",
+      "target_roles": ["Senior Backend Platform Engineer", "Distributed Systems Engineer"],
+      "skills": ["Java", "Python", "AWS", "PostgreSQL", "Kafka"],
+      "blocks": [
+        {
+          "title": "Principal Game Backend Engineer",
+          "organization": "Riot Games",
+          "content": "Architected low-latency multiplayer game matchmaking and leaderboards handling 600,000 concurrent players. Scaled distributed game server orchestration on AWS and Kafka event streaming with sub-20ms p99 latency.",
+          "industry_tags": ["gaming"],
+          "metrics": {
+            "duration_years": 7,
+            "qps": 8000,
+            "throughput_or_latency": "p99 18ms"
+          },
+          "skills": ["Java", "Python", "AWS", "PostgreSQL", "Kafka"]
+        },
+        {
+          "title": "Lead Telemetry & AdTech Engineer",
+          "organization": "The Trade Desk",
+          "content": "Engineered real-time bidding DSP telemetry pipelines processing 200,000 queries per second into PostgreSQL data stores.",
+          "industry_tags": ["adtech"],
+          "metrics": {
+            "duration_years": 5,
+            "throughput_or_latency": "200k qps"
+          },
+          "skills": ["Java", "Python", "PostgreSQL", "Kafka"]
+        }
+      ]
+    }
+  },
+  "jobs": {
+    "optum_healthtech_strict": {
+      "title": "Senior Backend Platform Engineer (Claims & Health Data)",
+      "company_name": "Optum",
+      "industry": "healthtech",
+      "industry_vertical": "healthtech",
+      "domain_strictness": 1.0,
+      "raw_description": "Optum is seeking a Senior Backend Platform Engineer to build mission-critical, HIPAA-compliant claims processing infrastructure. Healthcare domain experience with EDI 837, EDI 835, HL7, or FHIR is required. Core tech stack: Java, Python, AWS, PostgreSQL, Kafka.",
+      "ats_requirements": {
+        "hard_skills": ["Java", "Python", "AWS", "PostgreSQL", "Kafka", "EDI 837", "FHIR", "HIPAA"],
+        "core_skills": ["Java", "Python", "AWS"],
+        "years_experience_min": 8,
+        "seniority_level": "senior"
+      }
+    },
+    "general_saas_agnostic": {
+      "title": "Senior Backend Platform Engineer (Core Cloud SaaS)",
+      "company_name": "Acme SaaS",
+      "industry": "general_saas",
+      "industry_vertical": "general_saas",
+      "domain_strictness": 0.0,
+      "raw_description": "Acme SaaS is looking for a Senior Backend Platform Engineer to scale our distributed microservices platform. Tech stack: Java, Python, AWS, PostgreSQL, Kafka.",
+      "ats_requirements": {
+        "hard_skills": ["Java", "Python", "AWS", "PostgreSQL", "Kafka"],
+        "core_skills": ["Java", "Python", "AWS"],
+        "years_experience_min": 8,
+        "seniority_level": "senior"
+      }
+    }
+  }
+}

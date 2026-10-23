@@ -127,11 +127,24 @@ To address semantic double-counting, recency starvation in Stage 1, symmetric eq
 - **Cold-Start Implied DAG Expansion:** Sparse profiles ($< 3$ CV blocks) automatically expand implied prerequisite skills with a neutral 0.65 prior floor.
 
 ### 3. Upgraded Multi-Factor Reranking Formula
-$$P(\text{Match}) = (G_{\text{prob}} \times D_{\text{core}}) \times \left[ 0.25 S_{\text{skills}} + 0.25 S_{\text{semantic}} + 0.15 S_{\text{seniority}} + 0.15 S_{\text{archetype}} + 0.10 S_{\text{comp}} + 0.10 S_{\text{freshness}} \right]$$
+$$P(\text{Match}) = (G_{\text{prob}} \times D_{\text{core}}) \times \left[ 0.25 S_{\text{skills}} + 0.25 S_{\text{semantic}} + 0.15 S_{\text{seniority}} + 0.15 S_{\text{context}} + 0.10 S_{\text{comp}} + 0.10 S_{\text{freshness}} \right]$$
 
 ### 4. Compensation Normalization ($S_{\text{comp}}$) & Deduplication
 - Normalized annualized USD salary bounds (`salary_min`, `salary_max`, `salary_currency`, `is_salary_estimated`) with DOL/USCIS H-1B prevailing wage fallback estimation.
 - Cross-ATS deduplication fingerprint (`content_fingerprint` = `SHA256(company_slug + normalized_title + location_code)`).
+
+### 5. Explicit Domain Alignment ($S_{\text{domain}}$) & Context Blending ($S_{\text{context}}$)
+- **Problem Solved:** $S_{\text{archetype}}$ previously only modeled operational company stage ($\vec{c}_{\text{job}} = [\alpha_{\text{scale}}, \alpha_{\text{builder}}, \alpha_{\text{research}}]$). A candidate with 12 years of HealthTech business logic (claims adjudication, EDI 837/835, FHIR, HIPAA) received identical scores to a 12-year gaming engineer for a HealthTech backend position.
+- **Unified Context Formula:**
+  $$S_{\text{context}} = (1 - \beta_{\text{domain}}) \cdot S_{\text{archetype}} + \beta_{\text{domain}} \cdot S_{\text{domain}}$$
+- **Candidate Domain Distribution ($\vec{D}_{\text{cand}}$):** Derived from `cv_block.industry_tags` and experience duration, applying recency decay $\gamma = 0.90$.
+- **Piecewise Linear Saturating Tenure Curve:**
+  $$\text{TenureBonus}(\text{YoE}) = \min(1.0, \; 0.50 + 0.10 \cdot \min(\text{YoE}, 5) + 0.02 \cdot \max(0, \text{YoE} - 5))$$
+  *(0 YoE $\to 0.0$, 3 YoE $\to 0.80$, 5 YoE $\to 1.00$, 10+ YoE $\to 1.00$)*.
+- **Strictness Modulation ($\beta_{\text{domain}} \in [0.0, 1.0]$):**
+  - $\beta = 1.0$ (Strict/Regulated): Mandate patterns or deep protocols (`EDI 837/835`, `HL7/FHIR`, `DICOM`, `PCI-DSS`, `FedRAMP`). Yields a 15-percentage-point separation for domain veterans.
+  - $\beta = 0.5$ (Preferred): Domain-specific vertical where general backend skills dominate.
+  - $\beta = 0.0$ (Domain Agnostic): General SaaS where $S_{\text{context}} = S_{\text{archetype}}$ for backward compatibility.
 
 ---
 
