@@ -21,6 +21,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 from sqlalchemy import Select, and_, func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -850,6 +852,7 @@ def calculate_semantic_top3_score(
     blocks: list[CVBlock],
     job: JobListing,
     target_roles: list[str],
+    candidate_block_vectors: list[tuple[list[float], float]] | None = None,
 ) -> float:
     """
     Calculate Top-3 Block Max-Sim semantic score S_semantic.
@@ -862,13 +865,19 @@ def calculate_semantic_top3_score(
 
     # 1. Block similarities
     block_sims: list[float] = []
-    for b in blocks:
-        block_text = f"{b.title} {b.content or ''}"
-        b_vec = _resolve_vector(b.embedding, block_text)
-        sim = _cosine_similarity(b_vec, job_vec)
-        weight = getattr(b, "priority_weight", 1.0) or 1.0
-        weighted_sim = max(0.0, min(1.0, sim * weight))
-        block_sims.append(weighted_sim)
+    if candidate_block_vectors is not None:
+        for b_vec, weight in candidate_block_vectors:
+            sim = _cosine_similarity(b_vec, job_vec)
+            weighted_sim = max(0.0, min(1.0, sim * weight))
+            block_sims.append(weighted_sim)
+    else:
+        for b in blocks:
+            block_text = f"{b.title} {b.content or ''}"
+            b_vec = _resolve_vector(b.embedding, block_text)
+            sim = _cosine_similarity(b_vec, job_vec)
+            weight = getattr(b, "priority_weight", 1.0) or 1.0
+            weighted_sim = max(0.0, min(1.0, sim * weight))
+            block_sims.append(weighted_sim)
 
     if block_sims:
         block_sims.sort(reverse=True)
@@ -1924,12 +1933,20 @@ async def retrieve_and_rank_jobs(
     # STAGE 2: Precision Multi-Factor Reranker
     # -----------------------------------------------------------------------
     scored_results: list[JobMatchResult] = []
+    cache_records: list[dict[str, Any]] = []
 
     # Pre-calculate candidate-level constants
     organizations = [b.organization for b in blocks if b.organization]
     prestige_score = calculate_prestige_score(organizations)
     achievement_score = calculate_achievement_score(blocks)
     candidate_domain_profile = derive_candidate_domain_profile(persona, blocks)
+    candidate_block_vectors = [
+        (
+            _resolve_vector(b.embedding, f"{b.title} {b.content or ''}"),
+            getattr(b, "priority_weight", 1.0) or 1.0,
+        )
+        for b in blocks
+    ]
 
     for job in candidate_jobs:
         reqs = job.ats_requirements or {}
@@ -1979,6 +1996,7 @@ async def retrieve_and_rank_jobs(
             blocks=blocks,
             job=job,
             target_roles=target_roles,
+            candidate_block_vectors=candidate_block_vectors,
         )
 
         # 3. Seniority Hierarchy Calibration (0.15 weight)
@@ -2090,56 +2108,91 @@ async def retrieve_and_rank_jobs(
         )
         scored_results.append(result_item)
 
-        # 9. Update JobMatchCache in PostgreSQL asynchronously
-        cache_stmt = select(JobMatchCache).where(
-            JobMatchCache.persona_id == persona.id,
-            JobMatchCache.job_listing_id == job.id,
+        # 9. Buffer JobMatchCache record for atomic bulk upsert
+        cache_records.append(
+            {
+                "id": uuid.uuid4(),
+                "persona_id": persona.id,
+                "job_listing_id": job.id,
+                "match_score": p_match,
+                "hard_gate_pass": hard_pass,
+                "skill_overlap_score": s_skills,
+                "semantic_score": s_semantic,
+                "seniority_score": s_seniority,
+                "prestige_booster": prestige_score,
+                "achievement_booster": achievement_score,
+                "missing_skills": missing_s,
+                "matched_skills": matched_s,
+                "d_core": d_core,
+                "archetype_score": s_archetype,
+                "domain_score": s_domain,
+                "context_score": s_context,
+                "comp_score": s_comp,
+                "freshness_score": s_freshness,
+                "evaluated_at": datetime.now(UTC),
+            }
         )
-        cache_res = await db.execute(cache_stmt)
-        existing_cache = cache_res.scalar_one_or_none()
 
-        if existing_cache is None:
-            new_cache = JobMatchCache(
-                id=uuid.uuid4(),
-                persona_id=persona.id,
-                job_listing_id=job.id,
-                match_score=p_match,
-                hard_gate_pass=hard_pass,
-                skill_overlap_score=s_skills,
-                semantic_score=s_semantic,
-                seniority_score=s_seniority,
-                prestige_booster=prestige_score,
-                achievement_booster=achievement_score,
-                missing_skills=missing_s,
-                matched_skills=matched_s,
-                d_core=d_core,
-                archetype_score=s_archetype,
-                domain_score=s_domain,
-                context_score=s_context,
-                comp_score=s_comp,
-                freshness_score=s_freshness,
-                evaluated_at=datetime.now(UTC),
-            )
-            db.add(new_cache)
-        else:
-            existing_cache.match_score = p_match
-            existing_cache.hard_gate_pass = hard_pass
-            existing_cache.skill_overlap_score = s_skills
-            existing_cache.semantic_score = s_semantic
-            existing_cache.seniority_score = s_seniority
-            existing_cache.prestige_booster = prestige_score
-            existing_cache.achievement_booster = achievement_score
-            existing_cache.missing_skills = missing_s
-            existing_cache.matched_skills = matched_s
-            existing_cache.d_core = d_core
-            existing_cache.archetype_score = s_archetype
-            existing_cache.domain_score = s_domain
-            existing_cache.context_score = s_context
-            existing_cache.comp_score = s_comp
-            existing_cache.freshness_score = s_freshness
-            existing_cache.evaluated_at = datetime.now(UTC)
-
-    await db.commit()
+    # 10. Atomic Bulk Upsert to JobMatchCache (Non-blocking telemetry)
+    if cache_records:
+        try:
+            bind = db.get_bind()
+            dialect_name = bind.dialect.name
+            if dialect_name == "postgresql":
+                upsert_stmt = pg_insert(JobMatchCache).values(cache_records)
+                upsert_stmt = upsert_stmt.on_conflict_do_update(
+                    constraint="uq_persona_job_match",
+                    set_={
+                        "match_score": upsert_stmt.excluded.match_score,
+                        "hard_gate_pass": upsert_stmt.excluded.hard_gate_pass,
+                        "skill_overlap_score": upsert_stmt.excluded.skill_overlap_score,
+                        "semantic_score": upsert_stmt.excluded.semantic_score,
+                        "seniority_score": upsert_stmt.excluded.seniority_score,
+                        "prestige_booster": upsert_stmt.excluded.prestige_booster,
+                        "achievement_booster": upsert_stmt.excluded.achievement_booster,
+                        "missing_skills": upsert_stmt.excluded.missing_skills,
+                        "matched_skills": upsert_stmt.excluded.matched_skills,
+                        "d_core": upsert_stmt.excluded.d_core,
+                        "archetype_score": upsert_stmt.excluded.archetype_score,
+                        "domain_score": upsert_stmt.excluded.domain_score,
+                        "context_score": upsert_stmt.excluded.context_score,
+                        "comp_score": upsert_stmt.excluded.comp_score,
+                        "freshness_score": upsert_stmt.excluded.freshness_score,
+                        "evaluated_at": upsert_stmt.excluded.evaluated_at,
+                    },
+                )
+                await db.execute(upsert_stmt)
+                await db.commit()
+            elif dialect_name == "sqlite":
+                upsert_stmt = sqlite_insert(JobMatchCache).values(cache_records)
+                upsert_stmt = upsert_stmt.on_conflict_do_update(
+                    index_elements=["persona_id", "job_listing_id"],
+                    set_={
+                        "match_score": upsert_stmt.excluded.match_score,
+                        "hard_gate_pass": upsert_stmt.excluded.hard_gate_pass,
+                        "skill_overlap_score": upsert_stmt.excluded.skill_overlap_score,
+                        "semantic_score": upsert_stmt.excluded.semantic_score,
+                        "seniority_score": upsert_stmt.excluded.seniority_score,
+                        "prestige_booster": upsert_stmt.excluded.prestige_booster,
+                        "achievement_booster": upsert_stmt.excluded.achievement_booster,
+                        "missing_skills": upsert_stmt.excluded.missing_skills,
+                        "matched_skills": upsert_stmt.excluded.matched_skills,
+                        "d_core": upsert_stmt.excluded.d_core,
+                        "archetype_score": upsert_stmt.excluded.archetype_score,
+                        "domain_score": upsert_stmt.excluded.domain_score,
+                        "context_score": upsert_stmt.excluded.context_score,
+                        "comp_score": upsert_stmt.excluded.comp_score,
+                        "freshness_score": upsert_stmt.excluded.freshness_score,
+                        "evaluated_at": upsert_stmt.excluded.evaluated_at,
+                    },
+                )
+                await db.execute(upsert_stmt)
+                await db.commit()
+            else:
+                await db.commit()
+        except Exception as exc:
+            logger.warning("Non-blocking error during match cache upsert: %s", exc)
+            await db.rollback()
 
     # Dynamic sorting: By date (newest first), salary (highest first),
     # or by acceptance probability score descending

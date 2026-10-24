@@ -41,4 +41,3 @@ CREATE INDEX IF NOT EXISTS idx_cv_block_industry_tags_gin
 ALTER TABLE job_match_cache
     ADD COLUMN IF NOT EXISTS domain_score FLOAT NOT NULL DEFAULT 0.0,
     ADD COLUMN IF NOT EXISTS context_score FLOAT NOT NULL DEFAULT 0.0;
-

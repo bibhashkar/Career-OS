@@ -68,36 +68,7 @@ class ParsedCVDocumentSchema(BaseModel):
     blocks: list[ParsedCVChunkSchema] = Field(default_factory=list)
 
 
-def generate_deterministic_embedding(text: str, dim: int = 1536) -> list[float]:
-    """
-    Generate a deterministic, unit-normalized vector for hermetic testing.
-
-    Uses token-level hash projection so that texts sharing semantic tokens
-    yield coherent cosine similarities even in offline test mode.
-
-    Args:
-        text: Input string to embed.
-        dim: Target vector dimensionality (defaults to 1536).
-
-    Returns:
-        List of unit-normalized floats with length ``dim``.
-    """
-    words = [w.strip(".,;:!?()[]{}\"'").lower() for w in text.split()]
-    tokens = [w for w in words if len(w) > 1] or [text.lower()]
-
-    accum = [0.0] * dim
-    for tok in tokens:
-        digest = hashlib.sha256(tok.encode("utf-8")).digest()
-        for i in range(dim):
-            b = digest[i % len(digest)]
-            val = ((b + (i * 31)) % 100) / 100.0 - 0.5
-            accum[i] += val
-
-    norm = math.sqrt(sum(v * v for v in accum)) or 1.0
-    return [round(v / norm, 6) for v in accum]
-
-
-_EMBEDDING_CACHE_MAX_SIZE = 1024
+_EMBEDDING_CACHE_MAX_SIZE = 4096
 _EMBEDDING_CACHE: dict[str, list[float]] = {}
 
 
@@ -117,6 +88,52 @@ def set_cached_embedding(text: str, vec: list[float]) -> None:
         oldest_key = next(iter(_EMBEDDING_CACHE))
         _EMBEDDING_CACHE.pop(oldest_key, None)
     _EMBEDDING_CACHE[_embedding_cache_key(text)] = vec
+
+
+def generate_deterministic_embedding(text: str, dim: int = 1536) -> list[float]:
+    """
+    Generate a deterministic, unit-normalized vector for hermetic testing.
+
+    Uses token-level hash projection so that texts sharing semantic tokens
+    yield coherent cosine similarities even in offline test mode.
+
+    Args:
+        text: Input string to embed.
+        dim: Target vector dimensionality (defaults to 1536).
+
+    Returns:
+        List of unit-normalized floats with length ``dim``.
+    """
+    cached = get_cached_embedding(text)
+    if cached is not None and len(cached) == dim:
+        return cached
+
+    words = [w.strip(".,;:!?()[]{}\"'").lower() for w in text.split()]
+    tokens = [w for w in words if len(w) > 1] or [text.lower()]
+    # Bound tokens to avoid unbounded CPU cycles on multi-page job descriptions
+    if len(tokens) > 64:
+        seen = set()
+        bounded_tokens = []
+        for t in tokens:
+            if t not in seen:
+                seen.add(t)
+                bounded_tokens.append(t)
+            if len(bounded_tokens) >= 64:
+                break
+        tokens = bounded_tokens
+
+    accum = [0.0] * dim
+    for tok in tokens:
+        digest = hashlib.sha256(tok.encode("utf-8")).digest()
+        for i in range(dim):
+            b = digest[i % len(digest)]
+            val = ((b + (i * 31)) % 100) / 100.0 - 0.5
+            accum[i] += val
+
+    norm = math.sqrt(sum(v * v for v in accum)) or 1.0
+    res = [round(v / norm, 6) for v in accum]
+    set_cached_embedding(text, res)
+    return res
 
 
 async def embed_text(text: str) -> list[float]:
