@@ -160,6 +160,16 @@ export async function getJobMatches(params = {}) {
 }
 
 /**
+ * Parse free-form natural language query into tokenized filter entities.
+ */
+export async function parseSearchQuery(rawText) {
+  const response = await apiClient.post("/jobs/parse-query", {
+    raw_text: rawText,
+  });
+  return response.data;
+}
+
+/**
  * Fetch per-job matching diagnostics and dealbreaker chip analysis.
  */
 export async function getJobDiagnostics(jobId, personaId = null) {

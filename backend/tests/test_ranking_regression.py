@@ -219,9 +219,9 @@ def test_ranking_regression_stage2_latency(
 
     latencies.sort()
     p95_latency = latencies[int(len(latencies) * 0.95)]
-    assert (
-        p95_latency < 45.0
-    ), f"Stage 2 p95 latency for 50 jobs exceeded 45ms: {p95_latency:.2f}ms"
+    assert p95_latency < 45.0, (
+        f"Stage 2 p95 latency for 50 jobs exceeded 45ms: {p95_latency:.2f}ms"
+    )
 
 
 def test_regulated_domain_prioritization() -> None:
@@ -359,6 +359,6 @@ def test_regulated_domain_prioritization() -> None:
     )
     print(f"Score Separation:           {diff_percentage:.2f}%")
 
-    assert (
-        diff_percentage >= 12.0
-    ), f"Domain alignment separation failed: {diff_percentage:.2f}% < 12.0%"
+    assert diff_percentage >= 12.0, (
+        f"Domain alignment separation failed: {diff_percentage:.2f}% < 12.0%"
+    )

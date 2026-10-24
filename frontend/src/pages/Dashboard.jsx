@@ -32,6 +32,9 @@ import { CompanyDossierCard } from "../components/CompanyDossierCard";
 import { JobProvenanceBadge } from "../components/JobProvenanceBadge";
 import { AddJobModal } from "../components/AddJobModal";
 import { JobDiagnosticModal } from "../components/JobDiagnosticModal";
+import { TokenizedOmnibar } from "../components/search/TokenizedOmnibar";
+import { InstrumentBar } from "../components/search/InstrumentBar";
+import { EmptyStateRelaxer } from "../components/search/EmptyStateRelaxer";
 
 const SAMPLE_KEYWORDS = [
   { label: "Software Developer", query: "Software Developer" },
@@ -137,6 +140,69 @@ export function Dashboard({
   const [sortBy, setSortBy] = useState(() => getInitialParam("sort", "score"));
   const [selectedJobForDiag, setSelectedJobForDiag] = useState(null);
 
+  // Command-Facet Omnibar & Discovery Engine States (Spec v1.0.0)
+  const [searchMode, setSearchMode] = useState(() => getInitialParam("mode", "cv_grounded"));
+  const [workAuthTier, setWorkAuthTier] = useState(() => getInitialParam("auth", "all"));
+  const [minBaseSalary, setMinBaseSalary] = useState(() => {
+    const s = getInitialParam("salary", "");
+    return s ? Number(s) : null;
+  });
+  const [maxCommuteMiles, setMaxCommuteMiles] = useState(() => {
+    const c = getInitialParam("commute", "");
+    return c ? Number(c) : null;
+  });
+  const [chips, setChips] = useState(() => {
+    const savedChips = getInitialParam("chips", "");
+    if (savedChips) {
+      try {
+        return JSON.parse(decodeURIComponent(savedChips));
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [diagnostics, setDiagnostics] = useState(null);
+
+  const handleAddChip = (chip) => {
+    setChips((prev) => {
+      if (prev.some((c) => c.type === chip.type && c.value.toLowerCase() === chip.value.toLowerCase())) {
+        return prev;
+      }
+      return [...prev, { ...chip, id: chip.id || `${chip.type}-${Date.now()}` }];
+    });
+  };
+
+  const handleRemoveChip = (chipId) => {
+    setChips((prev) => prev.filter((c) => c.id !== chipId));
+  };
+
+  const handleApplyRelaxation = (patch) => {
+    if (!patch) return;
+    if ("work_auth_tier" in patch) {
+      setWorkAuthTier(patch.work_auth_tier);
+    }
+    if ("max_commute_miles" in patch) {
+      setMaxCommuteMiles(patch.max_commute_miles);
+    }
+    if ("min_base_salary_usd" in patch) {
+      setMinBaseSalary(patch.min_base_salary_usd);
+    }
+    if ("workplace_modality" in patch) {
+      setModalityFilter(patch.workplace_modality === "all" ? "" : patch.workplace_modality);
+    }
+    if ("must_have_skills" in patch) {
+      setChips((prev) => prev.filter((c) => c.type !== "skill"));
+    }
+    if ("companies" in patch) {
+      setChips((prev) => prev.filter((c) => c.type !== "company"));
+    }
+    if ("raw_query" in patch) {
+      setSearchQuery("");
+    }
+    setDiagnostics(null);
+  };
+
   // --- Search Tab State (Direct ATS Hunter) ---
   const [query, setQuery] = useState("");
   const [location, setLocation] = useState("");
@@ -198,6 +264,12 @@ export function Dashboard({
     setMinScoreFilter(0.0);
     setMatchesVisaFilter(false);
     setSortBy("score");
+    setSearchMode("cv_grounded");
+    setWorkAuthTier("all");
+    setMinBaseSalary(null);
+    setMaxCommuteMiles(null);
+    setChips([]);
+    setDiagnostics(null);
     try {
       localStorage.removeItem(FILTER_STORAGE_KEY);
     } catch {
@@ -212,7 +284,12 @@ export function Dashboard({
     (postedWithinFilter ? 1 : 0) +
     (minScoreFilter > 0 ? 1 : 0) +
     (matchesVisaFilter ? 1 : 0) +
-    (sortBy !== "score" ? 1 : 0);
+    (sortBy !== "score" ? 1 : 0) +
+    (workAuthTier !== "all" ? 1 : 0) +
+    (minBaseSalary !== null ? 1 : 0) +
+    (maxCommuteMiles !== null ? 1 : 0) +
+    (searchMode !== "cv_grounded" ? 1 : 0) +
+    chips.length;
 
   // Fetch Ranked Matches for active persona
   const fetchMatches = useCallback(async () => {
@@ -225,6 +302,7 @@ export function Dashboard({
         page_size: 25,
         min_score: minScoreFilter,
         sort_by: sortBy,
+        search_mode: searchMode,
       };
       if (activePersona?.id && activePersona.id !== "universal") {
         params.persona_id = activePersona.id;
@@ -244,10 +322,44 @@ export function Dashboard({
       if (matchesVisaFilter) {
         params.visa_filter = true;
       }
+      if (workAuthTier && workAuthTier !== "all") {
+        params.work_auth_tier = workAuthTier;
+      }
+      if (minBaseSalary !== null) {
+        params.min_base_salary_usd = minBaseSalary;
+      }
+      if (maxCommuteMiles !== null) {
+        params.max_commute_miles = maxCommuteMiles;
+      }
+      const companyChips = chips
+        .filter((c) => c.type === "company")
+        .map((c) => c.value);
+      if (companyChips.length > 0) {
+        params.companies = companyChips;
+      }
+      const indChips = chips
+        .filter((c) => c.type === "industry")
+        .map((c) => c.value);
+      if (indChips.length > 0) {
+        params.industries = indChips;
+      }
+      const senChips = chips
+        .filter((c) => c.type === "seniority")
+        .map((c) => c.value);
+      if (senChips.length > 0) {
+        params.seniority = senChips;
+      }
+      const skillChips = chips
+        .filter((c) => c.type === "skill")
+        .map((c) => c.value);
+      if (skillChips.length > 0) {
+        params.must_have_skills = skillChips;
+      }
 
       const res = await getJobMatches(params);
       setMatches(res?.jobs || []);
       setTotalMatches(res?.total_count || 0);
+      setDiagnostics(res?.diagnostics || null);
     } catch (err) {
       if (err.code !== "ERR_NETWORK") {
         console.warn("Failed to fetch job matches:", err);
@@ -268,6 +380,11 @@ export function Dashboard({
     minScoreFilter,
     matchesVisaFilter,
     sortBy,
+    searchMode,
+    workAuthTier,
+    minBaseSalary,
+    maxCommuteMiles,
+    chips,
   ]);
 
   // Load matches with debounce when activePersona or filters change
@@ -439,29 +556,18 @@ export function Dashboard({
           {/* Match Filter Controls */}
           <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 shadow-xl space-y-3">
             {/* Row 1: Search Inputs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* Text Search (Company, Title, Keywords) */}
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by company, title, or keywords (e.g. OpenAI, Tech Lead)..."
-                  aria-label="Search company, job title, or keywords"
-                  data-testid="matches-search-input"
-                  className="w-full pl-10 pr-8 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery("")}
-                    aria-label="Clear keyword search"
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
+              {/* Tokenized Omnibar with autocomplete & chips */}
+              <TokenizedOmnibar
+                rawQuery={searchQuery}
+                onQueryChange={setSearchQuery}
+                chips={chips}
+                onAddChip={handleAddChip}
+                onRemoveChip={handleRemoveChip}
+                onClearAll={handleClearFilters}
+                onSearch={fetchMatches}
+                isSearching={matchesLoading}
+              />
 
               {/* City, State, Country & Region Filter */}
               <div className="relative">
@@ -499,6 +605,22 @@ export function Dashboard({
                 </datalist>
               </div>
             </div>
+
+            {/* Sticky Instrument Panel */}
+            <InstrumentBar
+              searchMode={searchMode}
+              onSearchModeChange={setSearchMode}
+              workAuthTier={workAuthTier}
+              onWorkAuthTierChange={setWorkAuthTier}
+              workplaceModality={modalityFilter || "all"}
+              onWorkplaceModalityChange={(m) => setModalityFilter(m === "all" ? "" : m)}
+              minBaseSalary={minBaseSalary}
+              onMinBaseSalaryChange={setMinBaseSalary}
+              maxCommuteMiles={maxCommuteMiles}
+              onMaxCommuteMilesChange={setMaxCommuteMiles}
+              sortBy={sortBy}
+              onSortByChange={setSortBy}
+            />
 
             {/* Row 2: Secondary Dropdown Filters & Controls */}
             <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
@@ -692,19 +814,11 @@ export function Dashboard({
 
           {/* Empty Matches State */}
           {!matchesLoading && !matchesError && matches.length === 0 && (
-            <div className="bg-slate-800/40 border border-slate-700/60 rounded-2xl p-8 text-center space-y-4">
-              <div className="w-14 h-14 rounded-2xl bg-sky-500/10 border border-sky-500/20 text-sky-400 mx-auto flex items-center justify-center shadow-lg">
-                <Sparkles className="w-7 h-7" />
-              </div>
-              <div className="space-y-1.5 max-w-md mx-auto">
-                <h3 className="text-base font-bold text-white">
-                  No high-probability roles match current filters
-                </h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Try broadening your modality or visa filters, or visit your 360° Candidate Audit to update your core skills and verified achievements.
-                </p>
-              </div>
-            </div>
+            <EmptyStateRelaxer
+              diagnostics={diagnostics}
+              onApplyRelaxation={handleApplyRelaxation}
+              onResetFilters={handleClearFilters}
+            />
           )}
 
           {/* Matches List */}

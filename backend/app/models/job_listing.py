@@ -114,11 +114,22 @@ class JobListing(Base, UUIDMixin, TimestampMixin):
     remote_scope: Mapped[str] = mapped_column(
         String(50), default="none", index=True, nullable=False
     )  # 'none', 'state_province', 'country_wide', 'worldwide_global'
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cbsa_metro_code: Mapped[str | None] = mapped_column(
+        String(16), index=True, nullable=True
+    )
+    excluded_states: Mapped[list[str] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
 
     # Compensation & Content
     salary_range: Mapped[str | None] = mapped_column(String(100), nullable=True)
     salary_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     salary_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    salary_min_usd: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    salary_max_usd: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    prevailing_wage_estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)
     salary_currency: Mapped[str] = mapped_column(
         String(10), default="USD", nullable=False
     )
@@ -136,6 +147,13 @@ class JobListing(Base, UUIDMixin, TimestampMixin):
     )  # 'yes', 'no', 'transfer_only', 'opt_cpt_accepted', NULL
     visa_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     visa_types: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    is_everify_confirmed: Mapped[bool] = mapped_column(
+        Boolean, default=False, index=True, nullable=False
+    )
+    citizenship_restricted: Mapped[bool] = mapped_column(
+        Boolean, default=False, index=True, nullable=False
+    )
+    uscis_filings_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Provenance & Deduplication
     fingerprint: Mapped[str | None] = mapped_column(

@@ -20,7 +20,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -36,6 +36,14 @@ from app.models.user_account import (
     JobMatchCache,
     PersonaSkill,
     UserAccount,
+)
+from app.schemas.search import (
+    JobSearchFilterDTO,
+    SearchDiagnosticsDTO,
+    SearchMode,
+    SearchRelaxationDTO,
+    WorkAuthTier,
+    WorkplaceModality,
 )
 from app.services.skill_graph import (
     compute_asymmetric_skill_score,
@@ -217,7 +225,7 @@ class JobMatchResult(BaseModel):
     match_score: float = Field(..., description="P(Match) acceptance probability.")
     hard_gate_pass: bool
     probability_band: str = Field(..., description="'high', 'moderate', or 'low'")
-    breakdown: MatchFactorBreakdown
+    breakdown: MatchFactorBreakdown | None = None
     matched_skills: list[str] = Field(default_factory=list)
     missing_dealbreakers: list[str] = Field(default_factory=list)
     phrasing_equivalents: list[dict[str, str]] = Field(default_factory=list)
@@ -1093,6 +1101,369 @@ def calculate_probabilistic_gate(
     return g_prob, hard_pass, notes
 
 
+def haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """
+    Calculate great-circle distance between two points in statute miles
+    using Haversine formula.
+    """
+    r = 3959.0  # Earth's radius in miles
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = (
+        math.sin(delta_phi / 2.0) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
+    )
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1.0 - a)))
+    return r * c
+
+
+def build_stage1_query(
+    filters: JobSearchFilterDTO, persona_id: str | None = None
+) -> Select[tuple[JobListing]]:
+    """
+    Construct Stage 1 SQL query enforcing strict null-safety (ADR-008 & Spec v1.0.0).
+
+    Unselected facets (None or ALL) generate zero WHERE clauses.
+    Applies Tri-Tier Work Auth, bounding-box commute radius, compensation floor,
+    and tokenized entity constraints.
+    """
+    query: Select[tuple[JobListing]] = (
+        select(JobListing)
+        .options(selectinload(JobListing.ats_board))
+        .where(JobListing.status == "active")
+    )
+
+    # 1. Tri-Tier Work Authorization
+    if filters.work_auth_tier == WorkAuthTier.F1_OPT_CPT:
+        query = query.where(
+            and_(
+                JobListing.is_everify_confirmed.is_(True),
+                or_(
+                    JobListing.citizenship_restricted.is_(False),
+                    JobListing.citizenship_restricted.is_(None),
+                ),
+                or_(
+                    JobListing.visa_sponsorship.is_(None),
+                    JobListing.visa_sponsorship != "no",
+                ),
+            )
+        )
+    elif filters.work_auth_tier == WorkAuthTier.H1B_TRANSFER_SPONSOR:
+        query = query.where(
+            and_(
+                or_(
+                    JobListing.citizenship_restricted.is_(False),
+                    JobListing.citizenship_restricted.is_(None),
+                ),
+                or_(
+                    JobListing.visa_sponsorship == "yes",
+                    JobListing.uscis_filings_count >= 5,
+                ),
+                or_(
+                    JobListing.visa_sponsorship.is_(None),
+                    JobListing.visa_sponsorship != "no",
+                ),
+            )
+        )
+    elif filters.work_auth_tier == WorkAuthTier.DOMESTIC_ONLY:
+        query = query.where(
+            or_(
+                JobListing.country_code == "US",
+                JobListing.country.ilike("%united states%"),
+                JobListing.country.ilike("%usa%"),
+            )
+        )
+
+    # 2. Workplace Modality
+    if filters.workplace_modality == WorkplaceModality.REMOTE:
+        query = query.where(JobListing.workplace_type == "remote")
+    elif filters.workplace_modality == WorkplaceModality.HYBRID:
+        query = query.where(JobListing.workplace_type == "hybrid")
+    elif filters.workplace_modality == WorkplaceModality.ON_SITE:
+        query = query.where(JobListing.workplace_type.in_(["on_site", "onsite"]))
+
+    # 3. Minimum Base Salary Floor
+    if filters.min_base_salary_usd is not None:
+        if filters.include_prevailing_wage_estimates:
+            query = query.where(
+                or_(
+                    JobListing.salary_min_usd >= filters.min_base_salary_usd,
+                    and_(
+                        JobListing.salary_min_usd.is_(None),
+                        JobListing.prevailing_wage_estimate
+                        >= filters.min_base_salary_usd,
+                    ),
+                )
+            )
+        else:
+            query = query.where(
+                JobListing.salary_min_usd >= filters.min_base_salary_usd
+            )
+
+    # 4. Commute Radius & Metro Code
+    if filters.candidate_geo is not None and filters.max_commute_miles is not None:
+        cand_lat = filters.candidate_geo.latitude
+        cand_lng = filters.candidate_geo.longitude
+        max_d = float(filters.max_commute_miles)
+        d_lat = max_d / 69.0
+        cos_lat = max(math.cos(math.radians(cand_lat)), 0.01)
+        d_lon = max_d / (69.0 * cos_lat)
+
+        geo_conditions = [
+            JobListing.workplace_type == "remote",
+            and_(
+                JobListing.latitude.is_not(None),
+                JobListing.longitude.is_not(None),
+                JobListing.latitude.between(cand_lat - d_lat, cand_lat + d_lat),
+                JobListing.longitude.between(cand_lng - d_lon, cand_lng + d_lon),
+            ),
+        ]
+        if filters.candidate_geo.cbsa_metro_code:
+            geo_conditions.append(
+                and_(
+                    JobListing.cbsa_metro_code.is_not(None),
+                    JobListing.cbsa_metro_code == filters.candidate_geo.cbsa_metro_code,
+                )
+            )
+        query = query.where(or_(*geo_conditions))
+
+    elif filters.candidate_geo is not None and filters.candidate_geo.cbsa_metro_code:
+        query = query.where(
+            or_(
+                JobListing.workplace_type == "remote",
+                JobListing.cbsa_metro_code == filters.candidate_geo.cbsa_metro_code,
+            )
+        )
+
+    # 5. Tokenized Companies
+    if filters.companies:
+        comp_clauses = [
+            JobListing.company_name.ilike(f"%{c}%") for c in filters.companies
+        ]
+        query = query.where(or_(*comp_clauses))
+
+    # 6. Target Industries
+    if filters.target_industries:
+        ind_clauses = [
+            JobListing.industry.ilike(f"%{ind}%") for ind in filters.target_industries
+        ]
+        query = query.where(or_(*ind_clauses))
+
+    # 7. Seniority Levels
+    if filters.seniority_levels:
+        sen_clauses = [
+            or_(
+                JobListing.seniority_level.ilike(f"%{s}%"),
+                JobListing.title.ilike(f"%{s}%"),
+            )
+            for s in filters.seniority_levels
+        ]
+        query = query.where(or_(*sen_clauses))
+
+    # 8. Must-Have Skills (All must match)
+    if filters.must_have_skills:
+        skill_clauses = [
+            or_(
+                JobListing.raw_description.ilike(f"%{s}%"),
+                JobListing.title.ilike(f"%{s}%"),
+            )
+            for s in filters.must_have_skills
+        ]
+        query = query.where(and_(*skill_clauses))
+
+    # 9. Raw Residual Query
+    if filters.raw_query and filters.raw_query.strip():
+        q_term = f"%{filters.raw_query.strip()}%"
+        query = query.where(
+            or_(
+                JobListing.title.ilike(q_term),
+                JobListing.company_name.ilike(q_term),
+                JobListing.raw_description.ilike(q_term),
+            )
+        )
+
+    return query
+
+
+async def get_stage1_count(db: AsyncSession, filters: JobSearchFilterDTO) -> int:
+    """Execute count query for a given filter set."""
+    base_q = build_stage1_query(filters)
+    count_q = select(func.count()).select_from(base_q.subquery())
+    res = await db.execute(count_q)
+    return int(res.scalar() or 0)
+
+
+async def diagnose_zero_results(
+    db: AsyncSession, filters: JobSearchFilterDTO
+) -> SearchDiagnosticsDTO:
+    """
+    Isolate which specific constraint caused zero results and generate
+    actionable one-click relaxation suggestions.
+    """
+    relaxations: list[tuple[int, SearchRelaxationDTO]] = []
+
+    # 1. Test relaxing Work Auth
+    if filters.work_auth_tier != WorkAuthTier.ALL:
+        relaxed = filters.model_copy(update={"work_auth_tier": WorkAuthTier.ALL})
+        cnt = await get_stage1_count(db, relaxed)
+        if cnt > 0:
+            msg = (
+                f"Work authorization tier '{filters.work_auth_tier.value}' "
+                "excluded all results."
+            )
+            act = f"Broaden Work Authorization to 'All' (+{cnt} jobs)"
+            relaxations.append(
+                (
+                    cnt,
+                    SearchRelaxationDTO(
+                        restrictive_facet="work_auth_tier",
+                        message=msg,
+                        action_label=act,
+                        relaxed_patch={"work_auth_tier": WorkAuthTier.ALL.value},
+                    ),
+                )
+            )
+
+    # 2. Test relaxing Commute Radius
+    if filters.max_commute_miles is not None:
+        relaxed = filters.model_copy(update={"max_commute_miles": None})
+        cnt = await get_stage1_count(db, relaxed)
+        if cnt > 0:
+            msg = (
+                f"Max commute radius of {filters.max_commute_miles} miles "
+                "excluded all results."
+            )
+            act = f"Remove Commute Radius Constraint (+{cnt} jobs)"
+            relaxations.append(
+                (
+                    cnt,
+                    SearchRelaxationDTO(
+                        restrictive_facet="max_commute_miles",
+                        message=msg,
+                        action_label=act,
+                        relaxed_patch={"max_commute_miles": None},
+                    ),
+                )
+            )
+
+    # 3. Test relaxing Min Salary Floor
+    if filters.min_base_salary_usd is not None:
+        relaxed = filters.model_copy(update={"min_base_salary_usd": None})
+        cnt = await get_stage1_count(db, relaxed)
+        if cnt > 0:
+            msg = (
+                f"Minimum salary threshold of ${filters.min_base_salary_usd:,} "
+                "excluded all results."
+            )
+            act = f"Clear Salary Floor (+{cnt} jobs)"
+            relaxations.append(
+                (
+                    cnt,
+                    SearchRelaxationDTO(
+                        restrictive_facet="min_base_salary_usd",
+                        message=msg,
+                        action_label=act,
+                        relaxed_patch={"min_base_salary_usd": None},
+                    ),
+                )
+            )
+
+    # 4. Test relaxing Must-Have Skills
+    if filters.must_have_skills:
+        relaxed = filters.model_copy(update={"must_have_skills": []})
+        cnt = await get_stage1_count(db, relaxed)
+        if cnt > 0:
+            msg = f"Required skills {filters.must_have_skills} excluded all results."
+            act = f"Move Skills to Nice-to-Have (+{cnt} jobs)"
+            relaxations.append(
+                (
+                    cnt,
+                    SearchRelaxationDTO(
+                        restrictive_facet="must_have_skills",
+                        message=msg,
+                        action_label=act,
+                        relaxed_patch={"must_have_skills": []},
+                    ),
+                )
+            )
+
+    # 5. Test relaxing Workplace Modality
+    if filters.workplace_modality != WorkplaceModality.ALL:
+        relaxed = filters.model_copy(
+            update={"workplace_modality": WorkplaceModality.ALL}
+        )
+        cnt = await get_stage1_count(db, relaxed)
+        if cnt > 0:
+            msg = (
+                f"Workplace modality '{filters.workplace_modality.value}' "
+                "excluded all results."
+            )
+            act = f"Allow All Modalities (+{cnt} jobs)"
+            relaxations.append(
+                (
+                    cnt,
+                    SearchRelaxationDTO(
+                        restrictive_facet="workplace_modality",
+                        message=msg,
+                        action_label=act,
+                        relaxed_patch={
+                            "workplace_modality": WorkplaceModality.ALL.value
+                        },
+                    ),
+                )
+            )
+
+    # 6. Test relaxing Companies
+    if filters.companies:
+        relaxed = filters.model_copy(update={"companies": []})
+        cnt = await get_stage1_count(db, relaxed)
+        if cnt > 0:
+            msg = f"Company filters {filters.companies} excluded all results."
+            act = f"Clear Company Filter (+{cnt} jobs)"
+            relaxations.append(
+                (
+                    cnt,
+                    SearchRelaxationDTO(
+                        restrictive_facet="companies",
+                        message=msg,
+                        action_label=act,
+                        relaxed_patch={"companies": []},
+                    ),
+                )
+            )
+
+    # 7. Test relaxing Residual Query
+    if filters.raw_query and filters.raw_query.strip():
+        relaxed = filters.model_copy(update={"raw_query": None})
+        cnt = await get_stage1_count(db, relaxed)
+        if cnt > 0:
+            msg = f"Search text '{filters.raw_query.strip()}' excluded all results."
+            act = f"Clear Keyword Query (+{cnt} jobs)"
+            relaxations.append(
+                (
+                    cnt,
+                    SearchRelaxationDTO(
+                        restrictive_facet="raw_query",
+                        message=msg,
+                        action_label=act,
+                        relaxed_patch={"raw_query": None},
+                    ),
+                )
+            )
+
+    # Sort relaxations by highest number of unlocked jobs descending
+    relaxations.sort(key=lambda x: x[0], reverse=True)
+    sorted_dtos = [item[1] for item in relaxations]
+    primary = sorted_dtos[0] if sorted_dtos else None
+
+    return SearchDiagnosticsDTO(
+        status="zero_results",
+        primary_bottleneck=primary,
+        all_relaxations=sorted_dtos,
+    )
+
+
 async def retrieve_stage1_candidates(
     db: AsyncSession,
     persona: CandidatePersona,
@@ -1107,6 +1478,7 @@ async def retrieve_stage1_candidates(
     location_filter: str | None = None,
     posted_within_days: int | None = None,
     limit: int = 250,
+    filters: JobSearchFilterDTO | None = None,
 ) -> list[JobListing]:
     """
     Stage 1 Hybrid Inverted Index & Reciprocal Rank Fusion (RRF) Retrieval.
@@ -1117,74 +1489,103 @@ async def retrieve_stage1_candidates(
       - Stream 3: Posting Recency
     Fused using RRF (k = 60) to select top candidate listings for Stage 2.
     """
-    requires_visa = account.visa_status.strip().lower() in {
-        "h-1b",
-        "f-1 opt",
-        "requires_sponsorship",
-        "requires sponsorship",
-    }
     target_roles = [r.lower() for r in (persona.target_roles or [])]
 
-    base_query = (
-        select(JobListing)
-        .options(selectinload(JobListing.ats_board))
-        .where(JobListing.status == "active")
-    )
-
-    # Hard negative visa exclusion
-    if requires_visa or visa_filter:
-        base_query = base_query.where(
-            or_(
-                JobListing.visa_sponsorship.is_(None),
-                JobListing.visa_sponsorship != "no",
+    if filters is not None:
+        base_query = build_stage1_query(filters, persona_id=str(persona.id))
+        if location_filter and location_filter.strip():
+            loc_term = f"%{location_filter.strip()}%"
+            loc_code = location_filter.strip()
+            base_query = base_query.where(
+                or_(
+                    JobListing.city.ilike(loc_term),
+                    JobListing.state_province.ilike(loc_term),
+                    JobListing.state_province_code.ilike(loc_code),
+                    JobListing.country.ilike(loc_term),
+                    JobListing.country_code.ilike(loc_code),
+                    JobListing.primary_region.ilike(loc_term),
+                    JobListing.raw_location.ilike(loc_term),
+                )
             )
-        )
-
-    # Modality filter
-    if modality_filter:
-        base_query = base_query.where(
-            JobListing.workplace_type == modality_filter.lower()
-        )
-
-    # Location filter (city, state, country, region, raw location)
-    if location_filter and location_filter.strip():
-        loc_term = f"%{location_filter.strip()}%"
-        loc_code = location_filter.strip()
-        base_query = base_query.where(
-            or_(
-                JobListing.city.ilike(loc_term),
-                JobListing.state_province.ilike(loc_term),
-                JobListing.state_province_code.ilike(loc_code),
-                JobListing.country.ilike(loc_term),
-                JobListing.country_code.ilike(loc_code),
-                JobListing.primary_region.ilike(loc_term),
-                JobListing.raw_location.ilike(loc_term),
+        if posted_within_days and posted_within_days > 0:
+            cutoff = datetime.now(UTC) - timedelta(days=posted_within_days)
+            base_query = base_query.where(
+                or_(
+                    JobListing.posted_at >= cutoff,
+                    and_(
+                        JobListing.posted_at.is_(None),
+                        JobListing.first_seen_at >= cutoff,
+                    ),
+                )
             )
+    else:
+        requires_visa = account.visa_status.strip().lower() in {
+            "h-1b",
+            "f-1 opt",
+            "requires_sponsorship",
+            "requires sponsorship",
+        }
+
+        base_query = (
+            select(JobListing)
+            .options(selectinload(JobListing.ats_board))
+            .where(JobListing.status == "active")
         )
 
-    # Search keyword filter (title, company, description)
-    if search_query and search_query.strip():
-        q_term = f"%{search_query.strip()}%"
-        base_query = base_query.where(
-            or_(
-                JobListing.title.ilike(q_term),
-                JobListing.company_name.ilike(q_term),
-                JobListing.raw_description.ilike(q_term),
+        # Hard negative visa exclusion
+        if requires_visa or visa_filter:
+            base_query = base_query.where(
+                or_(
+                    JobListing.visa_sponsorship.is_(None),
+                    JobListing.visa_sponsorship != "no",
+                )
             )
-        )
 
-    # Date recency filter
-    if posted_within_days and posted_within_days > 0:
-        cutoff = datetime.now(UTC) - timedelta(days=posted_within_days)
-        base_query = base_query.where(
-            or_(
-                JobListing.posted_at >= cutoff,
-                and_(
-                    JobListing.posted_at.is_(None),
-                    JobListing.first_seen_at >= cutoff,
-                ),
+        # Modality filter
+        if modality_filter:
+            base_query = base_query.where(
+                JobListing.workplace_type == modality_filter.lower()
             )
-        )
+
+        # Location filter (city, state, country, region, raw location)
+        if location_filter and location_filter.strip():
+            loc_term = f"%{location_filter.strip()}%"
+            loc_code = location_filter.strip()
+            base_query = base_query.where(
+                or_(
+                    JobListing.city.ilike(loc_term),
+                    JobListing.state_province.ilike(loc_term),
+                    JobListing.state_province_code.ilike(loc_code),
+                    JobListing.country.ilike(loc_term),
+                    JobListing.country_code.ilike(loc_code),
+                    JobListing.primary_region.ilike(loc_term),
+                    JobListing.raw_location.ilike(loc_term),
+                )
+            )
+
+        # Search keyword filter (title, company, description)
+        if search_query and search_query.strip():
+            q_term = f"%{search_query.strip()}%"
+            base_query = base_query.where(
+                or_(
+                    JobListing.title.ilike(q_term),
+                    JobListing.company_name.ilike(q_term),
+                    JobListing.raw_description.ilike(q_term),
+                )
+            )
+
+        # Date recency filter
+        if posted_within_days and posted_within_days > 0:
+            cutoff = datetime.now(UTC) - timedelta(days=posted_within_days)
+            base_query = base_query.where(
+                or_(
+                    JobListing.posted_at >= cutoff,
+                    and_(
+                        JobListing.posted_at.is_(None),
+                        JobListing.first_seen_at >= cutoff,
+                    ),
+                )
+            )
 
     # Retrieve candidates across multi-streams to prevent recency starvation
     candidate_map: dict[uuid.UUID, JobListing] = {}
@@ -1223,6 +1624,43 @@ async def retrieve_stage1_candidates(
             candidate_map[job.id] = job
 
     candidate_jobs = list(candidate_map.values())
+    if not candidate_jobs:
+        return []
+
+    # Post-filter for remote tax state exclusions and commute boundary
+    if filters and filters.candidate_geo and filters.candidate_geo.state_code:
+        st_code = filters.candidate_geo.state_code.upper()
+        candidate_jobs = [
+            j
+            for j in candidate_jobs
+            if not (
+                j.workplace_type == "remote"
+                and j.excluded_states
+                and st_code in [str(s).upper() for s in j.excluded_states]
+            )
+        ]
+
+    if filters and filters.candidate_geo and filters.max_commute_miles:
+        exact_filtered = []
+        for j in candidate_jobs:
+            if j.workplace_type == "remote":
+                exact_filtered.append(j)
+            elif j.latitude is not None and j.longitude is not None:
+                dist = haversine_miles(
+                    filters.candidate_geo.latitude,
+                    filters.candidate_geo.longitude,
+                    j.latitude,
+                    j.longitude,
+                )
+                if dist <= filters.max_commute_miles:
+                    exact_filtered.append(j)
+            elif j.cbsa_metro_code and filters.candidate_geo.cbsa_metro_code:
+                if j.cbsa_metro_code == filters.candidate_geo.cbsa_metro_code:
+                    exact_filtered.append(j)
+            else:
+                exact_filtered.append(j)
+        candidate_jobs = exact_filtered
+
     if not candidate_jobs:
         return []
 
@@ -1304,13 +1742,149 @@ async def retrieve_and_rank_jobs(
     location_filter: str | None = None,
     posted_within_days: int | None = None,
     sort_by: str = "score",
+    filters: JobSearchFilterDTO | None = None,
 ) -> tuple[list[JobMatchResult], int]:
     """
     Execute two-stage job retrieval, reranking, and persistent caching.
 
     Stage 1: Hybrid Inverted Index & Reciprocal Rank Fusion (RRF) Retrieval.
     Stage 2: Precision Multi-Factor Reranker calculating P(Match).
+    Supports dual engine modes: CV_GROUNDED vs UNBIASED (Market Explorer).
     """
+    requires_visa = (account.visa_status or "").strip().lower() in {
+        "h-1b",
+        "f-1 opt",
+        "requires_sponsorship",
+        "requires sponsorship",
+    }
+    if filters is None:
+        work_mod = WorkplaceModality.ALL
+        if modality_filter:
+            m = modality_filter.strip().lower()
+            if m == "remote":
+                work_mod = WorkplaceModality.REMOTE
+            elif m == "hybrid":
+                work_mod = WorkplaceModality.HYBRID
+            elif m in ("on_site", "onsite"):
+                work_mod = WorkplaceModality.ON_SITE
+
+        work_auth = WorkAuthTier.ALL
+        if visa_filter or requires_visa:
+            if (account.visa_status or "").strip().lower() == "f-1 opt":
+                work_auth = WorkAuthTier.F1_OPT_CPT
+            else:
+                work_auth = WorkAuthTier.H1B_TRANSFER_SPONSOR
+
+        filters = JobSearchFilterDTO(
+            search_mode=SearchMode.CV_GROUNDED,
+            raw_query=search_query,
+            workplace_modality=work_mod,
+            work_auth_tier=work_auth,
+            min_match_probability=min_score,
+            sort_by=sort_by if sort_by in ("score", "date", "salary") else "score",
+            limit=page_size,
+            offset=(page - 1) * page_size,
+        )
+    elif (
+        requires_visa
+        and filters.search_mode == SearchMode.CV_GROUNDED
+        and filters.work_auth_tier == WorkAuthTier.ALL
+    ):
+        if (account.visa_status or "").strip().lower() == "f-1 opt":
+            filters.work_auth_tier = WorkAuthTier.F1_OPT_CPT
+        else:
+            filters.work_auth_tier = WorkAuthTier.H1B_TRANSFER_SPONSOR
+
+    # -----------------------------------------------------------------------
+    # MARKET EXPLORER (UNBIASED DISCOVERY MODE)
+    # -----------------------------------------------------------------------
+    if filters.search_mode == SearchMode.UNBIASED:
+        stage1_query = build_stage1_query(filters)
+
+        # Objective sorting
+        if filters.sort_by == "salary":
+            stage1_query = stage1_query.order_by(
+                JobListing.salary_max_usd.desc().nullslast(),
+                JobListing.salary_min_usd.desc().nullslast(),
+                JobListing.posted_at.desc().nullslast(),
+            )
+        elif filters.sort_by == "date":
+            stage1_query = stage1_query.order_by(
+                JobListing.posted_at.desc().nullslast(),
+                JobListing.created_at.desc(),
+            )
+        else:
+            stage1_query = stage1_query.order_by(
+                JobListing.posted_at.desc().nullslast(),
+                JobListing.created_at.desc(),
+            )
+
+        count_q = select(func.count()).select_from(stage1_query.subquery())
+        total_res = await db.execute(count_q)
+        total_count = int(total_res.scalar() or 0)
+
+        start_idx = (page - 1) * page_size
+        paginated_q = stage1_query.offset(start_idx).limit(page_size)
+        job_results = (await db.execute(paginated_q)).scalars().all()
+
+        unbiased_matches: list[JobMatchResult] = []
+        for job in job_results:
+            if (
+                filters.candidate_geo
+                and filters.candidate_geo.state_code
+                and job.workplace_type == "remote"
+                and job.excluded_states
+            ):
+                if filters.candidate_geo.state_code.upper() in [
+                    str(s).upper() for s in job.excluded_states
+                ]:
+                    continue
+
+            if (
+                filters.candidate_geo
+                and filters.max_commute_miles
+                and job.workplace_type != "remote"
+                and job.latitude is not None
+                and job.longitude is not None
+            ):
+                dist = haversine_miles(
+                    filters.candidate_geo.latitude,
+                    filters.candidate_geo.longitude,
+                    job.latitude,
+                    job.longitude,
+                )
+                if dist > filters.max_commute_miles:
+                    continue
+
+            unbiased_matches.append(
+                JobMatchResult(
+                    job_id=str(job.id),
+                    title=job.title,
+                    company_name=job.company_name,
+                    location=job.raw_location,
+                    workplace_type=job.workplace_type,
+                    salary_range=job.salary_range,
+                    visa_sponsorship=job.visa_sponsorship,
+                    apply_url=job.apply_url or job.url,
+                    posted_at=job.posted_at,
+                    match_score=1.0,
+                    hard_gate_pass=True,
+                    probability_band="high",
+                    breakdown=None,
+                    matched_skills=[],
+                    missing_dealbreakers=[],
+                    phrasing_equivalents=[],
+                    gate_notes=[
+                        "Market Explorer Mode: Candidate vector scoring severed."
+                    ],
+                )
+            )
+
+        return unbiased_matches, total_count
+
+    # -----------------------------------------------------------------------
+    # CV-GROUNDED RETRIEVAL & RERANKING
+    # -----------------------------------------------------------------------
     # Candidate attributes
     target_roles = [r.lower() for r in (persona.target_roles or [])]
     skills_stmt = select(PersonaSkill).where(PersonaSkill.persona_id == persona.id)
@@ -1343,6 +1917,7 @@ async def retrieve_and_rank_jobs(
         location_filter=location_filter,
         posted_within_days=posted_within_days,
         limit=250,
+        filters=filters,
     )
 
     # -----------------------------------------------------------------------
@@ -1566,9 +2141,26 @@ async def retrieve_and_rank_jobs(
 
     await db.commit()
 
-    # Dynamic sorting: By date (newest first) or by acceptance probability
-    # score descending
-    if sort_by == "date":
+    # Dynamic sorting: By date (newest first), salary (highest first),
+    # or by acceptance probability score descending
+    candidate_job_map = {job.id: job for job in candidate_jobs}
+    effective_sort = filters.sort_by if filters and filters.sort_by else sort_by
+    if effective_sort == "salary":
+
+        def _sort_salary_key(r: JobMatchResult) -> tuple[float, float]:
+            try:
+                job_obj = candidate_job_map.get(uuid.UUID(r.job_id))
+            except (ValueError, TypeError):
+                job_obj = None
+            max_s = (
+                float(job_obj.salary_max_usd or job_obj.salary_min_usd or 0.0)
+                if job_obj
+                else 0.0
+            )
+            return (max_s, r.match_score)
+
+        scored_results.sort(key=_sort_salary_key, reverse=True)
+    elif effective_sort == "date":
         min_dt = datetime.min.replace(tzinfo=UTC)
 
         def _sort_date_key(r: JobMatchResult) -> tuple[datetime, float]:

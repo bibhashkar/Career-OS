@@ -52,8 +52,22 @@ from app.models.company_dossier import CompanyDossier
 from app.models.cv_block import CVBlock
 from app.models.job_listing import JobListing
 from app.models.user_account import CandidatePersona, UserAccount
+from app.schemas.search import (
+    GeoCoordinateDTO,
+    JobSearchFilterDTO,
+    SearchDiagnosticsDTO,
+    SearchMode,
+    TokenizedFilterExtractionDTO,
+    WorkAuthTier,
+    WorkplaceModality,
+)
 from app.services.diagnostics import JobDiagnosticReport, generate_job_diagnostic
-from app.services.matching import JobMatchResult, retrieve_and_rank_jobs
+from app.services.matching import (
+    JobMatchResult,
+    diagnose_zero_results,
+    retrieve_and_rank_jobs,
+)
+from app.services.search_parser import OmnisearchParser
 
 logger = logging.getLogger("career_os.jobs")
 
@@ -62,21 +76,34 @@ router = APIRouter(prefix="/api/jobs", tags=["Jobs"])
 
 class JobSearchRequest(BaseModel):
     """
-    Payload for job discovery query with location and visa sponsorship filters.
+    Payload for job discovery query with location, visa sponsorship,
+    and optional command-facet filters.
     """
 
     query: str = Field("", examples=["Senior AI Engineer"])
     location: str = Field("", examples=["Remote", "San Francisco, CA"])
     visa_required: bool = Field(False, examples=[True, False])
+    filters: JobSearchFilterDTO | None = None
 
 
 class JobSearchResponse(BaseModel):
     """
-    Response payload containing matching jobs and gathered company dossiers.
+    Response payload containing matching jobs, gathered company dossiers,
+    and zero-dead-end diagnostic relaxation hints.
     """
 
     count: int
     jobs: list[dict[str, Any]]
+    diagnostics: SearchDiagnosticsDTO | None = None
+
+
+class ParseQueryRequest(BaseModel):
+    """Payload for natural language query tokenization."""
+
+    raw_text: str = Field(
+        ...,
+        examples=["Stripe Senior HealthTech Backend Engineer Remote $180k"],
+    )
 
 
 class IngestJobUrlRequest(BaseModel):
@@ -126,6 +153,7 @@ class JobMatchesResponse(BaseModel):
     page: int
     page_size: int
     jobs: list[JobMatchResult]
+    diagnostics: SearchDiagnosticsDTO | None = None
 
 
 def _format_job_dict(
@@ -167,6 +195,21 @@ def _format_job_dict(
         "posted_at": job.posted_at.isoformat() if job.posted_at else None,
         "company_dossier": dossier,
     }
+
+
+@router.post(
+    "/parse-query",
+    response_model=TokenizedFilterExtractionDTO,
+    status_code=status.HTTP_200_OK,
+)
+async def parse_search_query(
+    request: ParseQueryRequest,
+    user: CurrentUser,
+) -> TokenizedFilterExtractionDTO:
+    """
+    Parse free-form query into tokenized filter entities and residual text.
+    """
+    return OmnisearchParser.parse_query(request.raw_text)
 
 
 @router.post(
@@ -478,7 +521,48 @@ async def search_and_intel(
         for job, dossier in zip(missing_dossier_jobs, fetched_dossiers, strict=True):
             job["company_dossier"] = dossier
 
-    return JobSearchResponse(count=len(enriched_jobs), jobs=enriched_jobs)
+    # Step 3: Zero-dead-end constraint relaxation diagnostics if count is 0
+    diagnostics = None
+    if not enriched_jobs and (clean_query or clean_location or request.filters):
+        try:
+            async with get_session_context() as session:
+                extracted = OmnisearchParser.parse_query(clean_query)
+                work_mod = WorkplaceModality.ALL
+                if (
+                    clean_location.lower() == "remote"
+                    or extracted.workplace_modality == "remote"
+                ):
+                    work_mod = WorkplaceModality.REMOTE
+                elif extracted.workplace_modality == "hybrid":
+                    work_mod = WorkplaceModality.HYBRID
+                elif extracted.workplace_modality in ("on_site", "onsite"):
+                    work_mod = WorkplaceModality.ON_SITE
+
+                work_auth = (
+                    WorkAuthTier.H1B_TRANSFER_SPONSOR
+                    if request.visa_required
+                    else WorkAuthTier.ALL
+                )
+
+                diag_filters = request.filters or JobSearchFilterDTO(
+                    search_mode=SearchMode.UNBIASED,
+                    raw_query=extracted.residual_query or clean_query,
+                    companies=extracted.companies,
+                    target_industries=extracted.target_industries,
+                    seniority_levels=extracted.seniority_levels,
+                    must_have_skills=extracted.must_have_skills,
+                    workplace_modality=work_mod,
+                    work_auth_tier=work_auth,
+                )
+                diagnostics = await diagnose_zero_results(session, diag_filters)
+        except Exception as exc:
+            logger.warning("Failed to generate search diagnostics: %s", exc)
+
+    return JobSearchResponse(
+        count=len(enriched_jobs),
+        jobs=enriched_jobs,
+        diagnostics=diagnostics,
+    )
 
 
 @router.post(
@@ -918,11 +1002,55 @@ async def get_job_matches(
         None, ge=1, le=365, description="Filter for jobs posted within N days"
     ),
     sort_by: str = Query(
-        "score", pattern="^(score|date)$", description="Sort by 'score' or 'date'"
+        "score",
+        pattern="^(score|date|salary)$",
+        description="Sort by 'score', 'date', or 'salary'",
     ),
+    search_mode: str = Query(
+        "cv_grounded",
+        pattern="^(cv_grounded|unbiased)$",
+        description="Engine mode: 'cv_grounded' or 'unbiased'",
+    ),
+    work_auth_tier: str | None = Query(
+        None,
+        description="Work auth tier contract",
+    ),
+    min_base_salary_usd: int | None = Query(
+        None, ge=30000, le=500000, description="Minimum base salary floor in USD"
+    ),
+    include_prevailing_wage: bool = Query(
+        True, description="Backfill missing salary with prevailing wage estimates"
+    ),
+    metro_code: str | None = Query(
+        None, description="CBSA metro code for commute boundary"
+    ),
+    max_commute_miles: int | None = Query(
+        None, ge=5, le=100, description="Commute radius in statute miles"
+    ),
+    lat: float | None = Query(
+        None, ge=-90.0, le=90.0, description="Candidate latitude"
+    ),
+    lng: float | None = Query(
+        None, ge=-180.0, le=180.0, description="Candidate longitude"
+    ),
+    state_code: str | None = Query(
+        None, max_length=2, description="Candidate state code"
+    ),
+    companies: Annotated[
+        list[str] | None, Query(description="Explicit company names")
+    ] = None,
+    industries: Annotated[
+        list[str] | None, Query(description="Explicit industry verticals")
+    ] = None,
+    seniority: Annotated[
+        list[str] | None, Query(description="Explicit seniority levels")
+    ] = None,
+    must_have_skills: Annotated[
+        list[str] | None, Query(description="Dealbreaker skills")
+    ] = None,
 ) -> JobMatchesResponse:
     """
-    Two-Stage Job Retrieval and Multi-Factor Probability Reranker (ADR-008).
+    Two-Stage Job Retrieval, Command-Facet Filtering, and Probabilistic Reranker.
     """
     user_uuid = _get_user_uuid(user)
 
@@ -985,7 +1113,99 @@ async def get_job_matches(
     blocks_stmt = select(CVBlock).where(CVBlock.user_account_id == account.id)
     blocks = list((await db.execute(blocks_stmt)).scalars().all())
 
-    # 4. Execute Two-Stage Retrieval & Reranker
+    # 4. Resolve geographic coordinates
+    geo_coord: GeoCoordinateDTO | None = None
+    if lat is not None and lng is not None:
+        geo_coord = GeoCoordinateDTO(
+            latitude=lat,
+            longitude=lng,
+            cbsa_metro_code=metro_code,
+            state_code=state_code or "US",
+        )
+    elif metro_code:
+        geo_coord = GeoCoordinateDTO(
+            latitude=0.0,
+            longitude=0.0,
+            cbsa_metro_code=metro_code,
+            state_code=state_code or "US",
+        )
+
+    # 5. Resolve engine mode and work auth
+    mode = SearchMode.UNBIASED if search_mode == "unbiased" else SearchMode.CV_GROUNDED
+
+    auth_tier = WorkAuthTier.ALL
+    if work_auth_tier:
+        try:
+            auth_tier = WorkAuthTier(work_auth_tier)
+        except ValueError:
+            auth_tier = WorkAuthTier.ALL
+    elif visa_filter:
+        auth_tier = WorkAuthTier.H1B_TRANSFER_SPONSOR
+
+    work_mod = WorkplaceModality.ALL
+    if modality:
+        m = modality.strip().lower()
+        if m == "remote":
+            work_mod = WorkplaceModality.REMOTE
+        elif m == "hybrid":
+            work_mod = WorkplaceModality.HYBRID
+        elif m in ("on_site", "onsite"):
+            work_mod = WorkplaceModality.ON_SITE
+
+    # Extract tokens from free query if provided
+    extracted = OmnisearchParser.parse_query(q or "")
+    if work_mod == WorkplaceModality.ALL and extracted.workplace_modality:
+        if extracted.workplace_modality == "remote":
+            work_mod = WorkplaceModality.REMOTE
+        elif extracted.workplace_modality == "hybrid":
+            work_mod = WorkplaceModality.HYBRID
+        elif extracted.workplace_modality in ("on_site", "onsite"):
+            work_mod = WorkplaceModality.ON_SITE
+
+    filter_companies = list(companies or [])
+    if extracted.companies:
+        for c in extracted.companies:
+            if c not in filter_companies:
+                filter_companies.append(c)
+
+    filter_industries = list(industries or [])
+    if extracted.target_industries:
+        for ind in extracted.target_industries:
+            if ind not in filter_industries:
+                filter_industries.append(ind)
+
+    filter_seniority = list(seniority or [])
+    if extracted.seniority_levels:
+        for sen in extracted.seniority_levels:
+            if sen not in filter_seniority:
+                filter_seniority.append(sen)
+
+    filter_skills = list(must_have_skills or [])
+    if extracted.must_have_skills:
+        for s in extracted.must_have_skills:
+            if s not in filter_skills:
+                filter_skills.append(s)
+
+    filter_dto = JobSearchFilterDTO(
+        search_mode=mode,
+        raw_query=extracted.residual_query if q else None,
+        companies=filter_companies,
+        target_industries=filter_industries,
+        seniority_levels=filter_seniority,
+        must_have_skills=filter_skills,
+        work_auth_tier=auth_tier,
+        workplace_modality=work_mod,
+        min_base_salary_usd=min_base_salary_usd,
+        include_prevailing_wage_estimates=include_prevailing_wage,
+        candidate_geo=geo_coord,
+        max_commute_miles=max_commute_miles,
+        min_match_probability=min_score,
+        sort_by=sort_by,
+        limit=page_size,
+        offset=(page - 1) * page_size,
+    )
+
+    # 6. Execute Two-Stage Retrieval & Reranker
     ranked_jobs, total_count = await retrieve_and_rank_jobs(
         db=db,
         persona=target_persona,
@@ -996,11 +1216,16 @@ async def get_job_matches(
         modality_filter=modality,
         visa_filter=visa_filter,
         min_score=min_score,
-        search_query=q,
+        search_query=filter_dto.raw_query or q,
         location_filter=location,
         posted_within_days=posted_within,
         sort_by=sort_by,
+        filters=filter_dto,
     )
+
+    diagnostics = None
+    if total_count == 0:
+        diagnostics = await diagnose_zero_results(db, filter_dto)
 
     return JobMatchesResponse(
         persona_id=str(target_persona.id),
@@ -1009,6 +1234,7 @@ async def get_job_matches(
         page=page,
         page_size=page_size,
         jobs=ranked_jobs,
+        diagnostics=diagnostics,
     )
 
 
