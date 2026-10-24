@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.agents.graph import close_postgres_saver, init_postgres_saver
+from app.api.admin import router as admin_router
 from app.api.applications import router as applications_router
 from app.api.auth import router as auth_router
 from app.api.candidates import router as candidates_router
@@ -30,6 +31,7 @@ from app.api.cv import router as cv_router
 from app.api.feedback import router as feedback_router
 from app.api.interview import router as interview_router
 from app.api.jobs import router as jobs_router
+from app.core.admin_seed import ensure_default_admin
 from app.core.config import settings
 from app.core.database import engine, init_vector_extension
 from app.core.errors import setup_exception_handlers
@@ -68,6 +70,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:
         # Database may still be starting up in Docker; proceed with logged warning.
         logger.warning(f"Vector extension bootstrap deferred during startup: {exc}")
+
+    try:
+        await ensure_default_admin()
+    except Exception as exc:
+        logger.warning(f"Default admin provision deferred during startup: {exc}")
 
     if settings.APP_ENV != "test":
         await init_postgres_saver()
@@ -119,6 +126,7 @@ app.add_middleware(
 # Mount API routers. Each router is a thin transport adapter — no business
 # logic lives here; routers delegate directly to compiled LangGraph graphs.
 app.include_router(auth_router)
+app.include_router(admin_router)
 app.include_router(candidates_router)
 app.include_router(jobs_router)
 app.include_router(cv_router)

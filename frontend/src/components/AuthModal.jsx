@@ -243,6 +243,22 @@ export function AuthModal({ isOpen, onClose, onSuccess }) {
               </span>
             </button>
           </div>
+
+          {mode === "login" && (
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+              <span>Testing Admin Controls?</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail("admin@career-os.local");
+                  setPassword("AdminPass123!");
+                }}
+                className="text-amber-400 hover:text-amber-300 font-semibold cursor-pointer transition-colors"
+              >
+                Use Admin Credentials
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>

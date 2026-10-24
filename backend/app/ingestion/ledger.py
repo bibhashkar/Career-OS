@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.ingestion.ports.provider import BudgetLedgerPort
-from app.models.ingestion import ProviderState, ProviderUsage
+from app.models.ingestion import LLMUsageEvent, ProviderState, ProviderUsage
 
 logger = logging.getLogger("career_os.ingestion.ledger")
 
@@ -97,6 +97,79 @@ class PersistentBudgetLedger(BudgetLedgerPort):
         usage.call_count += cost
         await self.session.flush()
         return True
+
+    async def record_llm_usage(
+        self,
+        provider: str,
+        model_name: str,
+        feature: str,
+        input_tokens: int,
+        output_tokens: int,
+        latency_ms: int = 0,
+        status: str = "success",
+        user_account_id: Any | None = None,
+        error_message: str | None = None,
+    ) -> float:
+        """
+        Record granular token usage and calculate USD cost dynamically.
+        Atomically updates the provider's period ledger row and inserts an LLMUsageEvent.
+        """
+        pricing = settings.LLM_PRICING_PER_MILLION.get(model_name.lower(), (0.15, 0.60))
+        cost_usd = (input_tokens / 1_000_000.0) * pricing[0] + (
+            output_tokens / 1_000_000.0
+        ) * pricing[1]
+        total_tokens = input_tokens + output_tokens
+
+        # 1. Insert granular event record
+        event = LLMUsageEvent(
+            user_account_id=user_account_id,
+            feature=feature,
+            provider=provider.lower(),
+            model_name=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            estimated_cost_usd=cost_usd,
+            latency_ms=latency_ms,
+            status=status,
+            error_message=error_message,
+        )
+        self.session.add(event)
+
+        # 2. Update aggregate usage row
+        period_key = self._current_period_key(provider)
+        max_calls = self._get_provider_limit(provider)
+        stmt = (
+            select(ProviderUsage)
+            .where(
+                ProviderUsage.provider == provider,
+                ProviderUsage.period_key == period_key,
+            )
+            .with_for_update()
+        )
+        res = await self.session.execute(stmt)
+        usage = res.scalar_one_or_none()
+        if usage is None:
+            usage = ProviderUsage(
+                provider=provider,
+                period_key=period_key,
+                call_count=1,
+                token_count=total_tokens,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                estimated_cost_usd=cost_usd,
+                max_calls=max_calls,
+            )
+            self.session.add(usage)
+        else:
+            usage.call_count += 1
+            usage.token_count += total_tokens
+            usage.input_tokens += input_tokens
+            usage.output_tokens += output_tokens
+            usage.estimated_cost_usd += cost_usd
+
+        await self.session.flush()
+        return cost_usd
 
     async def get_usage(self, provider: str) -> dict[str, Any]:
         """Get current usage stats for a provider."""

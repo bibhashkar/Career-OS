@@ -14,12 +14,14 @@ import {
   Layers,
   LogIn,
   LogOut,
+  Shield,
 } from "lucide-react";
 import { Dashboard } from "./pages/Dashboard";
 import { CVTailorView } from "./pages/CVTailorView";
 import { InterviewSimulator } from "./pages/InterviewSimulator";
 import { CandidateAuditView } from "./pages/CandidateAuditView";
 import { OnboardingWizard } from "./pages/OnboardingWizard";
+import { AdminDashboard } from "./pages/AdminDashboard";
 import { PersonaSwitcher } from "./components/PersonaSwitcher";
 import { PersonaManagementModal } from "./components/PersonaManagementModal";
 import { AuthModal } from "./components/AuthModal";
@@ -165,6 +167,21 @@ export function App() {
             >
               <Award className="w-3.5 h-3.5" /> 360° Audit
             </NavLink>
+
+            {currentUser?.role === "admin" && (
+              <NavLink
+                to="/admin"
+                className={({ isActive }) =>
+                  `px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                    isActive
+                      ? "bg-amber-600 text-white shadow-sm shadow-amber-600/30"
+                      : "text-amber-400/80 hover:text-amber-300 hover:bg-slate-750"
+                  }`
+                }
+              >
+                <Shield className="w-3.5 h-3.5 text-amber-400" /> Admin Console
+              </NavLink>
+            )}
           </nav>
 
           {/* Right Controls: Persona Switcher and Account */}
@@ -185,6 +202,11 @@ export function App() {
                 <span className="font-medium hidden sm:inline max-w-[110px] truncate">
                   {currentUser.full_name}
                 </span>
+                {currentUser.role === "admin" && (
+                  <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    ADMIN
+                  </span>
+                )}
                 <button
                   onClick={handleLogout}
                   title="Sign Out"
@@ -254,6 +276,10 @@ export function App() {
           <Route
             path="/onboarding"
             element={<OnboardingWizard />}
+          />
+          <Route
+            path="/admin"
+            element={<AdminDashboard />}
           />
         </Routes>
 

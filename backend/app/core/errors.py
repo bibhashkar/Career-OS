@@ -26,6 +26,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.logging import get_correlation_id
+from app.core.metrics import metrics_registry
 
 logger = logging.getLogger("career_os.errors")
 
@@ -119,6 +120,15 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     logger.exception(
         f"Unhandled exception on {request.method} {request.url.path} "
         f"[correlation_id={cid}]: {exc}"
+    )
+
+    metrics_registry.record_error(
+        method=request.method,
+        path=request.url.path,
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        error_type=type(exc).__name__,
+        message=str(exc),
+        correlation_id=cid,
     )
 
     return create_problem_response(

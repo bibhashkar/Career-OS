@@ -10,7 +10,7 @@ This module provides registration, authentication, and session identity endpoint
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -94,6 +94,8 @@ class UserAccountResponse(BaseModel):
     preferred_locations: list[str]
     remote_preference: str
     is_active: bool
+    role: str = "candidate"
+    last_login_at: datetime | None = None
     created_at: datetime
     personas: list[PersonaSummaryResponse]
 
@@ -132,6 +134,8 @@ def _serialize_user(user: UserAccount) -> UserAccountResponse:
         preferred_locations=list(user.preferred_locations or []),
         remote_preference=user.remote_preference,
         is_active=user.is_active,
+        role=user.role if hasattr(user, "role") and user.role else "candidate",
+        last_login_at=user.last_login_at if hasattr(user, "last_login_at") else None,
         created_at=user.created_at,
         personas=[_serialize_persona(p) for p in (user.personas or [])],
     )
@@ -211,10 +215,14 @@ async def register_account(
     await db.flush()
     await db.refresh(account, attribute_names=["personas"])
 
+    # Update last login timestamp
+    account.last_login_at = datetime.now(UTC)
+    await db.flush()
+
     token = create_access_token(
         user_id=str(account.id),
         email=account.email,
-        role="candidate",
+        role=account.role if hasattr(account, "role") and account.role else "candidate",
     )
 
     return AuthResponse(
@@ -274,10 +282,14 @@ async def login_account(
         )
         default_persona_id = str(default_p.id)
 
+    # Update last login timestamp
+    account.last_login_at = datetime.now(UTC)
+    await db.flush()
+
     token = create_access_token(
         user_id=str(account.id),
         email=account.email,
-        role="candidate",
+        role=account.role if hasattr(account, "role") and account.role else "candidate",
     )
 
     return AuthResponse(

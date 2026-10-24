@@ -293,5 +293,81 @@ export async function deleteCVBlock(blockId) {
   return response.data;
 }
 
+// ============================================================================
+// Admin Control Plane & Observability
+// ============================================================================
+
+/**
+ * Fetch unified administration telemetry and metrics snapshot.
+ */
+export async function getAdminOverview() {
+  const response = await apiClient.get("/admin/overview");
+  return response.data;
+}
+
+/**
+ * Register a new ATS company careers board and schedule sync.
+ */
+export async function registerATSBoard(payload) {
+  const response = await apiClient.post("/admin/boards", payload);
+  return response.data;
+}
+
+/**
+ * Enqueue immediate synchronization for a specific ATS board.
+ */
+export async function syncBoard(boardId) {
+  const response = await apiClient.post(`/admin/boards/${boardId}/sync`);
+  return response.data;
+}
+
+/**
+ * Enqueue synchronization across all active ATS boards.
+ */
+export async function syncAllBoards() {
+  const response = await apiClient.post("/admin/boards/sync-all");
+  return response.data;
+}
+
+/**
+ * Retry all failed crawler and ingestion tasks.
+ */
+export async function retryFailedTasks() {
+  const response = await apiClient.post("/admin/tasks/retry-failed");
+  return response.data;
+}
+
+/**
+ * Purge dead-letter tasks from ingestion queue.
+ */
+export async function purgeFailedTasks() {
+  const response = await apiClient.delete("/admin/tasks/failed");
+  return response.data;
+}
+
+/**
+ * Reset tripped circuit breaker for an external provider.
+ */
+export async function resetCircuitBreaker(provider) {
+  const response = await apiClient.post(`/admin/circuit-breakers/${provider}/reset`);
+  return response.data;
+}
+
+/**
+ * Flush cached candidate job match scores.
+ */
+export async function flushMatchCache() {
+  const response = await apiClient.post("/admin/cache/flush-matches");
+  return response.data;
+}
+
+/**
+ * Update candidate account active status or role.
+ */
+export async function updateUserStatus(userId, payload) {
+  const response = await apiClient.patch(`/admin/users/${userId}`, payload);
+  return response.data;
+}
+
 export default apiClient;
 

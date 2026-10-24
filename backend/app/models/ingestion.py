@@ -181,7 +181,48 @@ class ProviderUsage(Base, UUIDMixin, TimestampMixin):
     )  # e.g., '2026-10-08'
     call_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    estimated_cost_usd: Mapped[float] = mapped_column(
+        Float, default=0.0, nullable=False
+    )
     max_calls: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class LLMUsageEvent(Base, UUIDMixin):
+    """
+    Detailed ledger entry for individual LLM invocations and cost attribution.
+    """
+
+    __tablename__ = "llm_usage_event"
+
+    user_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("user_account.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+    feature: Mapped[str] = mapped_column(
+        String(100), index=True, nullable=False
+    )  # 'cv_tailor', 'ats_grader', 'interview', 'jd_extractor', 'embeddings'
+    provider: Mapped[str] = mapped_column(
+        String(50), index=True, nullable=False
+    )  # 'gemini', 'openai', 'anthropic'
+    model_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    estimated_cost_usd: Mapped[float] = mapped_column(
+        Float, default=0.0, nullable=False
+    )
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(30), default="success", nullable=False
+    )  # 'success', 'error', 'timeout'
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True, nullable=False
+    )
 
 
 class ProviderState(Base, UUIDMixin, TimestampMixin):

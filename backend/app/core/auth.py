@@ -259,6 +259,27 @@ async def get_current_user(
 CurrentUser = Annotated[UserContext, Depends(get_current_user)]
 
 
+async def require_admin(user: CurrentUser) -> UserContext:
+    """
+    Enforce operator/administrator role requirement on protected endpoints.
+    """
+    if user.user_id == DEFAULT_DEV_USER_ID and user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required to access admin resources.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrative privileges required to access this resource.",
+        )
+    return user
+
+
+RequireAdmin = Annotated[UserContext, Depends(require_admin)]
+
+
 async def authenticate_websocket(
     websocket: WebSocket,
     thread_id: str,

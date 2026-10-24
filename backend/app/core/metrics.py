@@ -26,11 +26,43 @@ class MetricsRegistry:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
+        self.started_at = time.time()
         self._request_counts: dict[tuple[str, str, int], int] = defaultdict(int)
         self._request_durations: dict[tuple[str, str], list[float]] = defaultdict(list)
         self._agent_runs: dict[tuple[str, str], int] = defaultdict(int)
         self._agent_durations: dict[str, list[float]] = defaultdict(list)
         self._ats_loop_exhausted: int = 0
+        self._recent_errors: list[dict[str, Any]] = []
+
+    def record_error(
+        self,
+        method: str,
+        path: str,
+        status_code: int,
+        error_type: str,
+        message: str,
+        correlation_id: str | None = None,
+    ) -> None:
+        """Record an unhandled exception or 5xx crash to the circular log buffer."""
+        with self._lock:
+            self._recent_errors.append(
+                {
+                    "timestamp": time.time(),
+                    "method": method,
+                    "path": path,
+                    "status_code": status_code,
+                    "error_type": error_type,
+                    "message": message,
+                    "correlation_id": correlation_id,
+                }
+            )
+            if len(self._recent_errors) > 50:
+                self._recent_errors = self._recent_errors[-50:]
+
+    def get_recent_errors(self) -> list[dict[str, Any]]:
+        """Return a snapshot of recently recorded crashes and 5xx errors."""
+        with self._lock:
+            return list(reversed(self._recent_errors))
 
     def record_request(
         self, method: str, endpoint: str, status_code: int, duration_sec: float

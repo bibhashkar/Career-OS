@@ -139,6 +139,26 @@ class Settings(BaseSettings):
     RATE_LIMIT_JOBSPY_HOURLY: int = 30
     RATE_LIMIT_GITHUB_HOURLY: int = 60
 
+    # ---- Admin Bootstrap & Observability Configuration ----
+    ADMIN_EMAIL: str = "admin@career-os.local"
+    ADMIN_PASSWORD: str = "AdminPass123!"
+    ADMIN_FULL_NAME: str = "System Administrator"
+
+    # Per-million token pricing rates (USD) for live cost ledger
+    # [input_cost_per_million, output_cost_per_million]
+    LLM_PRICING_PER_MILLION: dict[str, tuple[float, float]] = {
+        "gemini-2.5-flash": (0.075, 0.30),
+        "gemini-2.5-pro": (1.25, 5.00),
+        "gemini-1.5-flash": (0.075, 0.30),
+        "gemini-1.5-pro": (1.25, 5.00),
+        "gpt-4o": (2.50, 10.00),
+        "gpt-4o-mini": (0.15, 0.60),
+        "claude-3-5-sonnet": (3.00, 15.00),
+        "claude-3-haiku": (0.25, 1.25),
+        "text-embedding-3-small": (0.02, 0.0),
+        "text-embedding-004": (0.025, 0.0),
+    }
+
     @field_validator(
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY",

@@ -83,6 +83,12 @@ class UserAccount(Base, UUIDMixin, TimestampMixin):
         String(50), default="Remote", nullable=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    role: Mapped[str] = mapped_column(
+        String(50), default="candidate", index=True, nullable=False
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     personas: Mapped[list["CandidatePersona"]] = relationship(
