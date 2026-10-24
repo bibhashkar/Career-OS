@@ -10,6 +10,11 @@ const apiClient = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+  // Serialize array query parameters as repeated keys (e.g. `industries=healthtech&industries=fintech`)
+  // so FastAPI Query(list[str]) receives them properly without brackets (`industries[]`)
+  paramsSerializer: {
+    indexes: null,
+  },
 });
 
 // Attach Bearer token to outgoing requests if authenticated

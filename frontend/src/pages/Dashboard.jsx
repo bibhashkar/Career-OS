@@ -218,6 +218,9 @@ export function Dashboard({
     if ("companies" in patch) {
       setChips((prev) => prev.filter((c) => c.type !== "company"));
     }
+    if ("industries" in patch || "target_industries" in patch) {
+      setChips((prev) => prev.filter((c) => c.type !== "industry"));
+    }
     if ("raw_query" in patch) {
       setSearchQuery("");
     }

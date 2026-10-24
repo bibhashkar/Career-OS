@@ -1461,6 +1461,26 @@ async def diagnose_zero_results(
                 )
             )
 
+    # 8. Test relaxing Target Industries
+    if filters.target_industries:
+        relaxed = filters.model_copy(update={"target_industries": []})
+        cnt = await get_stage1_count(db, relaxed)
+        if cnt > 0:
+            formatted_inds = ", ".join(filters.target_industries)
+            msg = f"Industry filter '{formatted_inds}' yielded zero matching listings in the active catalog."
+            act = f"Clear Industry Filter (+{cnt} jobs)"
+            relaxations.append(
+                (
+                    cnt,
+                    SearchRelaxationDTO(
+                        restrictive_facet="target_industries",
+                        message=msg,
+                        action_label=act,
+                        relaxed_patch={"industries": []},
+                    ),
+                )
+            )
+
     # Sort relaxations by highest number of unlocked jobs descending
     relaxations.sort(key=lambda x: x[0], reverse=True)
     sorted_dtos = [item[1] for item in relaxations]
