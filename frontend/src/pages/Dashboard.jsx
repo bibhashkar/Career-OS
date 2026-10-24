@@ -16,12 +16,13 @@ import {
   CheckCircle2,
   Sparkles,
   TrendingUp,
-  SlidersHorizontal,
   RefreshCw,
   ExternalLink,
   Clock,
   X,
-  Calendar,
+  Compass,
+  ArrowUpDown,
+  Zap,
 } from "lucide-react";
 import {
   searchJobs,
@@ -32,7 +33,12 @@ import { CompanyDossierCard } from "../components/CompanyDossierCard";
 import { JobProvenanceBadge } from "../components/JobProvenanceBadge";
 import { AddJobModal } from "../components/AddJobModal";
 import { JobDiagnosticModal } from "../components/JobDiagnosticModal";
-import { TokenizedOmnibar } from "../components/search/TokenizedOmnibar";
+import {
+  TokenizedOmnibar,
+  CHIP_TYPE_ICONS,
+  CHIP_TYPE_COLORS,
+  formatEntityLabel,
+} from "../components/search/TokenizedOmnibar";
 import { InstrumentBar } from "../components/search/InstrumentBar";
 import { EmptyStateRelaxer } from "../components/search/EmptyStateRelaxer";
 
@@ -134,15 +140,18 @@ export function Dashboard({
     const val = parseFloat(getInitialParam("min_score", "0.0"));
     return isNaN(val) ? 0.0 : val;
   });
-  const [matchesVisaFilter, setMatchesVisaFilter] = useState(
-    () => getInitialParam("visa", "false") === "true"
-  );
   const [sortBy, setSortBy] = useState(() => getInitialParam("sort", "score"));
   const [selectedJobForDiag, setSelectedJobForDiag] = useState(null);
 
   // Command-Facet Omnibar & Discovery Engine States (Spec v1.0.0)
   const [searchMode, setSearchMode] = useState(() => getInitialParam("mode", "cv_grounded"));
-  const [workAuthTier, setWorkAuthTier] = useState(() => getInitialParam("auth", "all"));
+  const [workAuthTier, setWorkAuthTier] = useState(() => {
+    const auth = getInitialParam("auth", "");
+    if (auth) return auth;
+    // Backward-compatible migration if legacy 'visa=true' was set
+    if (getInitialParam("visa", "false") === "true") return "h1b_transfer_sponsor";
+    return "all";
+  });
   const [minBaseSalary, setMinBaseSalary] = useState(() => {
     const s = getInitialParam("salary", "");
     return s ? Number(s) : null;
@@ -155,7 +164,8 @@ export function Dashboard({
     const savedChips = getInitialParam("chips", "");
     if (savedChips) {
       try {
-        return JSON.parse(decodeURIComponent(savedChips));
+        const parsed = typeof savedChips === "string" ? JSON.parse(decodeURIComponent(savedChips)) : savedChips;
+        return Array.isArray(parsed) ? parsed : [];
       } catch {
         return [];
       }
@@ -165,11 +175,22 @@ export function Dashboard({
   const [diagnostics, setDiagnostics] = useState(null);
 
   const handleAddChip = (chip) => {
+    if (chip.type === "modality") {
+      setModalityFilter(chip.value === "all" ? "" : chip.value);
+      return;
+    }
     setChips((prev) => {
       if (prev.some((c) => c.type === chip.type && c.value.toLowerCase() === chip.value.toLowerCase())) {
         return prev;
       }
-      return [...prev, { ...chip, id: chip.id || `${chip.type}-${Date.now()}` }];
+      return [
+        ...prev,
+        {
+          ...chip,
+          label: formatEntityLabel(chip.type, chip.value),
+          id: chip.id || `${chip.type}-${Date.now()}`,
+        },
+      ];
     });
   };
 
@@ -224,8 +245,12 @@ export function Dashboard({
     if (modalityFilter) params.set("modality", modalityFilter);
     if (postedWithinFilter) params.set("posted", postedWithinFilter);
     if (minScoreFilter > 0) params.set("min_score", String(minScoreFilter));
-    if (matchesVisaFilter) params.set("visa", "true");
     if (sortBy && sortBy !== "score") params.set("sort", sortBy);
+    if (searchMode && searchMode !== "cv_grounded") params.set("mode", searchMode);
+    if (workAuthTier && workAuthTier !== "all") params.set("auth", workAuthTier);
+    if (minBaseSalary !== null) params.set("salary", String(minBaseSalary));
+    if (maxCommuteMiles !== null) params.set("commute", String(maxCommuteMiles));
+    if (chips.length > 0) params.set("chips", encodeURIComponent(JSON.stringify(chips)));
 
     try {
       const savedState = {
@@ -235,8 +260,12 @@ export function Dashboard({
         modality: modalityFilter,
         posted: postedWithinFilter,
         min_score: minScoreFilter,
-        visa: matchesVisaFilter ? "true" : "false",
         sort: sortBy,
+        mode: searchMode,
+        auth: workAuthTier,
+        salary: minBaseSalary,
+        commute: maxCommuteMiles,
+        chips,
       };
       localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(savedState));
     } catch {
@@ -251,8 +280,12 @@ export function Dashboard({
     modalityFilter,
     postedWithinFilter,
     minScoreFilter,
-    matchesVisaFilter,
     sortBy,
+    searchMode,
+    workAuthTier,
+    minBaseSalary,
+    maxCommuteMiles,
+    chips,
     setSearchParams,
   ]);
 
@@ -262,7 +295,6 @@ export function Dashboard({
     setModalityFilter("");
     setPostedWithinFilter("");
     setMinScoreFilter(0.0);
-    setMatchesVisaFilter(false);
     setSortBy("score");
     setSearchMode("cv_grounded");
     setWorkAuthTier("all");
@@ -283,7 +315,6 @@ export function Dashboard({
     (modalityFilter ? 1 : 0) +
     (postedWithinFilter ? 1 : 0) +
     (minScoreFilter > 0 ? 1 : 0) +
-    (matchesVisaFilter ? 1 : 0) +
     (sortBy !== "score" ? 1 : 0) +
     (workAuthTier !== "all" ? 1 : 0) +
     (minBaseSalary !== null ? 1 : 0) +
@@ -318,9 +349,6 @@ export function Dashboard({
       }
       if (postedWithinFilter) {
         params.posted_within = parseInt(postedWithinFilter, 10);
-      }
-      if (matchesVisaFilter) {
-        params.visa_filter = true;
       }
       if (workAuthTier && workAuthTier !== "all") {
         params.work_auth_tier = workAuthTier;
@@ -378,7 +406,6 @@ export function Dashboard({
     modalityFilter,
     postedWithinFilter,
     minScoreFilter,
-    matchesVisaFilter,
     sortBy,
     searchMode,
     workAuthTier,
@@ -555,32 +582,34 @@ export function Dashboard({
         <div className="space-y-6">
           {/* Match Filter Controls */}
           <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 shadow-xl space-y-3">
-            {/* Row 1: Search Inputs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-              {/* Tokenized Omnibar with autocomplete & chips */}
-              <TokenizedOmnibar
-                rawQuery={searchQuery}
-                onQueryChange={setSearchQuery}
-                chips={chips}
-                onAddChip={handleAddChip}
-                onRemoveChip={handleRemoveChip}
-                onClearAll={handleClearFilters}
-                onSearch={fetchMatches}
-                isSearching={matchesLoading}
-              />
+            {/* Row 1: Search Inputs (Search bar gets 70% width, Location gets 30% width on md+) */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+              <div className="md:col-span-8 lg:col-span-9">
+                <TokenizedOmnibar
+                  rawQuery={searchQuery}
+                  onQueryChange={setSearchQuery}
+                  chips={chips}
+                  onAddChip={handleAddChip}
+                  onSelectModality={(mod) =>
+                    setModalityFilter(mod === "all" ? "" : mod)
+                  }
+                  onSearch={fetchMatches}
+                  isSearching={matchesLoading}
+                />
+              </div>
 
-              {/* City, State, Country & Region Filter */}
-              <div className="relative">
+              {/* Compact City, State, Country & Region Filter */}
+              <div className="relative md:col-span-4 lg:col-span-3">
                 <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   value={locationFilter}
                   onChange={(e) => setLocationFilter(e.target.value)}
                   list="location-presets"
-                  placeholder="City, State, Country, or Region (e.g. San Francisco, CA, UK)..."
+                  placeholder="City, State, or Country..."
                   aria-label="Filter by city, state, country, or region"
                   data-testid="matches-location-input"
-                  className="w-full pl-10 pr-8 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  className="w-full min-h-[42px] pl-10 pr-8 py-2 bg-slate-900/90 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
                 {locationFilter && (
                   <button
@@ -606,96 +635,229 @@ export function Dashboard({
               </div>
             </div>
 
-            {/* Sticky Instrument Panel */}
+            {/* Row 1b: Chips & Active Filter Pills Row (Directly Under Omnibar) */}
+            {(chips.length > 0 ||
+              locationFilter.trim() ||
+              modalityFilter ||
+              workAuthTier !== "all" ||
+              maxCommuteMiles !== null ||
+              minBaseSalary !== null ||
+              postedWithinFilter ||
+              minScoreFilter > 0) && (
+              <div
+                data-testid="omnibar-chips-row"
+                className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs"
+              >
+                {/* Tokenized Entity Chips (Clean labels without "Vertical:" prefix) */}
+                {chips.map((chip) => {
+                  const IconComp = CHIP_TYPE_ICONS[chip.type] || Zap;
+                  const colorClass =
+                    CHIP_TYPE_COLORS[chip.type] ||
+                    "bg-slate-800 text-slate-300 border-slate-700";
+                  const cleanLabel = formatEntityLabel(chip.type, chip.value);
+
+                  return (
+                    <span
+                      key={chip.id}
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium border ${colorClass} transition-all`}
+                    >
+                      <IconComp className="w-3 h-3 shrink-0" />
+                      <span>{cleanLabel}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveChip(chip.id)}
+                        className="hover:text-white p-0.5 rounded transition-colors"
+                        aria-label={`Remove ${cleanLabel}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  );
+                })}
+
+                {/* Active Facet Pills */}
+                {locationFilter.trim() && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                    <MapPin className="w-3 h-3 shrink-0" />
+                    <span>{locationFilter.trim()}</span>
+                    <button
+                      type="button"
+                      onClick={() => setLocationFilter("")}
+                      className="hover:text-white p-0.5"
+                      aria-label="Remove location filter"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+
+                {workAuthTier !== "all" && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                    <ShieldCheck className="w-3 h-3 shrink-0" />
+                    <span>
+                      {workAuthTier === "f1_opt_cpt"
+                        ? "F-1 OPT / E-Verify"
+                        : workAuthTier === "h1b_transfer_sponsor"
+                        ? "H-1B Sponsor"
+                        : "Domestic Only"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setWorkAuthTier("all")}
+                      className="hover:text-white p-0.5"
+                      aria-label="Remove work auth filter"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+
+                {modalityFilter && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-sky-500/10 text-sky-300 border border-sky-500/20">
+                    <span>{formatEntityLabel("modality", modalityFilter)}</span>
+                    <button
+                      type="button"
+                      onClick={() => setModalityFilter("")}
+                      className="hover:text-white p-0.5"
+                      aria-label="Remove workplace modality filter"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+
+                {maxCommuteMiles !== null && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-rose-500/10 text-rose-300 border border-rose-500/20">
+                    <span>Within {maxCommuteMiles} mi</span>
+                    <button
+                      type="button"
+                      onClick={() => setMaxCommuteMiles(null)}
+                      className="hover:text-white p-0.5"
+                      aria-label="Remove commute filter"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+
+                {minBaseSalary !== null && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                    <span>${Math.round(minBaseSalary / 1000)}k+</span>
+                    <button
+                      type="button"
+                      onClick={() => setMinBaseSalary(null)}
+                      className="hover:text-white p-0.5"
+                      aria-label="Remove minimum salary filter"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+
+                {postedWithinFilter && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-slate-700/60 text-slate-300 border border-slate-600">
+                    <span>
+                      Past {postedWithinFilter === "1" ? "24h" : `${postedWithinFilter}d`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPostedWithinFilter("")}
+                      className="hover:text-white p-0.5"
+                      aria-label="Remove posted date filter"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+
+                {minScoreFilter > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                    <span>≥ {Math.round(minScoreFilter * 100)}% Match</span>
+                    <button
+                      type="button"
+                      onClick={() => setMinScoreFilter(0.0)}
+                      className="hover:text-white p-0.5"
+                      aria-label="Remove probability band filter"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Row 2: Unified Search Filters Row */}
             <InstrumentBar
-              searchMode={searchMode}
-              onSearchModeChange={setSearchMode}
               workAuthTier={workAuthTier}
               onWorkAuthTierChange={setWorkAuthTier}
               workplaceModality={modalityFilter || "all"}
-              onWorkplaceModalityChange={(m) => setModalityFilter(m === "all" ? "" : m)}
-              minBaseSalary={minBaseSalary}
-              onMinBaseSalaryChange={setMinBaseSalary}
+              onWorkplaceModalityChange={(m) =>
+                setModalityFilter(m === "all" ? "" : m)
+              }
               maxCommuteMiles={maxCommuteMiles}
               onMaxCommuteMilesChange={setMaxCommuteMiles}
-              sortBy={sortBy}
-              onSortByChange={setSortBy}
+              minBaseSalary={minBaseSalary}
+              onMinBaseSalaryChange={setMinBaseSalary}
+              postedWithin={postedWithinFilter}
+              onPostedWithinChange={setPostedWithinFilter}
+              minScore={minScoreFilter}
+              onMinScoreChange={setMinScoreFilter}
+              searchMode={searchMode}
             />
 
-            {/* Row 2: Secondary Dropdown Filters & Controls */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-              <div className="flex flex-wrap items-center gap-2.5">
-                {/* Workplace Modality Filter */}
-                <div className="flex items-center gap-1.5">
-                  <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
-                  <select
-                    value={modalityFilter}
-                    onChange={(e) => setModalityFilter(e.target.value)}
-                    aria-label="Workplace modality filter"
-                    className="bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+            {/* Row 3: Dedicated Sorting, Engine Mode & Actions Row */}
+            <div
+              data-testid="sorting-controls-row"
+              className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-slate-700/50"
+            >
+              {/* Left: Dual Engine Mode Switch */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">Mode:</span>
+                <div className="flex items-center gap-1 bg-slate-900/90 border border-slate-700/80 rounded-xl p-0.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSearchMode("cv_grounded")}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-medium transition-all ${
+                      searchMode === "cv_grounded"
+                        ? "bg-sky-600 text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                    title="Personalized candidate-grounded match scoring (P(Match))"
                   >
-                    <option value="">All Workplaces</option>
-                    <option value="remote">Remote Only</option>
-                    <option value="hybrid">Hybrid</option>
-                    <option value="on_site">On-site Only</option>
-                  </select>
-                </div>
+                    <Sparkles className="w-3 h-3" />
+                    <span>Grounded</span>
+                  </button>
 
-                {/* Posting Date Filter */}
-                <div className="flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  <select
-                    value={postedWithinFilter}
-                    onChange={(e) => setPostedWithinFilter(e.target.value)}
-                    aria-label="Filter by date posted"
-                    className="bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  <button
+                    type="button"
+                    onClick={() => setSearchMode("unbiased")}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-medium transition-all ${
+                      searchMode === "unbiased"
+                        ? "bg-indigo-600 text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                    title="Market Explorer mode: raw discovery without candidate bias"
                   >
-                    <option value="">Any Time</option>
-                    <option value="1">Past 24 Hours</option>
-                    <option value="7">Past Week</option>
-                    <option value="14">Past 2 Weeks</option>
-                    <option value="30">Past Month</option>
-                  </select>
+                    <Compass className="w-3 h-3" />
+                    <span>Explorer</span>
+                  </button>
                 </div>
-
-                {/* Minimum Score Filter */}
-                <select
-                  value={minScoreFilter}
-                  onChange={(e) => setMinScoreFilter(parseFloat(e.target.value))}
-                  aria-label="Minimum probability band filter"
-                  className="bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-                >
-                  <option value={0.0}>All Probability Bands</option>
-                  <option value={0.5}>Moderate+ (≥ 50%)</option>
-                  <option value={0.75}>High Probability Only (≥ 75%)</option>
-                </select>
-
-                {/* Visa Sponsorship Filter */}
-                <label className="flex items-center gap-1.5 text-xs font-medium text-slate-300 cursor-pointer bg-slate-900/60 px-2.5 py-1.5 rounded-xl border border-slate-700/60">
-                  <input
-                    type="checkbox"
-                    checked={matchesVisaFilter}
-                    onChange={(e) => setMatchesVisaFilter(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded bg-slate-900 border-slate-600 text-sky-500 focus:ring-sky-500"
-                  />
-                  <span className="flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Visa
-                  </span>
-                </label>
               </div>
 
-              {/* Right Side: Sort & Actions */}
-              <div className="flex items-center gap-2">
+              {/* Right: Unified Sort & Actions */}
+              <div className="flex flex-wrap items-center gap-2">
                 <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                   <span>Sort:</span>
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
                     aria-label="Sort match opportunities"
-                    className="bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    className="bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
                   >
                     <option value="score">Best Match</option>
                     <option value="date">Most Recent</option>
+                    <option value="salary">Highest Salary</option>
                   </select>
                 </div>
 
@@ -721,69 +883,6 @@ export function Dashboard({
                 </button>
               </div>
             </div>
-
-            {/* Active Filter Tags */}
-            {activeFilterCount > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-slate-400 border-t border-slate-700/50">
-                <span className="text-slate-500">Active:</span>
-                {searchQuery.trim() && (
-                  <span className="px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-300 border border-sky-500/20 flex items-center gap-1">
-                    Keyword: "{searchQuery.trim()}"
-                    <button onClick={() => setSearchQuery("")} className="hover:text-white">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
-                {locationFilter.trim() && (
-                  <span className="px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 flex items-center gap-1">
-                    Location: "{locationFilter.trim()}"
-                    <button onClick={() => setLocationFilter("")} className="hover:text-white">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
-                {modalityFilter && (
-                  <span className="px-2 py-0.5 rounded-md bg-slate-700/60 text-slate-300 border border-slate-600 flex items-center gap-1">
-                    Workplace: {modalityFilter}
-                    <button onClick={() => setModalityFilter("")} className="hover:text-white">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
-                {postedWithinFilter && (
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 flex items-center gap-1">
-                    Posted: Past {postedWithinFilter === "1" ? "24h" : `${postedWithinFilter}d`}
-                    <button onClick={() => setPostedWithinFilter("")} className="hover:text-white">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
-                {minScoreFilter > 0 && (
-                  <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20 flex items-center gap-1">
-                    Score: ≥ {Math.round(minScoreFilter * 100)}%
-                    <button onClick={() => setMinScoreFilter(0.0)} className="hover:text-white">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
-                {matchesVisaFilter && (
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 flex items-center gap-1">
-                    Visa Sponsoring
-                    <button onClick={() => setMatchesVisaFilter(false)} className="hover:text-white">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
-                {sortBy !== "score" && (
-                  <span className="px-2 py-0.5 rounded-md bg-slate-700/60 text-slate-300 border border-slate-600 flex items-center gap-1">
-                    Sorted by: Most Recent
-                    <button onClick={() => setSortBy("score")} className="hover:text-white">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Loading State */}

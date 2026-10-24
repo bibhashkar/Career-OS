@@ -10,6 +10,7 @@ vi.mock("../services/api", () => ({
   crossCheckJob: vi.fn(),
   getJobMatches: vi.fn(),
   getJobDiagnostics: vi.fn(),
+  parseSearchQuery: vi.fn().mockResolvedValue({}),
 }));
 
 const mockMatchJob = {
@@ -296,6 +297,57 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
 
       const locationInput = screen.getByTestId("matches-location-input");
       expect(locationInput.value).toBe("Seattle");
+    });
+
+    it("renders single consolidated filter row and separate sorting row without duplicates", async () => {
+      api.getJobMatches.mockResolvedValue({
+        jobs: [mockMatchJob],
+        total_count: 1,
+      });
+
+      renderDashboard();
+
+      // Single search filters row and single sorting row
+      const filterRow = screen.getByTestId("search-filters-row");
+      const sortRow = screen.getByTestId("sorting-controls-row");
+      expect(filterRow).toBeInTheDocument();
+      expect(sortRow).toBeInTheDocument();
+      expect(filterRow).not.toContainElement(sortRow);
+
+      // Verify exactly one Workplace Modality select, one Work Auth select, and one Sort select
+      expect(screen.getAllByLabelText("Filter by workplace modality")).toHaveLength(1);
+      expect(screen.getAllByLabelText("Filter by work authorization")).toHaveLength(1);
+      expect(screen.getAllByLabelText("Sort match opportunities")).toHaveLength(1);
+    });
+
+    it("renders chips under the omnibar without 'Vertical:' prefix and clears only text when clicking omnibar clear", async () => {
+      api.getJobMatches.mockResolvedValue({
+        jobs: [mockMatchJob],
+        total_count: 1,
+      });
+
+      const initialChips = encodeURIComponent(
+        JSON.stringify([
+          { id: "ind-1", type: "industry", value: "healthtech", label: "Vertical: Healthtech" },
+        ])
+      );
+
+      renderDashboard({}, [`/?q=distributed&loc=Boston&chips=${initialChips}`]);
+
+      const searchInput = screen.getByTestId("matches-search-input");
+      const chipsRow = await screen.findByTestId("omnibar-chips-row");
+
+      // Chip is rendered in the dedicated row below the input, not inside the input wrapper
+      expect(chipsRow).toHaveTextContent("HealthTech");
+      expect(chipsRow).not.toHaveTextContent("Vertical:");
+
+      // Clicking Clear omnibar clears only searchInput, keeping chip and location intact
+      const clearOmnibarBtn = screen.getByLabelText("Clear omnibar");
+      fireEvent.click(clearOmnibarBtn);
+
+      expect(searchInput.value).toBe("");
+      expect(screen.getByTestId("matches-location-input").value).toBe("Boston");
+      expect(screen.getByTestId("omnibar-chips-row")).toHaveTextContent("HealthTech");
     });
   });
 
