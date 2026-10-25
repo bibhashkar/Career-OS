@@ -7,6 +7,8 @@ import {
   ShieldCheck,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   FileText,
   MessageSquare,
   AlertCircle,
@@ -17,12 +19,13 @@ import {
   Sparkles,
   TrendingUp,
   RefreshCw,
-  ExternalLink,
   Clock,
   X,
   Compass,
   ArrowUpDown,
   Zap,
+  SlidersHorizontal,
+  Home,
 } from "lucide-react";
 import {
   searchJobs,
@@ -33,14 +36,17 @@ import { CompanyDossierCard } from "../components/CompanyDossierCard";
 import { JobProvenanceBadge } from "../components/JobProvenanceBadge";
 import { AddJobModal } from "../components/AddJobModal";
 import { JobDiagnosticModal } from "../components/JobDiagnosticModal";
+import { JobDetailPanel } from "../components/JobDetailPanel";
 import {
   TokenizedOmnibar,
   CHIP_TYPE_ICONS,
   CHIP_TYPE_COLORS,
   formatEntityLabel,
 } from "../components/search/TokenizedOmnibar";
-import { InstrumentBar } from "../components/search/InstrumentBar";
+import { SearchFilterModal } from "../components/search/SearchFilterModal";
 import { EmptyStateRelaxer } from "../components/search/EmptyStateRelaxer";
+
+const PAGE_SIZE = 15;
 
 const SAMPLE_KEYWORDS = [
   { label: "Software Developer", query: "Software Developer" },
@@ -53,6 +59,13 @@ const SAMPLE_KEYWORDS = [
   { label: "Cloudflare", query: "Cloudflare" },
   { label: "Spotify", query: "Spotify" },
   { label: "Ramp", query: "Ramp" },
+];
+
+const QUICK_MODALITIES = [
+  { value: "", label: "All Workplaces" },
+  { value: "remote", label: "Remote" },
+  { value: "hybrid", label: "Hybrid" },
+  { value: "on_site", label: "On-Site" },
 ];
 
 function normalizeJobMatch(match) {
@@ -130,6 +143,9 @@ export function Dashboard({
   const [matchesLoading, setMatchesLoading] = useState(false);
   const [matchesError, setMatchesError] = useState(null);
   const [totalMatches, setTotalMatches] = useState(0);
+  const [page, setPage] = useState(1);
+  const [selectedMatchId, setSelectedMatchId] = useState(null);
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState(() => getInitialParam("q", ""));
@@ -148,7 +164,6 @@ export function Dashboard({
   const [workAuthTier, setWorkAuthTier] = useState(() => {
     const auth = getInitialParam("auth", "");
     if (auth) return auth;
-    // Backward-compatible migration if legacy 'visa=true' was set
     if (getInitialParam("visa", "false") === "true") return "h1b_transfer_sponsor";
     return "all";
   });
@@ -164,7 +179,10 @@ export function Dashboard({
     const savedChips = getInitialParam("chips", "");
     if (savedChips) {
       try {
-        const parsed = typeof savedChips === "string" ? JSON.parse(decodeURIComponent(savedChips)) : savedChips;
+        const parsed =
+          typeof savedChips === "string"
+            ? JSON.parse(decodeURIComponent(savedChips))
+            : savedChips;
         return Array.isArray(parsed) ? parsed : [];
       } catch {
         return [];
@@ -175,12 +193,19 @@ export function Dashboard({
   const [diagnostics, setDiagnostics] = useState(null);
 
   const handleAddChip = (chip) => {
+    setPage(1);
     if (chip.type === "modality") {
       setModalityFilter(chip.value === "all" ? "" : chip.value);
       return;
     }
     setChips((prev) => {
-      if (prev.some((c) => c.type === chip.type && c.value.toLowerCase() === chip.value.toLowerCase())) {
+      if (
+        prev.some(
+          (c) =>
+            c.type === chip.type &&
+            c.value.toLowerCase() === chip.value.toLowerCase()
+        )
+      ) {
         return prev;
       }
       return [
@@ -194,12 +219,35 @@ export function Dashboard({
     });
   };
 
+  const handleToggleChip = (type, value) => {
+    setPage(1);
+    setChips((prev) => {
+      const exists = prev.find(
+        (c) => c.type === type && c.value.toLowerCase() === value.toLowerCase()
+      );
+      if (exists) {
+        return prev.filter((c) => c.id !== exists.id);
+      }
+      return [
+        ...prev,
+        {
+          id: `${type}-${value}-${Date.now()}`,
+          type,
+          value,
+          label: formatEntityLabel(type, value),
+        },
+      ];
+    });
+  };
+
   const handleRemoveChip = (chipId) => {
+    setPage(1);
     setChips((prev) => prev.filter((c) => c.id !== chipId));
   };
 
   const handleApplyRelaxation = (patch) => {
     if (!patch) return;
+    setPage(1);
     if ("work_auth_tier" in patch) {
       setWorkAuthTier(patch.work_auth_tier);
     }
@@ -210,7 +258,9 @@ export function Dashboard({
       setMinBaseSalary(patch.min_base_salary_usd);
     }
     if ("workplace_modality" in patch) {
-      setModalityFilter(patch.workplace_modality === "all" ? "" : patch.workplace_modality);
+      setModalityFilter(
+        patch.workplace_modality === "all" ? "" : patch.workplace_modality
+      );
     }
     if ("must_have_skills" in patch) {
       setChips((prev) => prev.filter((c) => c.type !== "skill"));
@@ -253,7 +303,8 @@ export function Dashboard({
     if (workAuthTier && workAuthTier !== "all") params.set("auth", workAuthTier);
     if (minBaseSalary !== null) params.set("salary", String(minBaseSalary));
     if (maxCommuteMiles !== null) params.set("commute", String(maxCommuteMiles));
-    if (chips.length > 0) params.set("chips", encodeURIComponent(JSON.stringify(chips)));
+    if (chips.length > 0)
+      params.set("chips", encodeURIComponent(JSON.stringify(chips)));
 
     try {
       const savedState = {
@@ -293,6 +344,7 @@ export function Dashboard({
   ]);
 
   const handleClearFilters = () => {
+    setPage(1);
     setSearchQuery("");
     setLocationFilter("");
     setModalityFilter("");
@@ -312,6 +364,18 @@ export function Dashboard({
     }
   };
 
+  const handleResetAdvancedFilters = () => {
+    setPage(1);
+    setWorkAuthTier("all");
+    setMinBaseSalary(null);
+    setMaxCommuteMiles(null);
+    setPostedWithinFilter("");
+    setMinScoreFilter(0.0);
+    setChips((prev) =>
+      prev.filter((c) => c.type !== "seniority" && c.type !== "industry")
+    );
+  };
+
   const activeFilterCount =
     (searchQuery.trim() ? 1 : 0) +
     (locationFilter.trim() ? 1 : 0) +
@@ -325,6 +389,14 @@ export function Dashboard({
     (searchMode !== "cv_grounded" ? 1 : 0) +
     chips.length;
 
+  const advancedFilterCount =
+    (workAuthTier !== "all" ? 1 : 0) +
+    (minBaseSalary !== null ? 1 : 0) +
+    (maxCommuteMiles !== null ? 1 : 0) +
+    (postedWithinFilter ? 1 : 0) +
+    (minScoreFilter > 0 ? 1 : 0) +
+    chips.filter((c) => c.type === "seniority" || c.type === "industry").length;
+
   // Fetch Ranked Matches for active persona
   const fetchMatches = useCallback(async () => {
     if (typeof getJobMatches !== "function") return;
@@ -332,8 +404,8 @@ export function Dashboard({
     setMatchesError(null);
     try {
       const params = {
-        page: 1,
-        page_size: 25,
+        page,
+        page_size: PAGE_SIZE,
         min_score: minScoreFilter,
         sort_by: sortBy,
         search_mode: searchMode,
@@ -388,9 +460,15 @@ export function Dashboard({
       }
 
       const res = await getJobMatches(params);
-      setMatches(res?.jobs || []);
+      const nextJobs = res?.jobs || [];
+      setMatches(nextJobs);
       setTotalMatches(res?.total_count || 0);
       setDiagnostics(res?.diagnostics || null);
+      setSelectedMatchId((prevId) => {
+        if (nextJobs.length === 0) return null;
+        if (prevId && nextJobs.some((j) => j.job_id === prevId)) return prevId;
+        return nextJobs[0].job_id;
+      });
     } catch (err) {
       if (err.code !== "ERR_NETWORK") {
         console.warn("Failed to fetch job matches:", err);
@@ -404,6 +482,7 @@ export function Dashboard({
     }
   }, [
     activePersona,
+    page,
     searchQuery,
     locationFilter,
     modalityFilter,
@@ -512,8 +591,14 @@ export function Dashboard({
     );
   };
 
+  const selectedMatch =
+    matches.find((m) => m.job_id === selectedMatchId) || matches[0] || null;
+  const totalPages = Math.max(1, Math.ceil(totalMatches / PAGE_SIZE));
+  const showingFrom = totalMatches === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const showingTo = Math.min(page * PAGE_SIZE, totalMatches);
+
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="space-y-2">
@@ -583,19 +668,23 @@ export function Dashboard({
       {/* ============================================================== */}
       {activeTab === "matches" && (
         <div className="space-y-6">
-          {/* Match Filter Controls */}
+          {/* Brief Daily Search & Filter Bar */}
           <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 shadow-xl space-y-3">
             {/* Row 1: Search Inputs (Search bar gets 70% width, Location gets 30% width on md+) */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
               <div className="md:col-span-8 lg:col-span-9">
                 <TokenizedOmnibar
                   rawQuery={searchQuery}
-                  onQueryChange={setSearchQuery}
+                  onQueryChange={(val) => {
+                    setPage(1);
+                    setSearchQuery(val);
+                  }}
                   chips={chips}
                   onAddChip={handleAddChip}
-                  onSelectModality={(mod) =>
-                    setModalityFilter(mod === "all" ? "" : mod)
-                  }
+                  onSelectModality={(mod) => {
+                    setPage(1);
+                    setModalityFilter(mod === "all" ? "" : mod);
+                  }}
                   onSearch={fetchMatches}
                   isSearching={matchesLoading}
                 />
@@ -607,7 +696,10 @@ export function Dashboard({
                 <input
                   type="text"
                   value={locationFilter}
-                  onChange={(e) => setLocationFilter(e.target.value)}
+                  onChange={(e) => {
+                    setPage(1);
+                    setLocationFilter(e.target.value);
+                  }}
                   list="location-presets"
                   placeholder="City, State, or Country..."
                   aria-label="Filter by city, state, country, or region"
@@ -616,7 +708,10 @@ export function Dashboard({
                 />
                 {locationFilter && (
                   <button
-                    onClick={() => setLocationFilter("")}
+                    onClick={() => {
+                      setPage(1);
+                      setLocationFilter("");
+                    }}
                     aria-label="Clear location filter"
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
                   >
@@ -685,7 +780,10 @@ export function Dashboard({
                     <span>{locationFilter.trim()}</span>
                     <button
                       type="button"
-                      onClick={() => setLocationFilter("")}
+                      onClick={() => {
+                        setPage(1);
+                        setLocationFilter("");
+                      }}
                       className="hover:text-white p-0.5"
                       aria-label="Remove location filter"
                     >
@@ -706,7 +804,10 @@ export function Dashboard({
                     </span>
                     <button
                       type="button"
-                      onClick={() => setWorkAuthTier("all")}
+                      onClick={() => {
+                        setPage(1);
+                        setWorkAuthTier("all");
+                      }}
                       className="hover:text-white p-0.5"
                       aria-label="Remove work auth filter"
                     >
@@ -720,7 +821,10 @@ export function Dashboard({
                     <span>{formatEntityLabel("modality", modalityFilter)}</span>
                     <button
                       type="button"
-                      onClick={() => setModalityFilter("")}
+                      onClick={() => {
+                        setPage(1);
+                        setModalityFilter("");
+                      }}
                       className="hover:text-white p-0.5"
                       aria-label="Remove workplace modality filter"
                     >
@@ -734,7 +838,10 @@ export function Dashboard({
                     <span>Within {maxCommuteMiles} mi</span>
                     <button
                       type="button"
-                      onClick={() => setMaxCommuteMiles(null)}
+                      onClick={() => {
+                        setPage(1);
+                        setMaxCommuteMiles(null);
+                      }}
                       className="hover:text-white p-0.5"
                       aria-label="Remove commute filter"
                     >
@@ -748,7 +855,10 @@ export function Dashboard({
                     <span>${Math.round(minBaseSalary / 1000)}k+</span>
                     <button
                       type="button"
-                      onClick={() => setMinBaseSalary(null)}
+                      onClick={() => {
+                        setPage(1);
+                        setMinBaseSalary(null);
+                      }}
                       className="hover:text-white p-0.5"
                       aria-label="Remove minimum salary filter"
                     >
@@ -764,7 +874,10 @@ export function Dashboard({
                     </span>
                     <button
                       type="button"
-                      onClick={() => setPostedWithinFilter("")}
+                      onClick={() => {
+                        setPage(1);
+                        setPostedWithinFilter("");
+                      }}
                       className="hover:text-white p-0.5"
                       aria-label="Remove posted date filter"
                     >
@@ -778,7 +891,10 @@ export function Dashboard({
                     <span>≥ {Math.round(minScoreFilter * 100)}% Match</span>
                     <button
                       type="button"
-                      onClick={() => setMinScoreFilter(0.0)}
+                      onClick={() => {
+                        setPage(1);
+                        setMinScoreFilter(0.0);
+                      }}
                       className="hover:text-white p-0.5"
                       aria-label="Remove probability band filter"
                     >
@@ -789,24 +905,58 @@ export function Dashboard({
               </div>
             )}
 
-            {/* Row 2: Unified Search Filters Row */}
-            <InstrumentBar
-              workAuthTier={workAuthTier}
-              onWorkAuthTierChange={setWorkAuthTier}
-              workplaceModality={modalityFilter || "all"}
-              onWorkplaceModalityChange={(m) =>
-                setModalityFilter(m === "all" ? "" : m)
-              }
-              maxCommuteMiles={maxCommuteMiles}
-              onMaxCommuteMilesChange={setMaxCommuteMiles}
-              minBaseSalary={minBaseSalary}
-              onMinBaseSalaryChange={setMinBaseSalary}
-              postedWithin={postedWithinFilter}
-              onPostedWithinChange={setPostedWithinFilter}
-              minScore={minScoreFilter}
-              onMinScoreChange={setMinScoreFilter}
-              searchMode={searchMode}
-            />
+            {/* Row 2: Brief Daily Controls (Workplace Quick Pills + Filters Modal Button) */}
+            <div
+              data-testid="search-filters-row"
+              className="flex flex-wrap items-center justify-between gap-2 py-2 px-3 bg-slate-900/60 border border-slate-700/60 rounded-xl text-xs"
+            >
+              {/* Quick Workplace Modality Pills */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Home className="w-3.5 h-3.5 text-sky-400 shrink-0 mr-1" />
+                {QUICK_MODALITIES.map((item) => {
+                  const isSelected = modalityFilter === item.value;
+                  return (
+                    <button
+                      key={item.value || "all"}
+                      type="button"
+                      onClick={() => {
+                        setPage(1);
+                        setModalityFilter(item.value);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                        isSelected
+                          ? "bg-sky-600 text-white shadow-sm"
+                          : "bg-slate-800/80 text-slate-300 hover:text-white border border-slate-700/70"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* All Filters Modal Trigger */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsFilterModalOpen(true)}
+                  data-testid="open-filter-modal-btn"
+                  className={`px-3 py-1.5 rounded-xl font-semibold border transition-all flex items-center gap-1.5 ${
+                    advancedFilterCount > 0
+                      ? "bg-sky-500/15 text-sky-300 border-sky-500/50"
+                      : "bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700"
+                  }`}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-sky-400" />
+                  <span>All Filters</span>
+                  {advancedFilterCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-sky-500 text-white font-bold">
+                      {advancedFilterCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
 
             {/* Row 3: Dedicated Sorting, Engine Mode & Actions Row */}
             <div
@@ -819,7 +969,10 @@ export function Dashboard({
                 <div className="flex items-center gap-1 bg-slate-900/90 border border-slate-700/80 rounded-xl p-0.5 text-xs">
                   <button
                     type="button"
-                    onClick={() => setSearchMode("cv_grounded")}
+                    onClick={() => {
+                      setPage(1);
+                      setSearchMode("cv_grounded");
+                    }}
                     className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-medium transition-all ${
                       searchMode === "cv_grounded"
                         ? "bg-sky-600 text-white shadow-sm"
@@ -833,7 +986,10 @@ export function Dashboard({
 
                   <button
                     type="button"
-                    onClick={() => setSearchMode("unbiased")}
+                    onClick={() => {
+                      setPage(1);
+                      setSearchMode("unbiased");
+                    }}
                     className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-medium transition-all ${
                       searchMode === "unbiased"
                         ? "bg-indigo-600 text-white shadow-sm"
@@ -854,7 +1010,10 @@ export function Dashboard({
                   <span>Sort:</span>
                   <select
                     value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
+                    onChange={(e) => {
+                      setPage(1);
+                      setSortBy(e.target.value);
+                    }}
                     aria-label="Sort match opportunities"
                     className="bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
                   >
@@ -923,190 +1082,172 @@ export function Dashboard({
             />
           )}
 
-          {/* Matches List */}
+          {/* Master-Detail Split-Pane Opportunities View */}
           {!matchesLoading && !matchesError && matches.length > 0 && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">
-                  Ranked Match Opportunities ({matches.length})
+                  {searchMode === "unbiased"
+                    ? `Market Explorer Opportunities (${totalMatches})`
+                    : `Ranked Match Opportunities (${totalMatches})`}
                 </h2>
-                <span className="text-xs text-slate-500">
-                  Calculated with Bayesian uncertainty gate & signal boosters
+                <span className="text-xs text-slate-400" data-testid="pagination-summary">
+                  Showing {showingFrom}–{showingTo} of {totalMatches} (max {PAGE_SIZE} per page)
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 gap-4">
-                {matches.map((match) => {
-                  const matchPct = Math.round(match.match_score * 100);
-                  const isHigh = match.probability_band === "high";
-                  const isModerate = match.probability_band === "moderate";
+              <div
+                data-testid="matches-split-pane"
+                className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start"
+              >
+                {/* LEFT PANEL (40% width / 5 cols): Compact Scannable Opportunity List + Pagination */}
+                <div className="lg:col-span-5 space-y-3" data-testid="matches-left-list">
+                  {matches.map((match) => {
+                    const isSelected = selectedMatch?.job_id === match.job_id;
+                    const showScore =
+                      searchMode !== "unbiased" &&
+                      match.match_score !== null &&
+                      match.match_score !== undefined;
+                    const matchPct = showScore
+                      ? Math.round(match.match_score * 100)
+                      : null;
+                    const isHigh = match.probability_band === "high";
+                    const isModerate = match.probability_band === "moderate";
 
-                  return (
-                    <div
-                      key={match.job_id}
-                      className="bg-slate-800/80 border border-slate-700/70 rounded-2xl p-6 hover:border-slate-600/80 transition-all shadow-md space-y-4"
-                    >
-                      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                        {/* Title, Company, Meta */}
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap items-center gap-2.5">
-                            {/* Match Score Badge */}
+                    return (
+                      <div
+                        key={match.job_id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedMatchId(match.job_id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setSelectedMatchId(match.job_id);
+                          }
+                        }}
+                        data-testid={`match-card-${match.job_id}`}
+                        className={`text-left rounded-2xl p-4 border transition-all cursor-pointer space-y-2.5 ${
+                          isSelected
+                            ? "bg-slate-800/95 border-sky-500 ring-1 ring-sky-500/40 shadow-lg shadow-sky-950/50"
+                            : "bg-slate-800/60 border-slate-700/70 hover:bg-slate-800/80 hover:border-slate-600"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-1 min-w-0">
+                            <h3 className="text-sm font-bold text-white leading-snug truncate">
+                              {match.title}
+                            </h3>
+                            <p className="text-xs font-medium text-sky-300 truncate">
+                              {match.company_name}
+                            </p>
+                          </div>
+
+                          {showScore && (
                             <span
-                              className={`text-xs font-extrabold px-3 py-1 rounded-xl shadow-sm flex items-center gap-1 ${
+                              className={`shrink-0 text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg flex items-center gap-1 ${
                                 isHigh
                                   ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
                                   : isModerate
                                   ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
-                                  : "bg-rose-500/20 text-rose-400 border border-rose-500/40"
+                                  : "bg-sky-500/20 text-sky-300 border border-sky-500/40"
                               }`}
                             >
-                              <TrendingUp className="w-3.5 h-3.5" />
+                              <TrendingUp className="w-3 h-3" />
                               {matchPct}% Match
                             </span>
-
-                            {match.apply_url ? (
-                              <a
-                                href={match.apply_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-lg font-bold text-white hover:text-sky-300 transition-colors inline-flex items-center gap-1.5 group"
-                                title="Open original job posting in new tab"
-                              >
-                                <span>{match.title}</span>
-                                <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-sky-400 transition-colors shrink-0" />
-                              </a>
-                            ) : (
-                              <h3 className="text-lg font-bold text-white">
-                                {match.title}
-                              </h3>
-                            )}
-
-                            {match.workplace_type && (
-                              <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-700">
-                                {match.workplace_type}
-                              </span>
-                            )}
-
-                            {match.posted_at && (
-                              <span
-                                title={`Posted on ${new Date(match.posted_at).toLocaleString()}`}
-                                className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-700 flex items-center gap-1"
-                              >
-                                <Clock className="w-3 h-3 text-slate-500" />
-                                {formatRelativeTime(match.posted_at)}
-                              </span>
-                            )}
-
-                            {match.visa_sponsorship === "yes" && (
-                              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                                Visa Sponsored
-                              </span>
-                            )}
-
-                            {match.breakdown?.g_prob < 1.0 && (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">
-                                Bayesian {(match.breakdown.g_prob).toFixed(2)}x Gate
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-3 text-xs text-slate-400">
-                            <span className="font-medium text-slate-300">
-                              {match.company_name}
-                            </span>
-                            <span>•</span>
-                            <span className="flex items-center gap-1">
-                              <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                              {match.location}
-                            </span>
-                            {match.salary_range && (
-                              <>
-                                <span>•</span>
-                                <span className="flex items-center gap-1 text-emerald-400/90 font-medium">
-                                  <DollarSign className="w-3.5 h-3.5" />
-                                  {match.salary_range}
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            onClick={() => setSelectedJobForDiag(match)}
-                            title="Decompose acceptance probability factors"
-                            className="px-3.5 py-2 text-xs font-semibold rounded-xl border border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 transition-all flex items-center gap-1.5 shadow-sm"
-                          >
-                            <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-                            Why this match?
-                          </button>
-
-                          <button
-                            onClick={() => onSelectJob(normalizeJobMatch(match))}
-                            className="px-4 py-2 text-xs font-semibold rounded-xl bg-sky-600 hover:bg-sky-500 text-white transition-all shadow-md shadow-sky-600/20 flex items-center gap-1.5"
-                          >
-                            <FileText className="w-3.5 h-3.5" /> Tailor CV
-                          </button>
-
-                          <button
-                            onClick={() => onStartInterview(normalizeJobMatch(match))}
-                            className="px-4 py-2 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md shadow-indigo-600/20 flex items-center gap-1.5"
-                          >
-                            <MessageSquare className="w-3.5 h-3.5" /> Mock Interview
-                          </button>
-
-                          {match.apply_url && (
-                            <a
-                              href={match.apply_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              data-testid={`apply-link-${match.job_id}`}
-                              title="Open original job application in new tab"
-                              className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                              <span>Apply</span>
-                            </a>
                           )}
                         </div>
-                      </div>
 
-                      {/* Matched Skills & Missing Dealbreakers Chips */}
-                      <div className="space-y-2 pt-2 border-t border-slate-750">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {match.matched_skills?.map((skill, sIdx) => (
-                            <span
-                              key={sIdx}
-                              className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 flex items-center gap-1"
-                            >
-                              <CheckCircle2 className="w-2.5 h-2.5" />
-                              {skill}
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                          <span className="flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-slate-500" />
+                            {match.location}
+                          </span>
+                          {match.workplace_type && (
+                            <span className="uppercase px-1.5 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-700 text-[10px] font-semibold">
+                              {match.workplace_type}
                             </span>
-                          ))}
-
-                          {match.missing_dealbreakers?.map((miss, mIdx) => (
-                            <span
-                              key={mIdx}
-                              className="text-[11px] px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/20"
-                            >
-                              Missing: {miss}
+                          )}
+                          {match.salary_range && (
+                            <span className="text-emerald-400 font-medium">
+                              {match.salary_range}
                             </span>
-                          ))}
-
-                          {match.phrasing_equivalents?.map((eq, eqIdx) => (
-                            <span
-                              key={eqIdx}
-                              className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
-                            >
-                              Equiv: {eq.candidate_has} → {eq.job_requested}
+                          )}
+                          {match.posted_at && (
+                            <span className="flex items-center gap-1 text-slate-500">
+                              <Clock className="w-3 h-3" />
+                              {formatRelativeTime(match.posted_at)}
                             </span>
-                          ))}
+                          )}
                         </div>
+
+                        {/* Top 3 Matched Skills Preview */}
+                        {showScore && match.matched_skills?.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                            {match.matched_skills.slice(0, 3).map((s, idx) => (
+                              <span
+                                key={idx}
+                                className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
+                              >
+                                {s}
+                              </span>
+                            ))}
+                            {match.matched_skills.length > 3 && (
+                              <span className="text-[10px] text-slate-500">
+                                +{match.matched_skills.length - 3} more
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
+                    );
+                  })}
+
+                  {/* Pagination Footer Bar (Max 15 per page) */}
+                  {totalPages > 1 && (
+                    <div
+                      data-testid="matches-pagination"
+                      className="flex items-center justify-between pt-3 border-t border-slate-800 text-xs"
+                    >
+                      <button
+                        type="button"
+                        disabled={page <= 1}
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 font-medium border border-slate-700 flex items-center gap-1 transition-colors"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        Previous
+                      </button>
+
+                      <span className="text-slate-400 font-medium">
+                        Page <span className="text-white font-bold">{page}</span> of{" "}
+                        <span className="text-white font-bold">{totalPages}</span>
+                      </span>
+
+                      <button
+                        type="button"
+                        disabled={page >= totalPages}
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 font-medium border border-slate-700 flex items-center gap-1 transition-colors"
+                      >
+                        Next
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                  );
-                })}
+                  )}
+                </div>
+
+                {/* RIGHT PANEL (60% width / 7 cols): Sticky Job Detail Inspector */}
+                <div className="lg:col-span-7">
+                  <JobDetailPanel
+                    match={selectedMatch}
+                    searchMode={searchMode}
+                    onTailorCV={(m) => onSelectJob(normalizeJobMatch(m))}
+                    onStartInterview={(m) => onStartInterview(normalizeJobMatch(m))}
+                    onOpenDiagnostics={(m) => setSelectedJobForDiag(m)}
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -1386,6 +1527,41 @@ export function Dashboard({
           )}
         </div>
       )}
+
+      {/* Detailed Search Filter Configuration Modal */}
+      <SearchFilterModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        workAuthTier={workAuthTier}
+        onWorkAuthTierChange={(val) => {
+          setPage(1);
+          setWorkAuthTier(val);
+        }}
+        minBaseSalary={minBaseSalary}
+        onMinBaseSalaryChange={(val) => {
+          setPage(1);
+          setMinBaseSalary(val);
+        }}
+        maxCommuteMiles={maxCommuteMiles}
+        onMaxCommuteMilesChange={(val) => {
+          setPage(1);
+          setMaxCommuteMiles(val);
+        }}
+        postedWithin={postedWithinFilter}
+        onPostedWithinChange={(val) => {
+          setPage(1);
+          setPostedWithinFilter(val);
+        }}
+        minScore={minScoreFilter}
+        onMinScoreChange={(val) => {
+          setPage(1);
+          setMinScoreFilter(val);
+        }}
+        searchMode={searchMode}
+        chips={chips}
+        onToggleChip={handleToggleChip}
+        onResetAdvancedFilters={handleResetAdvancedFilters}
+      />
 
       {/* Ingestion Modal */}
       <AddJobModal

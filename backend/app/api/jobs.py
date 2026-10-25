@@ -984,7 +984,7 @@ async def get_job_matches(
         None, description="Optional target CandidatePersona ID"
     ),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(15, ge=1, le=100),
     modality: str | None = Query(
         None, description="Filter: remote, hybrid, or on_site"
     ),
@@ -1186,6 +1186,8 @@ async def get_job_matches(
             if s not in filter_skills:
                 filter_skills.append(s)
 
+    effective_page_size = min(page_size, 15)
+
     filter_dto = JobSearchFilterDTO(
         search_mode=mode,
         raw_query=extracted.residual_query if q else None,
@@ -1201,8 +1203,8 @@ async def get_job_matches(
         max_commute_miles=max_commute_miles,
         min_match_probability=min_score,
         sort_by=sort_by,
-        limit=page_size,
-        offset=(page - 1) * page_size,
+        limit=effective_page_size,
+        offset=(page - 1) * effective_page_size,
     )
 
     # 6. Execute Two-Stage Retrieval & Reranker
@@ -1212,7 +1214,7 @@ async def get_job_matches(
         account=account,
         blocks=blocks,
         page=page,
-        page_size=page_size,
+        page_size=effective_page_size,
         modality_filter=modality,
         visa_filter=visa_filter,
         min_score=min_score,
@@ -1232,7 +1234,7 @@ async def get_job_matches(
         persona_name=target_persona.name,
         total_count=total_count,
         page=page,
-        page_size=page_size,
+        page_size=effective_page_size,
         jobs=ranked_jobs,
         diagnostics=diagnostics,
     )

@@ -23,6 +23,7 @@ const mockMatchJob = {
   visa_sponsorship: "yes",
   apply_url: "https://jobs.lever.co/anthropic/001",
   posted_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+  raw_description: "Build low-latency inference cluster orchestration in Python and Rust.",
   match_score: 0.88,
   hard_gate_pass: true,
   probability_band: "high",
@@ -34,6 +35,8 @@ const mockMatchJob = {
     prestige_booster: 0.10,
     achievement_booster: 0.05,
     freshness_booster: 0.08,
+    context_score: 0.80,
+    comp_score: 1.0,
   },
   matched_skills: ["Python", "PyTorch", "Kubernetes"],
   missing_dealbreakers: ["Triton"],
@@ -41,6 +44,32 @@ const mockMatchJob = {
     { candidate_has: "AWS", job_requested: "GCP" },
   ],
   gate_notes: ["Hard gates verified"],
+};
+
+const secondMatchJob = {
+  job_id: "match-job-002",
+  title: "Staff Distributed Systems Engineer",
+  company_name: "Stripe",
+  location: "Remote",
+  workplace_type: "remote",
+  salary_range: "$210,000 - $260,000",
+  visa_sponsorship: "yes",
+  apply_url: "https://stripe.com/jobs/002",
+  posted_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+  raw_description: "Architect global payment ledger pipelines with high availability.",
+  match_score: 0.79,
+  hard_gate_pass: true,
+  probability_band: "high",
+  breakdown: {
+    g_prob: 1.0,
+    skill_score: 0.85,
+    semantic_score: 0.80,
+    seniority_score: 0.90,
+  },
+  matched_skills: ["Python", "Kafka"],
+  missing_dealbreakers: [],
+  phrasing_equivalents: [],
+  gate_notes: ["Remote modality aligned"],
 };
 
 function renderDashboard(props = {}, initialEntries = ["/"]) {
@@ -61,15 +90,15 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
     localStorage.clear();
   });
 
-  describe("High-Probability Matches Tab", () => {
-    it("calls getJobMatches on mount and renders ranked job matches", async () => {
+  describe("High-Probability Matches Tab & Split-Pane Master-Detail View", () => {
+    it("calls getJobMatches with page_size=15 and renders split-pane list and detail panel", async () => {
       api.getJobMatches.mockResolvedValueOnce({
         persona_id: "persona-123",
         persona_name: "AI Engineer Lens",
-        total_count: 1,
+        total_count: 2,
         page: 1,
-        page_size: 25,
-        jobs: [mockMatchJob],
+        page_size: 15,
+        jobs: [mockMatchJob, secondMatchJob],
       });
 
       renderDashboard({
@@ -80,20 +109,83 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
         expect(api.getJobMatches).toHaveBeenCalledWith(
           expect.objectContaining({
             persona_id: "persona-123",
+            page: 1,
+            page_size: 15,
             min_score: 0.0,
           })
         );
       });
 
-      expect(await screen.findByText("Senior AI Platform Engineer")).toBeInTheDocument();
-      expect(screen.getByText("Anthropic")).toBeInTheDocument();
-      expect(screen.getByText("88% Match")).toBeInTheDocument();
-      expect(screen.getByText("Python")).toBeInTheDocument();
+      expect(await screen.findByTestId("matches-split-pane")).toBeInTheDocument();
+      expect(screen.getByTestId("job-detail-panel")).toBeInTheDocument();
+      expect(screen.getAllByText("Senior AI Platform Engineer").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Anthropic").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("88% Match").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Python").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("Missing: Triton")).toBeInTheDocument();
       expect(screen.getByText("Equiv: AWS → GCP")).toBeInTheDocument();
+      expect(
+        screen.getByText(/Build low-latency inference cluster orchestration/i)
+      ).toBeInTheDocument();
+
+      // Clicking the second card updates the right-hand detail panel
+      const secondCard = screen.getByTestId("match-card-match-job-002");
+      fireEvent.click(secondCard);
+      expect(
+        await screen.findByText(/Architect global payment ledger pipelines/i)
+      ).toBeInTheDocument();
     });
 
-    it("renders external Apply link and posted date badge on job cards", async () => {
+    it("hides % Match badge in Explorer (unbiased) mode", async () => {
+      api.getJobMatches.mockResolvedValue({
+        jobs: [
+          {
+            ...mockMatchJob,
+            match_score: null,
+            probability_band: "unranked",
+            breakdown: null,
+          },
+        ],
+        total_count: 1,
+      });
+
+      renderDashboard({}, ["/?mode=unbiased"]);
+
+      expect(
+        (await screen.findAllByText("Senior AI Platform Engineer")).length
+      ).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText(/% Match/i)).not.toBeInTheDocument();
+    });
+
+    it("renders pagination controls when total_count exceeds 15", async () => {
+      api.getJobMatches.mockResolvedValue({
+        jobs: [mockMatchJob],
+        total_count: 32,
+        page: 1,
+        page_size: 15,
+      });
+
+      renderDashboard();
+
+      expect(await screen.findByTestId("matches-pagination")).toBeInTheDocument();
+      expect(screen.getByTestId("pagination-summary")).toHaveTextContent(
+        "Showing 1–15 of 32 (max 15 per page)"
+      );
+
+      const nextBtn = screen.getByRole("button", { name: /Next/i });
+      fireEvent.click(nextBtn);
+
+      await waitFor(() => {
+        expect(api.getJobMatches).toHaveBeenCalledWith(
+          expect.objectContaining({
+            page: 2,
+            page_size: 15,
+          })
+        );
+      });
+    });
+
+    it("renders external Apply link and posted date badge on job detail panel", async () => {
       api.getJobMatches.mockResolvedValueOnce({
         jobs: [mockMatchJob],
         total_count: 1,
@@ -101,9 +193,8 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
 
       renderDashboard();
 
-      expect(await screen.findByText("Senior AI Platform Engineer")).toBeInTheDocument();
+      await screen.findAllByText("Senior AI Platform Engineer");
 
-      // Verify concise 'Apply' button
       const applyBtn = screen.getByTestId("apply-link-match-job-001");
       expect(applyBtn).toBeInTheDocument();
       expect(applyBtn).toHaveAttribute("href", "https://jobs.lever.co/anthropic/001");
@@ -111,11 +202,10 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
       expect(applyBtn).toHaveAttribute("rel", "noopener noreferrer");
       expect(applyBtn).toHaveTextContent("Apply");
 
-      // Verify relative posted date badge (2d ago)
-      expect(screen.getByText("2d ago")).toBeInTheDocument();
+      expect(screen.getAllByText("2d ago").length).toBeGreaterThanOrEqual(1);
     });
 
-    it("triggers onSelectJob when clicking Tailor CV button on a match card", async () => {
+    it("triggers onSelectJob when clicking Tailor CV button on detail panel", async () => {
       api.getJobMatches.mockResolvedValueOnce({
         jobs: [mockMatchJob],
         total_count: 1,
@@ -234,7 +324,7 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
       });
     });
 
-    it("filters matches by posted date range", async () => {
+    it("opens SearchFilterModal when clicking All Filters and filters by date posted & work auth", async () => {
       api.getJobMatches.mockResolvedValue({
         jobs: [mockMatchJob],
         total_count: 1,
@@ -242,13 +332,22 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
 
       renderDashboard();
 
+      const openModalBtn = screen.getByTestId("open-filter-modal-btn");
+      fireEvent.click(openModalBtn);
+
+      expect(await screen.findByTestId("search-filter-modal")).toBeInTheDocument();
+
       const postedSelect = screen.getByLabelText("Filter by date posted");
       fireEvent.change(postedSelect, { target: { value: "7" } });
+
+      const workAuthSelect = screen.getByLabelText("Filter by work authorization");
+      fireEvent.change(workAuthSelect, { target: { value: "f1_opt_cpt" } });
 
       await waitFor(() => {
         expect(api.getJobMatches).toHaveBeenCalledWith(
           expect.objectContaining({
             posted_within: 7,
+            work_auth_tier: "f1_opt_cpt",
           })
         );
       });
@@ -299,7 +398,7 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
       expect(locationInput.value).toBe("Seattle");
     });
 
-    it("renders single consolidated filter row and separate sorting row without duplicates", async () => {
+    it("renders brief daily filter row and separate sorting row with All Filters modal trigger", async () => {
       api.getJobMatches.mockResolvedValue({
         jobs: [mockMatchJob],
         total_count: 1,
@@ -307,16 +406,13 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
 
       renderDashboard();
 
-      // Single search filters row and single sorting row
       const filterRow = screen.getByTestId("search-filters-row");
       const sortRow = screen.getByTestId("sorting-controls-row");
       expect(filterRow).toBeInTheDocument();
       expect(sortRow).toBeInTheDocument();
       expect(filterRow).not.toContainElement(sortRow);
 
-      // Verify exactly one Workplace Modality select, one Work Auth select, and one Sort select
-      expect(screen.getAllByLabelText("Filter by workplace modality")).toHaveLength(1);
-      expect(screen.getAllByLabelText("Filter by work authorization")).toHaveLength(1);
+      expect(screen.getByTestId("open-filter-modal-btn")).toBeInTheDocument();
       expect(screen.getAllByLabelText("Sort match opportunities")).toHaveLength(1);
     });
 
@@ -337,11 +433,9 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
       const searchInput = screen.getByTestId("matches-search-input");
       const chipsRow = await screen.findByTestId("omnibar-chips-row");
 
-      // Chip is rendered in the dedicated row below the input, not inside the input wrapper
       expect(chipsRow).toHaveTextContent("HealthTech");
       expect(chipsRow).not.toHaveTextContent("Vertical:");
 
-      // Clicking Clear omnibar clears only searchInput, keeping chip and location intact
       const clearOmnibarBtn = screen.getByLabelText("Clear omnibar");
       fireEvent.click(clearOmnibarBtn);
 
@@ -421,16 +515,13 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
 
       renderDashboard();
 
-      // Initially on High-Probability Matches tab
       expect(screen.getByText(/High-Probability Matches/i)).toBeInTheDocument();
 
-      // Click Direct ATS Search tab
       const searchTabBtn = screen.getByRole("button", {
         name: /Direct ATS Search & Ingest/i,
       });
       fireEvent.click(searchTabBtn);
 
-      // Now on ATS search tab
       expect(
         await screen.findByText(/Suggested Search Keywords/i)
       ).toBeInTheDocument();

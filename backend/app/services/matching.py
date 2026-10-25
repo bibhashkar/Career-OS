@@ -224,14 +224,228 @@ class JobMatchResult(BaseModel):
     visa_sponsorship: str | None = None
     apply_url: str | None = None
     posted_at: datetime | None = None
-    match_score: float = Field(..., description="P(Match) acceptance probability.")
+    raw_description: str | None = None
+    department: str | None = None
+    seniority_level: str | None = None
+    industry: str | None = None
+    match_score: float | None = Field(
+        default=None, description="P(Match) acceptance probability (None in Explorer)."
+    )
     hard_gate_pass: bool
-    probability_band: str = Field(..., description="'high', 'moderate', or 'low'")
+    probability_band: str = Field(
+        default="unranked", description="'high', 'moderate', 'low', or 'unranked'"
+    )
     breakdown: MatchFactorBreakdown | None = None
     matched_skills: list[str] = Field(default_factory=list)
     missing_dealbreakers: list[str] = Field(default_factory=list)
     phrasing_equivalents: list[dict[str, str]] = Field(default_factory=list)
     gate_notes: list[str] = Field(default_factory=list)
+
+
+NON_TECHNICAL_FAMILIES: set[str] = {
+    "sales_gtm",
+    "marketing",
+    "people_hr",
+    "legal_finance",
+    "operations",
+}
+
+TECHNICAL_PRODUCT_FAMILIES: set[str] = {
+    "engineering",
+    "data_ai",
+    "security_it",
+    "product_design",
+}
+
+
+def classify_functional_family(title: str, department: str | None = None) -> str:
+    """
+    Classify a job title and optional department into a canonical functional family.
+
+    Evaluates explicit non-technical role patterns first so titles like
+    'Business Development Representative' or 'Technical Recruiter' do not
+    accidentally leak into technical streams.
+    """
+    text = f"{title or ''} {department or ''}".lower()
+
+    # 1. Non-technical functions (evaluated first for precision)
+    people_hr_terms = (
+        "recruiter",
+        "recruiting",
+        "talent acquisition",
+        "sourcer",
+        "people partner",
+        "people operations",
+        "hrbp",
+        "human resources",
+    )
+    if any(term in text for term in people_hr_terms):
+        return "people_hr"
+
+    sales_gtm_terms = (
+        "business development representative",
+        "bdr",
+        "sales development",
+        "sdr",
+        "account executive",
+        "account manager",
+        "customer success",
+        "sales manager",
+        "regional sales",
+        "enterprise sales",
+        "solutions consultant",
+        "partner manager",
+        "partnerships",
+        "revenue operations",
+        "deal desk",
+        "sales operations",
+        "commercial",
+    )
+    if any(term in text for term in sales_gtm_terms) and "engineer" not in text:
+        return "sales_gtm"
+
+    legal_finance_terms = (
+        "counsel",
+        "attorney",
+        "legal",
+        "paralegal",
+        "public policy",
+        "government affairs",
+        "accountant",
+        "accounting",
+        "controller",
+        "fp&a",
+        "tax ",
+        "payroll",
+        "internal audit",
+        "compliance officer",
+    )
+    if any(term in text for term in legal_finance_terms) and "engineer" not in text:
+        return "legal_finance"
+
+    marketing_terms = (
+        "marketing",
+        "brand ",
+        "communications",
+        "public relations",
+        "social media",
+        "copywriter",
+        "content strategist",
+        "events manager",
+        "demand generation",
+        "community manager",
+    )
+    if any(term in text for term in marketing_terms) and "engineer" not in text:
+        return "marketing"
+
+    operations_terms = (
+        "executive assistant",
+        "office manager",
+        "receptionist",
+        "facilities",
+        "workplace manager",
+        "physical security",
+    )
+    if any(term in text for term in operations_terms) and "engineer" not in text:
+        return "operations"
+
+    # 2. Technical & Product functions
+    data_ai_terms = (
+        "machine learning",
+        "data scientist",
+        "data engineer",
+        "ai ",
+        "ml ",
+        "research scientist",
+        "research engineer",
+        "deep learning",
+        "computer vision",
+        "nlp",
+        "llm",
+        "quant ",
+        "quantitative",
+        "analytics engineer",
+    )
+    if any(term in text for term in data_ai_terms):
+        return "data_ai"
+
+    security_terms = (
+        "security",
+        "cybersecurity",
+        "infosec",
+        "appsec",
+        "cryptography",
+        "penetration",
+    )
+    if any(term in text for term in security_terms):
+        return "security_it"
+
+    product_design_terms = (
+        "product manager",
+        "product designer",
+        "ux ",
+        "ui/ux",
+        "user researcher",
+        "technical program manager",
+        "tpm",
+        "design systems",
+    )
+    if any(term in text for term in product_design_terms):
+        return "product_design"
+
+    engineering_terms = (
+        "software",
+        "engineer",
+        "developer",
+        "frontend",
+        "front-end",
+        "backend",
+        "back-end",
+        "full stack",
+        "fullstack",
+        "sre",
+        "devops",
+        "platform",
+        "infrastructure",
+        "systems",
+        "embedded",
+        "firmware",
+        "mobile",
+        "ios",
+        "android",
+        "qa ",
+        "architect",
+        "compiler",
+        "kernel",
+        "distributed",
+    )
+    if any(term in text for term in engineering_terms):
+        return "engineering"
+
+    return "general"
+
+
+def derive_candidate_functional_families(
+    persona: CandidatePersona, blocks: list[CVBlock]
+) -> set[str]:
+    """Derive the set of functional role families represented by a candidate."""
+    families: set[str] = set()
+    for role in persona.target_roles or []:
+        fam = classify_functional_family(role)
+        if fam != "general":
+            families.add(fam)
+    if persona.headline:
+        fam = classify_functional_family(persona.headline)
+        if fam != "general":
+            families.add(fam)
+    for b in blocks:
+        if b.title:
+            fam = classify_functional_family(b.title)
+            if fam != "general":
+                families.add(fam)
+    if not families:
+        return set(TECHNICAL_PRODUCT_FAMILIES)
+    return families
 
 
 def calculate_prestige_score(organizations: list[str]) -> float:
@@ -1084,28 +1298,47 @@ def calculate_probabilistic_gate(
         notes.append("Remote modality aligned.")
     else:
         # Job requires physical office presence (on_site or hybrid)
-        matched_loc = any(
-            loc.lower() in job_loc_lower
-            for loc in candidate_locations
-            if loc.lower() != "remote"
-        )
-        if not matched_loc:
-            g_prob = 0.0
-            hard_pass = False
-            notes.append(
-                f"{workplace_lower.capitalize()} in {job_location} "
-                "outside candidate commuting zone."
-            )
-        else:
+        physical_locs = [
+            loc.lower()
+            for loc in (candidate_locations or [])
+            if loc and loc.strip().lower() != "remote"
+        ]
+        if not physical_locs:
+            # Candidate did not specify a physical city constraint: apply soft modality discount
             if cand_pref_lower == "remote":
                 if workplace_lower == "hybrid":
                     g_prob *= 0.85
-                    notes.append("Hybrid arrangement in candidate home metro area.")
+                    notes.append(
+                        f"Hybrid arrangement in {job_location}; soft preference discount applied."
+                    )
                 else:
-                    g_prob *= 0.70
-                    notes.append("On-site requirement in candidate home metro area.")
+                    g_prob *= 0.75
+                    notes.append(
+                        f"On-site requirement in {job_location}; soft preference discount applied."
+                    )
             else:
-                notes.append(f"Physical location match in {job_location}.")
+                notes.append(f"Physical location in {job_location}.")
+        else:
+            matched_loc = any(loc in job_loc_lower for loc in physical_locs)
+            if not matched_loc:
+                g_prob = 0.0
+                hard_pass = False
+                notes.append(
+                    f"{workplace_lower.capitalize()} in {job_location} "
+                    "outside candidate commuting zone."
+                )
+            else:
+                if cand_pref_lower == "remote":
+                    if workplace_lower == "hybrid":
+                        g_prob *= 0.85
+                        notes.append("Hybrid arrangement in candidate home metro area.")
+                    else:
+                        g_prob *= 0.70
+                        notes.append(
+                            "On-site requirement in candidate home metro area."
+                        )
+                else:
+                    notes.append(f"Physical location match in {job_location}.")
 
     return g_prob, hard_pass, notes
 
@@ -1254,19 +1487,16 @@ def build_stage1_query(
 
     # 6. Target Industries
     if filters.target_industries:
-        ind_clauses = [
-            JobListing.industry.ilike(f"%{ind}%") for ind in filters.target_industries
-        ]
+        ind_clauses = []
+        for ind in filters.target_industries:
+            ind_clauses.append(JobListing.industry.ilike(f"%{ind}%"))
+            ind_clauses.append(JobListing.industry_vertical.ilike(f"%{ind}%"))
         query = query.where(or_(*ind_clauses))
 
     # 7. Seniority Levels
     if filters.seniority_levels:
         sen_clauses = [
-            or_(
-                JobListing.seniority_level.ilike(f"%{s}%"),
-                JobListing.title.ilike(f"%{s}%"),
-            )
-            for s in filters.seniority_levels
+            JobListing.title.ilike(f"%{s}%") for s in filters.seniority_levels
         ]
         query = query.where(or_(*sen_clauses))
 
@@ -1281,16 +1511,29 @@ def build_stage1_query(
         ]
         query = query.where(and_(*skill_clauses))
 
-    # 9. Raw Residual Query
+    # 9. Raw Residual Query (Structured Title, Company, Industry — never raw description boilerplate)
     if filters.raw_query and filters.raw_query.strip():
-        q_term = f"%{filters.raw_query.strip()}%"
-        query = query.where(
-            or_(
-                JobListing.title.ilike(q_term),
-                JobListing.company_name.ilike(q_term),
-                JobListing.raw_description.ilike(q_term),
-            )
-        )
+        raw_clean = filters.raw_query.strip()
+        q_term = f"%{raw_clean}%"
+        tokens = [t.strip() for t in raw_clean.split() if len(t.strip()) >= 2]
+        structured_clauses = [
+            JobListing.title.ilike(q_term),
+            JobListing.company_name.ilike(q_term),
+            JobListing.industry.ilike(q_term),
+            JobListing.industry_vertical.ilike(q_term),
+        ]
+        if len(tokens) > 1:
+            token_title_clauses = [
+                or_(
+                    JobListing.title.ilike(f"%{tok}%"),
+                    JobListing.company_name.ilike(f"%{tok}%"),
+                    JobListing.industry.ilike(f"%{tok}%"),
+                    JobListing.industry_vertical.ilike(f"%{tok}%"),
+                )
+                for tok in tokens
+            ]
+            structured_clauses.append(and_(*token_title_clauses))
+        query = query.where(or_(*structured_clauses))
 
     return query
 
@@ -1592,16 +1835,29 @@ async def retrieve_stage1_candidates(
                 )
             )
 
-        # Search keyword filter (title, company, description)
+        # Search keyword filter (structured title, company, industry — never raw description boilerplate)
         if search_query and search_query.strip():
-            q_term = f"%{search_query.strip()}%"
-            base_query = base_query.where(
-                or_(
-                    JobListing.title.ilike(q_term),
-                    JobListing.company_name.ilike(q_term),
-                    JobListing.raw_description.ilike(q_term),
-                )
-            )
+            raw_clean = search_query.strip()
+            q_term = f"%{raw_clean}%"
+            tokens = [t.strip() for t in raw_clean.split() if len(t.strip()) >= 2]
+            structured_clauses = [
+                JobListing.title.ilike(q_term),
+                JobListing.company_name.ilike(q_term),
+                JobListing.industry.ilike(q_term),
+                JobListing.industry_vertical.ilike(q_term),
+            ]
+            if len(tokens) > 1:
+                token_title_clauses = [
+                    or_(
+                        JobListing.title.ilike(f"%{tok}%"),
+                        JobListing.company_name.ilike(f"%{tok}%"),
+                        JobListing.industry.ilike(f"%{tok}%"),
+                        JobListing.industry_vertical.ilike(f"%{tok}%"),
+                    )
+                    for tok in tokens
+                ]
+                structured_clauses.append(and_(*token_title_clauses))
+            base_query = base_query.where(or_(*structured_clauses))
 
         # Date recency filter
         if posted_within_days and posted_within_days > 0:
@@ -1645,8 +1901,8 @@ async def retrieve_stage1_candidates(
         for job in skill_res.scalars().all():
             candidate_map[job.id] = job
 
-    # Fallback if specific streams were too narrow
-    if len(candidate_map) < limit:
+    # Fallback ONLY if all targeted streams returned zero candidates
+    if not candidate_map:
         broad_stmt = base_query.limit(limit)
         broad_res = await db.execute(broad_stmt)
         for job in broad_res.scalars().all():
@@ -1692,10 +1948,6 @@ async def retrieve_stage1_candidates(
 
     if not candidate_jobs:
         return []
-
-    # If total candidate pool is within limit, return candidates directly
-    if len(candidate_jobs) <= limit:
-        return candidate_jobs
 
     # Reciprocal Rank Fusion (k = 60)
     # Stream 1: Skill & Role Alignment
@@ -1885,6 +2137,7 @@ async def retrieve_and_rank_jobs(
                 if dist > filters.max_commute_miles:
                     continue
 
+            job_reqs = job.ats_requirements or {}
             unbiased_matches.append(
                 JobMatchResult(
                     job_id=str(job.id),
@@ -1896,9 +2149,13 @@ async def retrieve_and_rank_jobs(
                     visa_sponsorship=job.visa_sponsorship,
                     apply_url=job.apply_url or job.url,
                     posted_at=job.posted_at,
-                    match_score=1.0,
+                    raw_description=job.raw_description,
+                    department=job_reqs.get("department"),
+                    seniority_level=job_reqs.get("seniority_level"),
+                    industry=job.industry_vertical or job.industry,
+                    match_score=None,
                     hard_gate_pass=True,
-                    probability_band="high",
+                    probability_band="unranked",
                     breakdown=None,
                     matched_skills=[],
                     missing_dealbreakers=[],
@@ -1960,6 +2217,12 @@ async def retrieve_and_rank_jobs(
     prestige_score = calculate_prestige_score(organizations)
     achievement_score = calculate_achievement_score(blocks)
     candidate_domain_profile = derive_candidate_domain_profile(persona, blocks)
+    candidate_func_families = derive_candidate_functional_families(persona, blocks)
+    candidate_has_non_tech = bool(candidate_func_families & NON_TECHNICAL_FAMILIES)
+    query_func_family = (
+        classify_functional_family(search_query) if search_query else "general"
+    )
+    cand_sen_rank = SENIORITY_RANKS.get((persona.seniority_level or "mid").lower(), 2)
     candidate_block_vectors = [
         (
             _resolve_vector(b.embedding, f"{b.title} {b.content or ''}"),
@@ -1970,6 +2233,18 @@ async def retrieve_and_rank_jobs(
 
     for job in candidate_jobs:
         reqs = job.ats_requirements or {}
+        job_dept = reqs.get("department")
+        job_func_family = classify_functional_family(job.title or "", job_dept)
+
+        # Functional Role Family Gate: Prevent non-technical roles (BDR, Sales, HR, Legal, Marketing)
+        # from polluting a technical candidate's Grounded feed unless explicitly searched
+        if (
+            job_func_family in NON_TECHNICAL_FAMILIES
+            and not candidate_has_non_tech
+            and query_func_family != job_func_family
+        ):
+            continue
+
         job_skills = reqs.get("hard_skills", [])
         if not job_skills:
             # Fallback to keywords in job description
@@ -1991,6 +2266,18 @@ async def retrieve_and_rank_jobs(
         d_core = eval_res.d_core
         matched_s = eval_res.matched_skills
         missing_s = eval_res.missing_skills
+
+        # Core skill dealbreaker multiplier synchronization (with calculate_match_upgraded)
+        if core_skills and len(core_skills) >= 2:
+            matched_core_count = sum(
+                1
+                for cs in core_skills
+                if normalize_skill(cs) in candidate_skills_lower
+                or cs.lower() in [m.lower() for m in matched_s]
+            )
+            if matched_core_count == 0:
+                d_core = min(d_core, 0.20)
+
         equivs = [
             {
                 "job_term": t.job_skill.title(),
@@ -2028,6 +2315,9 @@ async def retrieve_and_rank_jobs(
             job_seniority=job_sen,
             job_min_years=job_exp_years,
         )
+        job_sen_rank = SENIORITY_RANKS.get((job_sen or "").lower(), cand_sen_rank)
+        if abs(cand_sen_rank - job_sen_rank) >= 3 or s_seniority <= 0.15:
+            d_core = min(d_core, 0.25)
 
         # 4. Job-Specific Archetype Alignment (0.15 weight)
         s_archetype = calculate_archetype_score(
@@ -2045,6 +2335,15 @@ async def retrieve_and_rank_jobs(
             candidate_domain_profile=candidate_domain_profile,
         )
         s_context = (1.0 - beta_domain) * s_archetype + beta_domain * s_domain
+        if beta_domain == 1.0 and s_domain == 0.0:
+            d_core = min(d_core, 0.25)
+        elif (
+            beta_domain >= 0.5
+            and s_domain == 0.0
+            and str(job.industry_vertical or "").lower()
+            in ("hft_quant_trading", "healthtech", "cybersecurity")
+        ):
+            d_core = min(d_core, 0.35)
 
         # 5. Compensation Normalization & Feasibility (0.10 weight)
         s_comp = calculate_compensation_score(
@@ -2081,7 +2380,9 @@ async def retrieve_and_rank_jobs(
         )
         p_match = round((g_prob * d_core) * weighted_core, 4)
 
-        if p_match < min_score:
+        # Enforce strict Grounded Mode floor: never surface 0% / failed hard-gate or < 30% roles
+        effective_min_score = max(min_score, 0.30)
+        if not hard_pass or g_prob <= 0.0 or p_match < effective_min_score:
             continue
 
         # Classify probability band
@@ -2117,6 +2418,10 @@ async def retrieve_and_rank_jobs(
             visa_sponsorship=job.visa_sponsorship,
             apply_url=job.apply_url or job.url,
             posted_at=job.posted_at,
+            raw_description=job.raw_description,
+            department=job_dept,
+            seniority_level=job_sen,
+            industry=job.industry_vertical or job.industry,
             match_score=p_match,
             hard_gate_pass=hard_pass,
             probability_band=band,
@@ -2230,7 +2535,7 @@ async def retrieve_and_rank_jobs(
                 if job_obj
                 else 0.0
             )
-            return (max_s, r.match_score)
+            return (max_s, float(r.match_score or 0.0))
 
         scored_results.sort(key=_sort_salary_key, reverse=True)
     elif effective_sort == "date":
@@ -2244,11 +2549,11 @@ async def retrieve_and_rank_jobs(
                 dt_clean = dt.replace(tzinfo=UTC)
             else:
                 dt_clean = dt
-            return (dt_clean, r.match_score)
+            return (dt_clean, float(r.match_score or 0.0))
 
         scored_results.sort(key=_sort_date_key, reverse=True)
     else:
-        scored_results.sort(key=lambda r: r.match_score, reverse=True)
+        scored_results.sort(key=lambda r: float(r.match_score or 0.0), reverse=True)
 
     total_count = len(scored_results)
     start_idx = (page - 1) * page_size

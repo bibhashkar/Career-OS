@@ -334,8 +334,137 @@ async def test_unbiased_market_explorer_mode(
     assert total_cnt >= 2
     # First job should be job_b because it has higher salary ($260k vs $190k)
     assert results[0].job_id == str(job_b.id)
+    assert results[0].match_score is None
+    assert results[0].probability_band == "unranked"
     assert results[0].breakdown is None
     assert "Market Explorer Mode" in results[0].gate_notes[0]
+
+
+@pytest.mark.asyncio
+async def test_search_precision_excludes_bdr_on_software_engineer_query(
+    db_session: AsyncSession,
+) -> None:
+    """
+    Verify that searching 'software engineer' matches structured title/company/industry
+    and does NOT match a 'Business Development Representative' job that merely mentions
+    'software engineer' in its raw description boilerplate.
+    Also verify Grounded Mode functional family gating and >= 0.30 minimum match floor.
+    """
+    user_uuid = uuid.uuid4()
+    account = UserAccount(
+        id=user_uuid,
+        email="precision.test@example.com",
+        full_name="Software Candidate",
+        visa_status="Citizen",
+        preferred_locations=["Remote"],
+        remote_preference="Remote",
+        is_active=True,
+    )
+    persona = CandidatePersona(
+        id=uuid.uuid4(),
+        user_account_id=user_uuid,
+        name="Backend Engineer",
+        target_roles=["Software Engineer", "Backend Engineer"],
+        years_experience=4,
+        seniority_level="mid",
+    )
+    board_uuid = uuid.uuid4()
+    provider = ATSProvider(
+        code="greenhouse_prec",
+        name="Greenhouse Precision",
+        api_base_url="https://test.greenhouse.io",
+        auth_type="public_api",
+        is_active=True,
+    )
+    board = ATSBoard(
+        id=board_uuid,
+        provider="greenhouse_prec",
+        slug="anthropic",
+        company_name="Anthropic",
+        tier=1,
+        priority=10,
+        is_active=True,
+    )
+    db_session.add_all([account, persona, provider, board])
+    await db_session.flush()
+
+    # Job 1: Actual Software Engineer role
+    swe_job = JobListing(
+        id=uuid.uuid4(),
+        title="Software Engineer, Core Systems",
+        company_name="Anthropic",
+        ats_board_id=board_uuid,
+        ats_provider="greenhouse_prec",
+        ats_board_slug="anthropic",
+        source_job_id="swe-101",
+        industry="technology_software",
+        workplace_type="hybrid",
+        raw_location="San Francisco, CA",
+        raw_description="Build distributed inference systems in Python and Rust.",
+        ats_requirements={"hard_skills": ["Python", "Rust"]},
+        status="active",
+        posted_at=datetime.now(UTC),
+    )
+
+    # Job 2: Business Development Representative that mentions 'software engineer' in description
+    bdr_job = JobListing(
+        id=uuid.uuid4(),
+        title="Business Development Representative",
+        company_name="Anthropic",
+        ats_board_id=board_uuid,
+        ats_provider="greenhouse_prec",
+        ats_board_slug="anthropic",
+        source_job_id="bdr-5396186008",
+        industry="technology_software",
+        workplace_type="hybrid",
+        raw_location="San Francisco, CA",
+        raw_description=(
+            "Partner with enterprise customers and collaborate with our software engineer "
+            "and product teams to drive AI adoption."
+        ),
+        ats_requirements={"hard_skills": ["Salesforce", "Outbound Sales"]},
+        status="active",
+        posted_at=datetime.now(UTC),
+    )
+    db_session.add_all([swe_job, bdr_job])
+    await db_session.commit()
+
+    # 1. Test Stage 1 query for 'software engineer' in UNBIASED mode
+    extracted = OmnisearchParser.parse_query("software engineer")
+    search_filters = JobSearchFilterDTO(
+        search_mode=SearchMode.UNBIASED,
+        raw_query=extracted.residual_query,
+    )
+    unbiased_results, _ = await retrieve_and_rank_jobs(
+        db=db_session,
+        persona=persona,
+        account=account,
+        blocks=[],
+        search_query=extracted.residual_query,
+        filters=search_filters,
+    )
+    unbiased_ids = {r.job_id for r in unbiased_results}
+    assert str(swe_job.id) in unbiased_ids
+    assert str(bdr_job.id) not in unbiased_ids
+
+    # 2. Test Grounded Mode without search query: BDR is gated out by functional family
+    # and SWE hybrid job is NOT zeroed out when candidate preferred_locations=['Remote']
+    grounded_filters = JobSearchFilterDTO(
+        search_mode=SearchMode.CV_GROUNDED,
+    )
+    grounded_results, _ = await retrieve_and_rank_jobs(
+        db=db_session,
+        persona=persona,
+        account=account,
+        blocks=[],
+        filters=grounded_filters,
+    )
+    grounded_ids = {r.job_id for r in grounded_results}
+    assert str(swe_job.id) in grounded_ids
+    assert str(bdr_job.id) not in grounded_ids
+    for r in grounded_results:
+        assert r.match_score is not None
+        assert r.match_score >= 0.30
 
 
 @pytest.mark.asyncio
