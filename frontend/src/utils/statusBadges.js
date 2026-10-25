@@ -72,3 +72,21 @@ export function getStatusBadgeClass(status) {
 
   return "bg-slate-800 text-slate-300 border border-slate-700";
 }
+
+/**
+ * Formats workplace modality string into human-readable label.
+ * e.g. "ON_SITE" -> "On-Site", "on_site" -> "On-Site", "hybrid" -> "Hybrid", "remote" -> "Remote"
+ */
+export function formatWorkplaceType(type) {
+  if (!type) return "";
+  const lower = String(type).toLowerCase().replace(/[\s-]+/g, "_");
+  if (lower === "on_site" || lower === "onsite") return "On-Site";
+  if (lower === "hybrid") return "Hybrid";
+  if (lower === "remote") return "Remote";
+  return lower
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join("-");
+}
+

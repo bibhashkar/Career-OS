@@ -25,6 +25,7 @@ import {
   parseJobDescription,
   tokenizeHighlightedText,
 } from "../utils/jobDescriptionParser";
+import { formatWorkplaceType } from "../utils/statusBadges";
 
 function formatRelativeTime(dateString) {
   if (!dateString) return null;
@@ -168,56 +169,42 @@ export function JobDetailPanel({
     >
       {/* Pinned Sticky Action Header */}
       <div className="shrink-0 p-4 sm:p-5 border-b border-slate-700/80 bg-slate-900/80 space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {isGrounded && (
-            <span
-              className={`text-xs font-extrabold px-3 py-1 rounded-lg flex items-center gap-1.5 shadow-sm ${
-                isHigh
-                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
-                  : isModerate
-                    ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
-                    : "bg-sky-500/20 text-sky-300 border border-sky-500/40"
-              }`}
-            >
-              <TrendingUp className="w-3.5 h-3.5" />
-              {matchPct}% Probability of Match
-            </span>
-          )}
-
-          {match.workplace_type && (
-            <span className="text-[11px] font-semibold uppercase px-2.5 py-0.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">
-              {match.workplace_type}
-            </span>
-          )}
-
-          {match.salary_range && (
-            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-              {match.salary_range}
-            </span>
-          )}
-
-          {match.posted_at && (
-            <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-lg bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
-              <Clock className="w-3 h-3 text-slate-500" />
-              {formatRelativeTime(match.posted_at)}
-            </span>
-          )}
-        </div>
-
-        {/* Title & Organization Subhead */}
+        {/* Role Title at the Very Top */}
         <div>
           <h2 className="text-xl font-bold text-white leading-snug">
             {match.title}
           </h2>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300 mt-1">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300 mt-1.5">
             <span className="font-semibold text-sky-300">
               {match.company_name}
             </span>
             <span className="text-slate-500">•</span>
             <span className="flex items-center gap-1 text-slate-400">
-              <MapPin className="w-3 h-3 text-slate-500" />
+              <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" />
               {match.location}
             </span>
+            {match.workplace_type && (
+              <>
+                <span className="text-slate-500">•</span>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
+                  {formatWorkplaceType(match.workplace_type)}
+                </span>
+              </>
+            )}
+            {match.posted_at && (
+              <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1">
+                <Clock className="w-3 h-3 text-slate-500 shrink-0" />
+                {formatRelativeTime(match.posted_at)}
+              </span>
+            )}
+            {match.salary_range && (
+              <>
+                <span className="text-slate-500">•</span>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                  {match.salary_range}
+                </span>
+              </>
+            )}
             {match.department && (
               <>
                 <span className="text-slate-500">•</span>
@@ -228,7 +215,7 @@ export function JobDetailPanel({
         </div>
 
         {/* Action CTA Bar */}
-        <div className="flex flex-wrap items-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
           {match.apply_url && (
             <a
               href={match.apply_url}
@@ -257,18 +244,6 @@ export function JobDetailPanel({
           >
             <MessageSquare className="w-3.5 h-3.5" /> Mock Interview
           </button>
-
-          {isGrounded && onOpenDiagnostics && (
-            <button
-              type="button"
-              onClick={() => onOpenDiagnostics(match)}
-              title="Decompose acceptance probability factors"
-              className="px-3.5 py-2 text-xs font-semibold rounded-xl border border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 transition-all flex items-center gap-1.5"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-              Why this match?
-            </button>
-          )}
         </div>
       </div>
 
@@ -280,16 +255,46 @@ export function JobDetailPanel({
         {/* Grounded Mode Inline Match Intelligence */}
         {isGrounded && (
           <div className="space-y-4 bg-slate-900/70 border border-slate-700/60 rounded-xl p-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-sky-400" />
-                Match Breakdown & Skill Alignment
-              </h3>
-              {breakdown?.d_core !== undefined && breakdown.d_core < 1.0 && (
-                <span className="text-[11px] text-amber-300 font-medium">
-                  Core Multiplier: {Number(breakdown.d_core).toFixed(2)}x
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-sky-400" />
+                  Match Breakdown & Skill Alignment
+                </h3>
+                {breakdown?.d_core !== undefined && breakdown.d_core < 1.0 && (
+                  <span className="text-[11px] text-amber-300 font-medium bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                    Core Multiplier: {Number(breakdown.d_core).toFixed(2)}x
+                  </span>
+                )}
+              </div>
+
+              {/* Match Probability Badge & Diagnostics Trigger in Section */}
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-xs font-extrabold px-3 py-1 rounded-lg flex items-center gap-1.5 shadow-sm ${
+                    isHigh
+                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
+                      : isModerate
+                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
+                        : "bg-sky-500/20 text-sky-300 border border-sky-500/40"
+                  }`}
+                >
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  {matchPct}% Probability of Match
                 </span>
-              )}
+
+                {onOpenDiagnostics && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenDiagnostics(match)}
+                    title="Decompose acceptance probability factors"
+                    className="px-3 py-1 text-xs font-semibold rounded-lg border border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 transition-all flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Why this match?</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* 6-Factor Mini Progress Bars */}
@@ -465,8 +470,14 @@ export function JobDetailPanel({
                     {match.location}
                   </span>
                   {match.workplace_type && (
-                    <span className="px-2 py-0.5 rounded-lg bg-slate-800 border border-slate-700 uppercase font-semibold text-[10px]">
-                      {match.workplace_type}
+                    <span className="px-2 py-0.5 rounded-lg bg-slate-800 border border-slate-700 font-semibold text-[10px] text-slate-200">
+                      {formatWorkplaceType(match.workplace_type)}
+                    </span>
+                  )}
+                  {match.posted_at && (
+                    <span className="px-2 py-0.5 rounded-lg bg-slate-800 border border-slate-700 flex items-center gap-1 text-slate-400">
+                      <Clock className="w-3 h-3 text-slate-500" />
+                      {formatRelativeTime(match.posted_at)}
                     </span>
                   )}
                   {match.salary_range && (

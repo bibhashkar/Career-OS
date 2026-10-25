@@ -108,4 +108,42 @@ describe("JobDetailPanel Dual-Mode Presentation", () => {
     expect(screen.getByText(/Verbatim ATS Listing Text/i)).toBeInTheDocument();
     expect(screen.getByText(/Copy Raw Text/i)).toBeInTheDocument();
   });
+
+  it("renders role title at the top, formats workplace label as On-Site, and nests match probability & why-match in Match Breakdown", () => {
+    const onOpenDiag = vi.fn();
+    const onSiteJob = {
+      ...mockJob,
+      title: "Principal Infrastructure Architect",
+      workplace_type: "ON_SITE",
+      posted_at: new Date(Date.now() - 60 * 1000).toISOString(), // 1m ago
+    };
+
+    render(
+      <JobDetailPanel
+        match={onSiteJob}
+        onTailorCV={vi.fn()}
+        onStartInterview={vi.fn()}
+        onOpenDiagnostics={onOpenDiag}
+      />,
+    );
+
+    // 1. Role title at the top
+    const heading = screen.getByRole("heading", { level: 2 });
+    expect(heading).toHaveTextContent("Principal Infrastructure Architect");
+
+    // 2. Workplace type formatted as "On-Site"
+    expect(screen.getAllByText("On-Site").length).toBeGreaterThanOrEqual(1);
+
+    // 3. Match Probability & Why this match are in Match Breakdown section
+    const breakdownHeader = screen.getByText(/Match Breakdown & Skill Alignment/i);
+    expect(breakdownHeader).toBeInTheDocument();
+    expect(screen.getByText(/85% Probability of Match/i)).toBeInTheDocument();
+
+    const whyMatchBtn = screen.getByRole("button", {
+      name: /Why this match\?/i,
+    });
+    expect(whyMatchBtn).toBeInTheDocument();
+    fireEvent.click(whyMatchBtn);
+    expect(onOpenDiag).toHaveBeenCalledWith(onSiteJob);
+  });
 });

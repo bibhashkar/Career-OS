@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { getStatusBadgeClass } from "../utils/statusBadges";
+import {
+  getStatusBadgeClass,
+  formatWorkplaceType,
+} from "../utils/statusBadges";
 
 describe("statusBadges utility", () => {
   it("returns emerald badge styling for successful/completed/healthy/active statuses", () => {
@@ -35,5 +38,28 @@ describe("statusBadges utility", () => {
     expect(getStatusBadgeClass("unknown")).toContain("slate");
     expect(getStatusBadgeClass("idle")).toContain("slate");
     expect(getStatusBadgeClass(null)).toContain("slate");
+  });
+
+  describe("formatWorkplaceType helper", () => {
+    it("formats ON_SITE and variations to On-Site", () => {
+      expect(formatWorkplaceType("ON_SITE")).toBe("On-Site");
+      expect(formatWorkplaceType("on_site")).toBe("On-Site");
+      expect(formatWorkplaceType("onsite")).toBe("On-Site");
+      expect(formatWorkplaceType("on-site")).toBe("On-Site");
+    });
+
+    it("formats HYBRID to Hybrid and REMOTE to Remote", () => {
+      expect(formatWorkplaceType("HYBRID")).toBe("Hybrid");
+      expect(formatWorkplaceType("hybrid")).toBe("Hybrid");
+      expect(formatWorkplaceType("REMOTE")).toBe("Remote");
+      expect(formatWorkplaceType("remote")).toBe("Remote");
+    });
+
+    it("handles falsy and custom workplace types gracefully", () => {
+      expect(formatWorkplaceType("")).toBe("");
+      expect(formatWorkplaceType(null)).toBe("");
+      expect(formatWorkplaceType(undefined)).toBe("");
+      expect(formatWorkplaceType("in_office")).toBe("In-Office");
+    });
   });
 });

@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { Dashboard } from "../pages/Dashboard";
+import { Dashboard, generatePaginationPages } from "../pages/Dashboard";
 import * as api from "../services/api";
 
 vi.mock("../services/api", () => ({
@@ -246,6 +246,97 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
           }),
         );
       });
+    });
+
+    it("renders interactive numbered pagination and retains selected job context across page change", async () => {
+      const page1Job = {
+        ...mockMatchJob,
+        job_id: "job-page-1",
+        title: "Page 1 Selected Role",
+      };
+      const page2Job = {
+        ...mockMatchJob,
+        job_id: "job-page-2",
+        title: "Page 2 Unselected Role",
+      };
+
+      api.getJobMatches
+        .mockResolvedValueOnce({
+          jobs: [page1Job],
+          total_count: 45,
+          page: 1,
+          page_size: 15,
+        })
+        .mockResolvedValueOnce({
+          jobs: [page2Job],
+          total_count: 45,
+          page: 2,
+          page_size: 15,
+        });
+
+      renderDashboard();
+
+      // Page 1 is active, page buttons 1, 2, 3 should exist
+      expect(
+        await screen.findByRole("button", { name: "Page 1" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Page 2" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Page 3" })).toBeInTheDocument();
+
+      // Initially Page 1 Selected Role is displayed in detail panel
+      expect(
+        screen.getAllByText("Page 1 Selected Role").length,
+      ).toBeGreaterThanOrEqual(1);
+
+      // Click directly on Page 2 button
+      const page2Btn = screen.getByRole("button", { name: "Page 2" });
+      fireEvent.click(page2Btn);
+
+      await waitFor(() => {
+        expect(api.getJobMatches).toHaveBeenCalledWith(
+          expect.objectContaining({ page: 2 }),
+        );
+      });
+
+      // Crucial UX check: Page 1 Selected Role is STILL displayed in detail panel!
+      expect(screen.getByText("Page 1 Selected Role")).toBeInTheDocument();
+      // And Page 2 job is present in the opportunity list
+      expect(
+        await screen.findByText("Page 2 Unselected Role"),
+      ).toBeInTheDocument();
+    });
+
+    it("correctly generates pagination ranges with ellipses for various page counts", () => {
+      expect(generatePaginationPages(1, 1)).toEqual([1]);
+      expect(generatePaginationPages(1, 3)).toEqual([1, 2, 3]);
+      expect(generatePaginationPages(1, 7)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(generatePaginationPages(2, 10)).toEqual([
+        1,
+        2,
+        3,
+        4,
+        5,
+        "...",
+        10,
+      ]);
+      expect(generatePaginationPages(5, 10)).toEqual([
+        1,
+        "...",
+        4,
+        5,
+        6,
+        "...",
+        10,
+      ]);
+      expect(generatePaginationPages(9, 10)).toEqual([
+        1,
+        "...",
+        6,
+        7,
+        8,
+        9,
+        10,
+      ]);
     });
 
     it("renders external Apply link and posted date badge on job detail panel", async () => {

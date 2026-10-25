@@ -41,8 +41,43 @@ import {
 } from "../components/search/TokenizedOmnibar";
 import { SearchFilterModal } from "../components/search/SearchFilterModal";
 import { EmptyStateRelaxer } from "../components/search/EmptyStateRelaxer";
+import { formatWorkplaceType } from "../utils/statusBadges";
 
 const PAGE_SIZE = 15;
+
+/**
+ * Builds an array of page numbers and ellipsis tokens for pagination.
+ * e.g. [1, 2, 3] or [1, 2, 3, 4, 5, "...", 12]
+ */
+export function generatePaginationPages(currentPage, totalPages, maxVisible = 5) {
+  if (totalPages <= 1) return [1];
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, "...", totalPages];
+  }
+  if (currentPage >= totalPages - 3) {
+    return [
+      1,
+      "...",
+      totalPages - 4,
+      totalPages - 3,
+      totalPages - 2,
+      totalPages - 1,
+      totalPages,
+    ];
+  }
+  return [
+    1,
+    "...",
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+    "...",
+    totalPages,
+  ];
+}
 
 const SAMPLE_KEYWORDS = [
   { label: "Software Developer", query: "Software Developer" },
@@ -149,6 +184,7 @@ export function Dashboard({
   const [selectedMatchId, setSelectedMatchId] = useState(() =>
     getInitialParam("selected", null),
   );
+  const [selectedJob, setSelectedJob] = useState(null);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
   // Filter states
@@ -209,6 +245,7 @@ export function Dashboard({
 
   const handleAddChip = (chip) => {
     setPage(1);
+    setSelectedJob(null);
     if (chip.type === "modality") {
       setModalityFilter(chip.value === "all" ? "" : chip.value);
       return;
@@ -236,6 +273,7 @@ export function Dashboard({
 
   const handleToggleChip = (type, value) => {
     setPage(1);
+    setSelectedJob(null);
     setChips((prev) => {
       const exists = prev.find(
         (c) => c.type === type && c.value.toLowerCase() === value.toLowerCase(),
@@ -257,12 +295,14 @@ export function Dashboard({
 
   const handleRemoveChip = (chipId) => {
     setPage(1);
+    setSelectedJob(null);
     setChips((prev) => prev.filter((c) => c.id !== chipId));
   };
 
   const handleApplyRelaxation = (patch) => {
     if (!patch) return;
     setPage(1);
+    setSelectedJob(null);
     if ("work_auth_tier" in patch) {
       setWorkAuthTier(patch.work_auth_tier);
     }
@@ -367,6 +407,7 @@ export function Dashboard({
 
   const handleClearFilters = () => {
     setPage(1);
+    setSelectedJob(null);
     setSearchQuery("");
     setLocationFilter("");
     setModalityFilter("");
@@ -388,6 +429,7 @@ export function Dashboard({
 
   const handleResetAdvancedFilters = () => {
     setPage(1);
+    setSelectedJob(null);
     setWorkAuthTier("all");
     setMinBaseSalary(null);
     setMaxCommuteMiles(null);
@@ -486,14 +528,29 @@ export function Dashboard({
       setMatches(nextJobs);
       setTotalMatches(res?.total_count || 0);
       setDiagnostics(res?.diagnostics || null);
-      setSelectedMatchId((prevId) => {
-        if (nextJobs.length === 0) return null;
-        const urlSelected = getInitialParam("selected", null);
-        const targetId = prevId || urlSelected;
-        if (targetId && nextJobs.some((j) => j.job_id === targetId))
-          return targetId;
-        return nextJobs[0].job_id;
-      });
+      if (nextJobs.length === 0) {
+        setSelectedMatchId(null);
+        setSelectedJob(null);
+      } else {
+        setSelectedJob((prevJob) => {
+          if (!prevJob) {
+            const urlSelected = getInitialParam("selected", null);
+            const foundUrl = urlSelected
+              ? nextJobs.find((j) => j.job_id === urlSelected)
+              : null;
+            const chosen = foundUrl || nextJobs[0];
+            setSelectedMatchId(chosen.job_id);
+            return chosen;
+          }
+          const inNext = nextJobs.find((j) => j.job_id === prevJob.job_id);
+          if (inNext) {
+            setSelectedMatchId(inNext.job_id);
+            return inNext;
+          }
+          // Retain selectedJob across page transitions so candidate doesn't lose reading context
+          return prevJob;
+        });
+      }
     } catch (err) {
       if (err.code !== "ERR_NETWORK") {
         console.warn("Failed to fetch job matches:", err);
@@ -551,17 +608,25 @@ export function Dashboard({
         e.preventDefault();
         setSelectedMatchId((currId) => {
           const idx = matches.findIndex((m) => m.job_id === currId);
-          if (idx === -1) return matches[0]?.job_id || null;
-          const nextIdx = Math.min(matches.length - 1, idx + 1);
-          return matches[nextIdx].job_id;
+          const nextIdx = idx === -1 ? 0 : Math.min(matches.length - 1, idx + 1);
+          const target = matches[nextIdx];
+          if (target) {
+            setSelectedJob(target);
+            return target.job_id;
+          }
+          return currId;
         });
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedMatchId((currId) => {
           const idx = matches.findIndex((m) => m.job_id === currId);
-          if (idx === -1) return matches[0]?.job_id || null;
-          const prevIdx = Math.max(0, idx - 1);
-          return matches[prevIdx].job_id;
+          const prevIdx = idx === -1 ? 0 : Math.max(0, idx - 1);
+          const target = matches[prevIdx];
+          if (target) {
+            setSelectedJob(target);
+            return target.job_id;
+          }
+          return currId;
         });
       }
     };
@@ -657,7 +722,10 @@ export function Dashboard({
   };
 
   const selectedMatch =
-    matches.find((m) => m.job_id === selectedMatchId) || matches[0] || null;
+    selectedJob ||
+    matches.find((m) => m.job_id === selectedMatchId) ||
+    matches[0] ||
+    null;
   const totalPages = Math.max(1, Math.ceil(totalMatches / PAGE_SIZE));
   const showingFrom = totalMatches === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const showingTo = Math.min(page * PAGE_SIZE, totalMatches);
@@ -1108,8 +1176,8 @@ export function Dashboard({
             </div>
           </div>
 
-          {/* Loading State */}
-          {matchesLoading && (
+          {/* Loading State: Initial load when no matches exist */}
+          {matchesLoading && matches.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 space-y-3">
               <Loader2 className="w-8 h-8 text-sky-400 animate-spin" />
               <p className="text-sm text-slate-400">
@@ -1143,179 +1211,223 @@ export function Dashboard({
             />
           )}
 
-          {/* Master-Detail Split-Pane Opportunities View */}
-          {!matchesLoading && !matchesError && matches.length > 0 && (
-            <div className="flex-1 min-h-0 flex flex-col space-y-2">
-              <div
-                data-testid="matches-split-pane"
-                className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch overflow-hidden"
-              >
-                {/* LEFT PANEL (5 cols): Equal-height Flex Container with Scrollable Opportunity List + Pinned Pagination */}
+          {/* Master-Detail Split-Pane Opportunities View (Preserved During Pagination) */}
+          {(!matchesLoading || matches.length > 0) &&
+            !matchesError &&
+            matches.length > 0 && (
+              <div className="flex-1 min-h-0 flex flex-col space-y-2">
                 <div
-                  className="lg:col-span-5 h-full min-h-0 flex flex-col bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden p-3"
-                  data-testid="matches-left-list"
+                  data-testid="matches-split-pane"
+                  className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch overflow-hidden"
                 >
-                  {/* Left Panel Header Counter */}
-                  <div className="shrink-0 flex items-center justify-between pb-2 border-b border-slate-800/80 mb-2">
-                    <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      {searchMode === "unbiased"
-                        ? `Market Opportunities (${totalMatches})`
-                        : `Ranked Matches (${totalMatches})`}
-                    </h2>
-                    <span
-                      className="text-[11px] text-slate-500"
-                      data-testid="pagination-summary"
-                    >
-                      Showing {showingFrom}–{showingTo} of {totalMatches} (max{" "}
-                      {PAGE_SIZE} per page)
-                    </span>
-                  </div>
+                  {/* LEFT PANEL (5 cols): Equal-height Flex Container with Scrollable Opportunity List + Pinned Pagination */}
+                  <div
+                    className="lg:col-span-5 h-full min-h-0 flex flex-col bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden p-3"
+                    data-testid="matches-left-list"
+                  >
+                    {/* Left Panel Header Counter */}
+                    <div className="shrink-0 flex items-center justify-between pb-2 border-b border-slate-800/80 mb-2">
+                      <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        {searchMode === "unbiased"
+                          ? `Market Opportunities (${totalMatches})`
+                          : `Ranked Matches (${totalMatches})`}
+                      </h2>
+                      <span
+                        className="text-[11px] text-slate-500"
+                        data-testid="pagination-summary"
+                      >
+                        Showing {showingFrom}–{showingTo} of {totalMatches} (max{" "}
+                        {PAGE_SIZE} per page)
+                      </span>
+                    </div>
 
-                  {/* Scrollable Match Cards List */}
-                  <div className="flex-1 overflow-y-auto pr-1 space-y-2">
-                    {matches.map((match) => {
-                      const isSelected = selectedMatch?.job_id === match.job_id;
-                      const showScore =
-                        searchMode !== "unbiased" &&
-                        match.match_score !== null &&
-                        match.match_score !== undefined;
-                      const matchPct = showScore
-                        ? Math.round(match.match_score * 100)
-                        : null;
-                      const isHigh = match.probability_band === "high";
-                      const isModerate = match.probability_band === "moderate";
+                    {/* Scrollable Match Cards List with Subtle Pagination Loading Overlay */}
+                    <div className="relative flex-1 overflow-y-auto pr-1 space-y-2">
+                      {matchesLoading && (
+                        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] z-10 flex items-center justify-center rounded-xl pointer-events-none">
+                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-sky-300 shadow-lg">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Updating matches...</span>
+                          </div>
+                        </div>
+                      )}
+                      {matches.map((match) => {
+                        const isSelected =
+                          selectedMatch?.job_id === match.job_id;
+                        const showScore =
+                          searchMode !== "unbiased" &&
+                          match.match_score !== null &&
+                          match.match_score !== undefined;
+                        const matchPct = showScore
+                          ? Math.round(match.match_score * 100)
+                          : null;
+                        const isHigh = match.probability_band === "high";
+                        const isModerate = match.probability_band === "moderate";
 
-                      return (
-                        <div
-                          key={match.job_id}
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => setSelectedMatchId(match.job_id)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
+                        return (
+                          <div
+                            key={match.job_id}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
                               setSelectedMatchId(match.job_id);
-                            }
-                          }}
-                          data-testid={`match-card-${match.job_id}`}
-                          className={`text-left rounded-xl p-3 border transition-all cursor-pointer space-y-2 ${
-                            isSelected
-                              ? "bg-slate-800/95 border-sky-500 ring-1 ring-sky-500/40 shadow-md shadow-sky-950/50"
-                              : "bg-slate-800/50 border-slate-700/60 hover:bg-slate-800/80 hover:border-slate-600"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="space-y-0.5 min-w-0">
-                              <h3 className="text-xs font-bold text-white leading-snug truncate">
-                                {match.title}
-                              </h3>
-                              <p className="text-[11px] font-medium text-sky-300 truncate">
-                                {match.company_name}
-                              </p>
-                            </div>
+                              setSelectedJob(match);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setSelectedMatchId(match.job_id);
+                                setSelectedJob(match);
+                              }
+                            }}
+                            data-testid={`match-card-${match.job_id}`}
+                            className={`text-left rounded-xl p-3 border transition-all cursor-pointer space-y-2 ${
+                              isSelected
+                                ? "bg-slate-800/95 border-sky-500 ring-1 ring-sky-500/40 shadow-md shadow-sky-950/50"
+                                : "bg-slate-800/50 border-slate-700/60 hover:bg-slate-800/80 hover:border-slate-600"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="space-y-0.5 min-w-0">
+                                <h3 className="text-xs font-bold text-white leading-snug truncate">
+                                  {match.title}
+                                </h3>
+                                <p className="text-[11px] font-medium text-sky-300 truncate">
+                                  {match.company_name}
+                                </p>
+                              </div>
 
-                            {showScore && (
-                              <span
-                                className={`shrink-0 text-[10px] font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1 ${
-                                  isHigh
-                                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
-                                    : isModerate
-                                      ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
-                                      : "bg-sky-500/20 text-sky-300 border border-sky-500/40"
-                                }`}
-                              >
-                                <TrendingUp className="w-2.5 h-2.5" />
-                                {matchPct}% Match
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
-                            <span className="flex items-center gap-1">
-                              <MapPin className="w-2.5 h-2.5 text-slate-500" />
-                              {match.location}
-                            </span>
-                            {match.workplace_type && (
-                              <span className="uppercase px-1.5 py-0.2 rounded bg-slate-900 text-slate-300 border border-slate-700 text-[9px] font-semibold">
-                                {match.workplace_type}
-                              </span>
-                            )}
-                            {match.salary_range && (
-                              <span className="text-emerald-400 font-medium">
-                                {match.salary_range}
-                              </span>
-                            )}
-                            {match.posted_at && (
-                              <span className="flex items-center gap-1 text-slate-500">
-                                <Clock className="w-2.5 h-2.5" />
-                                {formatRelativeTime(match.posted_at)}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Top 3 Matched Skills Preview */}
-                          {showScore && match.matched_skills?.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                              {match.matched_skills
-                                .slice(0, 3)
-                                .map((s, idx) => (
-                                  <span
-                                    key={idx}
-                                    className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
-                                  >
-                                    {s}
-                                  </span>
-                                ))}
-                              {match.matched_skills.length > 3 && (
-                                <span className="text-[9px] text-slate-500">
-                                  +{match.matched_skills.length - 3} more
+                              {showScore && (
+                                <span
+                                  className={`shrink-0 text-[10px] font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1 ${
+                                    isHigh
+                                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
+                                      : isModerate
+                                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
+                                        : "bg-sky-500/20 text-sky-300 border border-sky-500/40"
+                                  }`}
+                                >
+                                  <TrendingUp className="w-2.5 h-2.5" />
+                                  {matchPct}% Match
                                 </span>
                               )}
                             </div>
+
+                            <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
+                              <span className="flex items-center gap-1">
+                                <MapPin className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                                {match.location}
+                              </span>
+                              {match.workplace_type && (
+                                <span className="px-1.5 py-0.2 rounded bg-slate-900 text-slate-300 border border-slate-700 text-[9px] font-semibold">
+                                  {formatWorkplaceType(match.workplace_type)}
+                                </span>
+                              )}
+                              {match.posted_at && (
+                                <span className="flex items-center gap-1 text-slate-400">
+                                  <Clock className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                                  {formatRelativeTime(match.posted_at)}
+                                </span>
+                              )}
+                              {match.salary_range && (
+                                <span className="text-emerald-400 font-medium">
+                                  {match.salary_range}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Top 3 Matched Skills Preview */}
+                            {showScore && match.matched_skills?.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                                {match.matched_skills
+                                  .slice(0, 3)
+                                  .map((s, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
+                                    >
+                                      {s}
+                                    </span>
+                                  ))}
+                                {match.matched_skills.length > 3 && (
+                                  <span className="text-[9px] text-slate-500">
+                                    +{match.matched_skills.length - 3} more
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Pinned Pagination Footer Bar with Interactive Multi-Page Numbered Buttons */}
+                    {totalPages > 1 && (
+                      <div
+                        data-testid="matches-pagination"
+                        className="shrink-0 flex items-center justify-between pt-2 mt-2 border-t border-slate-800 text-xs"
+                      >
+                        <button
+                          type="button"
+                          disabled={page <= 1}
+                          onClick={() => setPage((p) => Math.max(1, p - 1))}
+                          aria-label="Previous"
+                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 font-medium border border-slate-700 flex items-center gap-1 transition-colors text-xs"
+                        >
+                          <ChevronLeft className="w-3 h-3" />
+                          <span className="hidden sm:inline">Previous</span>
+                        </button>
+
+                        {/* Numbered Page Buttons with Direct Jumping */}
+                        <div className="flex items-center gap-1">
+                          {generatePaginationPages(page, totalPages).map(
+                            (item, idx) => {
+                              if (item === "...") {
+                                return (
+                                  <span
+                                    key={`ellipsis-${idx}`}
+                                    className="px-1 text-slate-500 font-bold select-none text-xs"
+                                  >
+                                    ...
+                                  </span>
+                                );
+                              }
+                              const isCurrent = item === page;
+                              return (
+                                <button
+                                  key={`page-${item}`}
+                                  type="button"
+                                  onClick={() => setPage(item)}
+                                  aria-label={`Page ${item}`}
+                                  aria-current={isCurrent ? "page" : undefined}
+                                  className={`min-w-[28px] h-7 px-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                    isCurrent
+                                      ? "bg-sky-600 text-white shadow-sm shadow-sky-600/30"
+                                      : "bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60"
+                                  }`}
+                                >
+                                  {item}
+                                </button>
+                              );
+                            },
                           )}
                         </div>
-                      );
-                    })}
+
+                        <button
+                          type="button"
+                          disabled={page >= totalPages}
+                          onClick={() =>
+                            setPage((p) => Math.min(totalPages, p + 1))
+                          }
+                          aria-label="Next"
+                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 font-medium border border-slate-700 flex items-center gap-1 transition-colors text-xs"
+                        >
+                          <span className="hidden sm:inline">Next</span>
+                          <ChevronRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Pinned Pagination Footer Bar */}
-                  {totalPages > 1 && (
-                    <div
-                      data-testid="matches-pagination"
-                      className="shrink-0 flex items-center justify-between pt-2 mt-2 border-t border-slate-800 text-xs"
-                    >
-                      <button
-                        type="button"
-                        disabled={page <= 1}
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 font-medium border border-slate-700 flex items-center gap-1 transition-colors text-xs"
-                      >
-                        <ChevronLeft className="w-3 h-3" />
-                        Previous
-                      </button>
-
-                      <span className="text-slate-400 font-medium text-[11px]">
-                        Page{" "}
-                        <span className="text-white font-bold">{page}</span> of{" "}
-                        <span className="text-white font-bold">
-                          {totalPages}
-                        </span>
-                      </span>
-
-                      <button
-                        type="button"
-                        disabled={page >= totalPages}
-                        onClick={() =>
-                          setPage((p) => Math.min(totalPages, p + 1))
-                        }
-                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 font-medium border border-slate-700 flex items-center gap-1 transition-colors text-xs"
-                      >
-                        Next
-                        <ChevronRight className="w-3 h-3" />
-                      </button>
-                    </div>
-                  )}
-                </div>
 
                 {/* RIGHT PANEL (7 cols): Full Height Job Detail Panel */}
                 <div className="lg:col-span-7 h-full min-h-0 overflow-hidden">
