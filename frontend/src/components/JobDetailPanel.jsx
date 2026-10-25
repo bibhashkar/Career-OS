@@ -47,11 +47,11 @@ export function JobDetailPanel({
     return (
       <div
         data-testid="job-detail-empty"
-        className="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-8 text-center space-y-3"
+        className="h-full flex flex-col items-center justify-center p-8 text-center space-y-3 bg-slate-800/40 border border-slate-700/60 rounded-2xl"
       >
-        <Briefcase className="w-10 h-10 text-slate-500 mx-auto" />
+        <Briefcase className="w-10 h-10 text-slate-500" />
         <p className="text-sm font-medium text-slate-300">
-          Select an opportunity from the left list to inspect full role details.
+          Select an opportunity from the list to inspect full role details.
         </p>
       </div>
     );
@@ -104,10 +104,10 @@ export function JobDetailPanel({
   return (
     <div
       data-testid="job-detail-panel"
-      className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-6 shadow-xl space-y-5 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] overflow-y-auto"
+      className="h-full flex flex-col bg-slate-800/90 border border-slate-700/80 rounded-2xl overflow-hidden shadow-xl"
     >
-      {/* Header Section */}
-      <div className="space-y-3 border-b border-slate-700/70 pb-4">
+      {/* Pinned Sticky Action Header */}
+      <div className="shrink-0 p-4 sm:p-5 border-b border-slate-700/80 bg-slate-900/80 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           {isGrounded && (
             <span
@@ -115,8 +115,8 @@ export function JobDetailPanel({
                 isHigh
                   ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
                   : isModerate
-                  ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
-                  : "bg-sky-500/20 text-sky-300 border border-sky-500/40"
+                    ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
+                    : "bg-sky-500/20 text-sky-300 border border-sky-500/40"
               }`}
             >
               <TrendingUp className="w-3.5 h-3.5" />
@@ -125,7 +125,7 @@ export function JobDetailPanel({
           )}
 
           {match.workplace_type && (
-            <span className="text-[11px] font-semibold uppercase px-2.5 py-0.5 rounded-lg bg-slate-900 text-slate-300 border border-slate-700">
+            <span className="text-[11px] font-semibold uppercase px-2.5 py-0.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">
               {match.workplace_type}
             </span>
           )}
@@ -138,7 +138,7 @@ export function JobDetailPanel({
           )}
 
           {match.posted_at && (
-            <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-lg bg-slate-900 text-slate-400 border border-slate-700 flex items-center gap-1">
+            <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-lg bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
               <Clock className="w-3 h-3 text-slate-500" />
               {formatRelativeTime(match.posted_at)}
             </span>
@@ -155,7 +155,7 @@ export function JobDetailPanel({
           <h2 className="text-xl font-bold text-white leading-snug">
             {match.title}
           </h2>
-          <div className="flex flex-wrap items-center gap-2.5 text-xs text-slate-300 mt-1.5">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300 mt-1">
             <span className="font-semibold text-sky-300">
               {match.company_name}
             </span>
@@ -177,7 +177,7 @@ export function JobDetailPanel({
         </div>
 
         {/* Action CTA Bar */}
-        <div className="flex flex-wrap items-center gap-2 pt-2">
+        <div className="flex flex-wrap items-center gap-2 pt-1">
           {match.apply_url && (
             <a
               href={match.apply_url}
@@ -222,114 +222,128 @@ export function JobDetailPanel({
         </div>
       </div>
 
-      {/* Grounded Mode Inline Match Intelligence */}
-      {isGrounded && (
-        <div className="space-y-4 bg-slate-900/70 border border-slate-700/60 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-sky-400" />
-              Match Breakdown & Skill Alignment
-            </h3>
-            {breakdown?.d_core !== undefined && breakdown.d_core < 1.0 && (
-              <span className="text-[11px] text-amber-300 font-medium">
-                Core Multiplier: {Number(breakdown.d_core).toFixed(2)}x
-              </span>
+      {/* Single Continuous Scrollable Body (NO nested scrollbar!) */}
+      <div
+        data-testid="job-detail-scroll-body"
+        className="flex-1 overflow-y-auto p-5 space-y-5"
+      >
+        {/* Grounded Mode Inline Match Intelligence */}
+        {isGrounded && (
+          <div className="space-y-4 bg-slate-900/70 border border-slate-700/60 rounded-xl p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-sky-400" />
+                Match Breakdown & Skill Alignment
+              </h3>
+              {breakdown?.d_core !== undefined && breakdown.d_core < 1.0 && (
+                <span className="text-[11px] text-amber-300 font-medium">
+                  Core Multiplier: {Number(breakdown.d_core).toFixed(2)}x
+                </span>
+              )}
+            </div>
+
+            {/* 6-Factor Mini Progress Bars */}
+            {factorBars.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {factorBars.map((f) => {
+                  const pct = Math.round(
+                    Math.min(1, Math.max(0, f.value)) * 100,
+                  );
+                  return (
+                    <div
+                      key={f.label}
+                      className="bg-slate-800/80 border border-slate-700/60 rounded-lg p-2.5 space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400 truncate">
+                          {f.label}
+                        </span>
+                        <span className="font-bold text-slate-200">{pct}%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            pct >= 75
+                              ? "bg-emerald-500"
+                              : pct >= 50
+                                ? "bg-sky-500"
+                                : "bg-amber-500"
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Skills & Equivalents Pills */}
+            {(match.matched_skills?.length > 0 ||
+              match.missing_dealbreakers?.length > 0 ||
+              match.phrasing_equivalents?.length > 0) && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                {match.matched_skills?.map((skill, sIdx) => (
+                  <span
+                    key={sIdx}
+                    className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 flex items-center gap-1"
+                  >
+                    <CheckCircle2 className="w-2.5 h-2.5" />
+                    {skill}
+                  </span>
+                ))}
+
+                {match.missing_dealbreakers?.map((miss, mIdx) => (
+                  <span
+                    key={mIdx}
+                    className="text-[11px] px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/20"
+                  >
+                    Missing: {miss}
+                  </span>
+                ))}
+
+                {match.phrasing_equivalents?.map((eq, eqIdx) => (
+                  <span
+                    key={eqIdx}
+                    className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
+                  >
+                    Equiv: {eq.candidate_has} →{" "}
+                    {eq.job_requested || eq.job_term}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Gate Notes */}
+            {match.gate_notes?.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 pt-1 border-t border-slate-800">
+                <Info className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <span>{match.gate_notes.join(" • ")}</span>
+              </div>
             )}
           </div>
+        )}
 
-          {/* 6-Factor Mini Progress Bars */}
-          {factorBars.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {factorBars.map((f) => {
-                const pct = Math.round(Math.min(1, Math.max(0, f.value)) * 100);
-                return (
-                  <div
-                    key={f.label}
-                    className="bg-slate-800/80 border border-slate-700/60 rounded-lg p-2.5 space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-slate-400 truncate">{f.label}</span>
-                      <span className="font-bold text-slate-200">{pct}%</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${
-                          pct >= 75
-                            ? "bg-emerald-500"
-                            : pct >= 50
-                            ? "bg-sky-500"
-                            : "bg-amber-500"
-                        }`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+        {/* Full Job Description: Natural document flow without separate nested scrollbox */}
+        <div className="space-y-3">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            Role Description & Requirements
+          </h3>
+          {match.raw_description ? (
+            <div
+              data-testid="job-detail-raw-description"
+              className="text-xs text-slate-200 leading-relaxed whitespace-pre-line bg-slate-900/60 border border-slate-800/80 rounded-xl p-5 shadow-inner"
+            >
+              {match.raw_description}
             </div>
-          )}
-
-          {/* Skills & Equivalents Pills */}
-          {(match.matched_skills?.length > 0 ||
-            match.missing_dealbreakers?.length > 0 ||
-            match.phrasing_equivalents?.length > 0) && (
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              {match.matched_skills?.map((skill, sIdx) => (
-                <span
-                  key={sIdx}
-                  className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 flex items-center gap-1"
-                >
-                  <CheckCircle2 className="w-2.5 h-2.5" />
-                  {skill}
-                </span>
-              ))}
-
-              {match.missing_dealbreakers?.map((miss, mIdx) => (
-                <span
-                  key={mIdx}
-                  className="text-[11px] px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/20"
-                >
-                  Missing: {miss}
-                </span>
-              ))}
-
-              {match.phrasing_equivalents?.map((eq, eqIdx) => (
-                <span
-                  key={eqIdx}
-                  className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
-                >
-                  Equiv: {eq.candidate_has} → {eq.job_requested || eq.job_term}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Gate Notes */}
-          {match.gate_notes?.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 pt-1 border-t border-slate-800">
-              <Info className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-              <span>{match.gate_notes.join(" • ")}</span>
+          ) : (
+            <div className="text-xs text-slate-400 italic bg-slate-900/40 border border-slate-800 rounded-xl p-4">
+              Full job description text is available on the company application
+              page.
             </div>
           )}
         </div>
-      )}
-
-      {/* Full Job Description */}
-      <div className="space-y-2.5">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-          Role Description & Requirements
-        </h3>
-        {match.raw_description ? (
-          <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-line bg-slate-900/50 border border-slate-800 rounded-xl p-4 max-h-[420px] overflow-y-auto">
-            {match.raw_description}
-          </div>
-        ) : (
-          <div className="text-xs text-slate-400 italic bg-slate-900/40 border border-slate-800 rounded-xl p-4">
-            Full job description text is available on the company application page.
-          </div>
-        )}
       </div>
     </div>
   );
 }
-

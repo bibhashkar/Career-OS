@@ -27,11 +27,7 @@ import {
   SlidersHorizontal,
   Home,
 } from "lucide-react";
-import {
-  searchJobs,
-  crossCheckJob,
-  getJobMatches,
-} from "../services/api";
+import { searchJobs, crossCheckJob, getJobMatches } from "../services/api";
 import { CompanyDossierCard } from "../components/CompanyDossierCard";
 import { JobProvenanceBadge } from "../components/JobProvenanceBadge";
 import { AddJobModal } from "../components/AddJobModal";
@@ -120,23 +116,29 @@ export function Dashboard({
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Helper to read initial state from URL search params or localStorage
-  const getInitialParam = (key, fallback) => {
-    const fromUrl = searchParams.get(key);
-    if (fromUrl !== null) return fromUrl;
-    try {
-      const saved = localStorage.getItem(FILTER_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed[key] !== undefined && parsed[key] !== null) return parsed[key];
+  const getInitialParam = useCallback(
+    (key, fallback) => {
+      const fromUrl = searchParams.get(key);
+      if (fromUrl !== null) return fromUrl;
+      try {
+        const saved = localStorage.getItem(FILTER_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed[key] !== undefined && parsed[key] !== null)
+            return parsed[key];
+        }
+      } catch {
+        // ignore JSON parse error
       }
-    } catch {
-      // ignore JSON parse error
-    }
-    return fallback;
-  };
+      return fallback;
+    },
+    [searchParams],
+  );
 
   // Tab Mode: 'matches' (High-Probability Matches) | 'search' (Direct ATS Search)
-  const [activeTab, setActiveTab] = useState(() => getInitialParam("tab", defaultTab));
+  const [activeTab, setActiveTab] = useState(() =>
+    getInitialParam("tab", defaultTab),
+  );
 
   // --- Matches Tab State (ADR-008 Engine) ---
   const [matches, setMatches] = useState([]);
@@ -144,14 +146,24 @@ export function Dashboard({
   const [matchesError, setMatchesError] = useState(null);
   const [totalMatches, setTotalMatches] = useState(0);
   const [page, setPage] = useState(1);
-  const [selectedMatchId, setSelectedMatchId] = useState(null);
+  const [selectedMatchId, setSelectedMatchId] = useState(() =>
+    getInitialParam("selected", null),
+  );
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
   // Filter states
-  const [searchQuery, setSearchQuery] = useState(() => getInitialParam("q", ""));
-  const [locationFilter, setLocationFilter] = useState(() => getInitialParam("loc", ""));
-  const [modalityFilter, setModalityFilter] = useState(() => getInitialParam("modality", ""));
-  const [postedWithinFilter, setPostedWithinFilter] = useState(() => getInitialParam("posted", ""));
+  const [searchQuery, setSearchQuery] = useState(() =>
+    getInitialParam("q", ""),
+  );
+  const [locationFilter, setLocationFilter] = useState(() =>
+    getInitialParam("loc", ""),
+  );
+  const [modalityFilter, setModalityFilter] = useState(() =>
+    getInitialParam("modality", ""),
+  );
+  const [postedWithinFilter, setPostedWithinFilter] = useState(() =>
+    getInitialParam("posted", ""),
+  );
   const [minScoreFilter, setMinScoreFilter] = useState(() => {
     const val = parseFloat(getInitialParam("min_score", "0.0"));
     return isNaN(val) ? 0.0 : val;
@@ -160,11 +172,14 @@ export function Dashboard({
   const [selectedJobForDiag, setSelectedJobForDiag] = useState(null);
 
   // Command-Facet Omnibar & Discovery Engine States (Spec v1.0.0)
-  const [searchMode, setSearchMode] = useState(() => getInitialParam("mode", "cv_grounded"));
+  const [searchMode, setSearchMode] = useState(() =>
+    getInitialParam("mode", "cv_grounded"),
+  );
   const [workAuthTier, setWorkAuthTier] = useState(() => {
     const auth = getInitialParam("auth", "");
     if (auth) return auth;
-    if (getInitialParam("visa", "false") === "true") return "h1b_transfer_sponsor";
+    if (getInitialParam("visa", "false") === "true")
+      return "h1b_transfer_sponsor";
     return "all";
   });
   const [minBaseSalary, setMinBaseSalary] = useState(() => {
@@ -203,7 +218,7 @@ export function Dashboard({
         prev.some(
           (c) =>
             c.type === chip.type &&
-            c.value.toLowerCase() === chip.value.toLowerCase()
+            c.value.toLowerCase() === chip.value.toLowerCase(),
         )
       ) {
         return prev;
@@ -223,7 +238,7 @@ export function Dashboard({
     setPage(1);
     setChips((prev) => {
       const exists = prev.find(
-        (c) => c.type === type && c.value.toLowerCase() === value.toLowerCase()
+        (c) => c.type === type && c.value.toLowerCase() === value.toLowerCase(),
       );
       if (exists) {
         return prev.filter((c) => c.id !== exists.id);
@@ -259,7 +274,7 @@ export function Dashboard({
     }
     if ("workplace_modality" in patch) {
       setModalityFilter(
-        patch.workplace_modality === "all" ? "" : patch.workplace_modality
+        patch.workplace_modality === "all" ? "" : patch.workplace_modality,
       );
     }
     if ("must_have_skills" in patch) {
@@ -299,10 +314,15 @@ export function Dashboard({
     if (postedWithinFilter) params.set("posted", postedWithinFilter);
     if (minScoreFilter > 0) params.set("min_score", String(minScoreFilter));
     if (sortBy && sortBy !== "score") params.set("sort", sortBy);
-    if (searchMode && searchMode !== "cv_grounded") params.set("mode", searchMode);
-    if (workAuthTier && workAuthTier !== "all") params.set("auth", workAuthTier);
+    if (searchMode && searchMode !== "cv_grounded")
+      params.set("mode", searchMode);
+    if (workAuthTier && workAuthTier !== "all")
+      params.set("auth", workAuthTier);
     if (minBaseSalary !== null) params.set("salary", String(minBaseSalary));
-    if (maxCommuteMiles !== null) params.set("commute", String(maxCommuteMiles));
+    if (maxCommuteMiles !== null)
+      params.set("commute", String(maxCommuteMiles));
+    if (activeTab === "matches" && selectedMatchId)
+      params.set("selected", selectedMatchId);
     if (chips.length > 0)
       params.set("chips", encodeURIComponent(JSON.stringify(chips)));
 
@@ -320,6 +340,7 @@ export function Dashboard({
         salary: minBaseSalary,
         commute: maxCommuteMiles,
         chips,
+        selected: selectedMatchId,
       };
       localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(savedState));
     } catch {
@@ -340,6 +361,7 @@ export function Dashboard({
     minBaseSalary,
     maxCommuteMiles,
     chips,
+    selectedMatchId,
     setSearchParams,
   ]);
 
@@ -372,7 +394,7 @@ export function Dashboard({
     setPostedWithinFilter("");
     setMinScoreFilter(0.0);
     setChips((prev) =>
-      prev.filter((c) => c.type !== "seniority" && c.type !== "industry")
+      prev.filter((c) => c.type !== "seniority" && c.type !== "industry"),
     );
   };
 
@@ -466,7 +488,10 @@ export function Dashboard({
       setDiagnostics(res?.diagnostics || null);
       setSelectedMatchId((prevId) => {
         if (nextJobs.length === 0) return null;
-        if (prevId && nextJobs.some((j) => j.job_id === prevId)) return prevId;
+        const urlSelected = getInitialParam("selected", null);
+        const targetId = prevId || urlSelected;
+        if (targetId && nextJobs.some((j) => j.job_id === targetId))
+          return targetId;
         return nextJobs[0].job_id;
       });
     } catch (err) {
@@ -475,7 +500,7 @@ export function Dashboard({
       }
       setMatchesError(
         err.response?.data?.detail ||
-          "Unable to compute candidate job matches. Ensure database has active listings."
+          "Unable to compute candidate job matches. Ensure database has active listings.",
       );
     } finally {
       setMatchesLoading(false);
@@ -494,6 +519,7 @@ export function Dashboard({
     minBaseSalary,
     maxCommuteMiles,
     chips,
+    getInitialParam,
   ]);
 
   // Load matches with debounce when activePersona or filters change
@@ -505,6 +531,44 @@ export function Dashboard({
       return () => clearTimeout(timer);
     }
   }, [activeTab, fetchMatches]);
+
+  // Keyboard arrow navigation for opportunity split-view list
+  useEffect(() => {
+    if (activeTab !== "matches" || matches.length === 0) return;
+
+    const handleKeyDown = (e) => {
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      if (
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        document.activeElement?.isContentEditable
+      ) {
+        return;
+      }
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedMatchId((currId) => {
+          const idx = matches.findIndex((m) => m.job_id === currId);
+          if (idx === -1) return matches[0]?.job_id || null;
+          const nextIdx = Math.min(matches.length - 1, idx + 1);
+          return matches[nextIdx].job_id;
+        });
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedMatchId((currId) => {
+          const idx = matches.findIndex((m) => m.job_id === currId);
+          if (idx === -1) return matches[0]?.job_id || null;
+          const prevIdx = Math.max(0, idx - 1);
+          return matches[prevIdx].job_id;
+        });
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeTab, matches]);
 
   // Direct ATS Search Handler
   const fetchJobs = useCallback(
@@ -528,13 +592,14 @@ export function Dashboard({
         setJobs(data.jobs || []);
       } catch (err) {
         setError(
-          err.response?.data?.detail || "Failed to search job boards. Please retry."
+          err.response?.data?.detail ||
+            "Failed to search job boards. Please retry.",
         );
       } finally {
         setLoading(false);
       }
     },
-    [query, location, visaRequired]
+    [query, location, visaRequired],
   );
 
   const handleSearchSubmit = (e) => {
@@ -568,8 +633,8 @@ export function Dashboard({
       if (res.verification) {
         setJobs((prev) =>
           prev.map((j) =>
-            j.id === jobId ? { ...j, verification: res.verification } : j
-          )
+            j.id === jobId ? { ...j, verification: res.verification } : j,
+          ),
         );
       }
     } catch (err) {
@@ -586,8 +651,8 @@ export function Dashboard({
   const handleDossierUpdated = (jobId, updatedDossier) => {
     setJobs((prev) =>
       prev.map((j) =>
-        j.id === jobId ? { ...j, company_dossier: updatedDossier } : j
-      )
+        j.id === jobId ? { ...j, company_dossier: updatedDossier } : j,
+      ),
     );
   };
 
@@ -598,69 +663,66 @@ export function Dashboard({
   const showingTo = Math.min(page * PAGE_SIZE, totalMatches);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
-      {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-2">
-            <Briefcase className="w-8 h-8 text-sky-400" /> Career Intelligence & Hunter
+    <div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
+      {/* Ultra-Compact Top Header Bar (~44px) */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+        {/* Left: Brand Title & Active Persona Lens */}
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+            <Briefcase className="w-6 h-6 text-sky-400" /> Career Intelligence &
+            Hunter
           </h1>
-          <p className="text-sm text-slate-400 max-w-2xl">
-            Rank verified career opportunities using our ADR-008 Bayesian matching engine,
-            or search and ingest live ATS boards directly.
-          </p>
+          {activeTab === "matches" && (
+            <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-400 bg-slate-900/90 border border-slate-800 px-2.5 py-1 rounded-lg">
+              <span className="text-slate-500 font-medium">Lens:</span>
+              <span className="font-semibold text-sky-300 truncate max-w-[160px]">
+                {activePersona ? activePersona.name : "Universal Profile"}
+              </span>
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Center/Right: Dual Tab Navigation & Actions */}
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+            <button
+              onClick={() => setActiveTab("matches")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                activeTab === "matches"
+                  ? "bg-sky-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-sky-300" />
+              <span>High-Probability Matches</span>
+              {totalMatches > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-sky-950 text-sky-200 border border-sky-400/30">
+                  {totalMatches}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab("search")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                activeTab === "search"
+                  ? "bg-sky-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Search className="w-3.5 h-3.5 text-sky-300" />
+              <span>Direct ATS Search & Ingest</span>
+            </button>
+          </div>
+
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="px-4 py-2.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-medium rounded-xl text-sm transition-all shadow-md shadow-sky-600/20 flex items-center gap-2"
+            className="px-3 py-1.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-medium rounded-xl text-xs transition-all shadow-sm flex items-center gap-1.5"
           >
-            <PlusCircle className="w-4 h-4" /> Import Job
+            <PlusCircle className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Import Job</span>
           </button>
         </div>
-      </div>
-
-      {/* Dual-Mode Tab Navigation */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-        <div className="flex items-center gap-2 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
-          <button
-            onClick={() => setActiveTab("matches")}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
-              activeTab === "matches"
-                ? "bg-sky-600 text-white shadow-md shadow-sky-600/20"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-sky-300" />
-            High-Probability Matches
-            {totalMatches > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-sky-900/80 text-sky-200 border border-sky-400/30">
-                {totalMatches}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveTab("search")}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
-              activeTab === "search"
-                ? "bg-sky-600 text-white shadow-md shadow-sky-600/20"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Search className="w-3.5 h-3.5 text-sky-300" />
-            Direct ATS Search & Ingest
-          </button>
-        </div>
-
-        {activeTab === "matches" && (
-          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400">
-            <span>Lens:</span>
-            <span className="font-semibold text-sky-300 bg-sky-950/60 px-2.5 py-1 rounded-lg border border-sky-800/50">
-              {activePersona ? activePersona.name : "Universal Profile"}
-            </span>
-          </div>
-        )}
       </div>
 
       {/* ============================================================== */}
@@ -799,8 +861,8 @@ export function Dashboard({
                       {workAuthTier === "f1_opt_cpt"
                         ? "F-1 OPT / E-Verify"
                         : workAuthTier === "h1b_transfer_sponsor"
-                        ? "H-1B Sponsor"
-                        : "Domestic Only"}
+                          ? "H-1B Sponsor"
+                          : "Domestic Only"}
                     </span>
                     <button
                       type="button"
@@ -870,7 +932,10 @@ export function Dashboard({
                 {postedWithinFilter && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-slate-700/60 text-slate-300 border border-slate-600">
                     <span>
-                      Past {postedWithinFilter === "1" ? "24h" : `${postedWithinFilter}d`}
+                      Past{" "}
+                      {postedWithinFilter === "1"
+                        ? "24h"
+                        : `${postedWithinFilter}d`}
                     </span>
                     <button
                       type="button"
@@ -905,67 +970,14 @@ export function Dashboard({
               </div>
             )}
 
-            {/* Row 2: Brief Daily Controls (Workplace Quick Pills + Filters Modal Button) */}
-            <div
-              data-testid="search-filters-row"
-              className="flex flex-wrap items-center justify-between gap-2 py-2 px-3 bg-slate-900/60 border border-slate-700/60 rounded-xl text-xs"
-            >
-              {/* Quick Workplace Modality Pills */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Home className="w-3.5 h-3.5 text-sky-400 shrink-0 mr-1" />
-                {QUICK_MODALITIES.map((item) => {
-                  const isSelected = modalityFilter === item.value;
-                  return (
-                    <button
-                      key={item.value || "all"}
-                      type="button"
-                      onClick={() => {
-                        setPage(1);
-                        setModalityFilter(item.value);
-                      }}
-                      className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
-                        isSelected
-                          ? "bg-sky-600 text-white shadow-sm"
-                          : "bg-slate-800/80 text-slate-300 hover:text-white border border-slate-700/70"
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* All Filters Modal Trigger */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsFilterModalOpen(true)}
-                  data-testid="open-filter-modal-btn"
-                  className={`px-3 py-1.5 rounded-xl font-semibold border transition-all flex items-center gap-1.5 ${
-                    advancedFilterCount > 0
-                      ? "bg-sky-500/15 text-sky-300 border-sky-500/50"
-                      : "bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700"
-                  }`}
-                >
-                  <SlidersHorizontal className="w-3.5 h-3.5 text-sky-400" />
-                  <span>All Filters</span>
-                  {advancedFilterCount > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-sky-500 text-white font-bold">
-                      {advancedFilterCount}
-                    </span>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Row 3: Dedicated Sorting, Engine Mode & Actions Row */}
-            <div
-              data-testid="sorting-controls-row"
-              className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-slate-700/50"
-            >
-              {/* Left: Dual Engine Mode Switch */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">Mode:</span>
+            {/* Consolidated Daily Search & Filter Controls */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-700/50 text-xs">
+              {/* Left: Engine Mode Switch & Quick Workplace Modality Pills */}
+              <div
+                data-testid="search-filters-row"
+                className="flex flex-wrap items-center gap-2"
+              >
+                {/* Dual Engine Mode Switch */}
                 <div className="flex items-center gap-1 bg-slate-900/90 border border-slate-700/80 rounded-xl p-0.5 text-xs">
                   <button
                     type="button"
@@ -1001,13 +1013,43 @@ export function Dashboard({
                     <span>Explorer</span>
                   </button>
                 </div>
+
+                <div className="h-4 w-px bg-slate-700/60 hidden sm:block" />
+
+                {/* Quick Workplace Modality Pills */}
+                <div className="flex flex-wrap items-center gap-1">
+                  <Home className="w-3.5 h-3.5 text-sky-400 shrink-0 mr-0.5" />
+                  {QUICK_MODALITIES.map((item) => {
+                    const isSelected = modalityFilter === item.value;
+                    return (
+                      <button
+                        key={item.value || "all"}
+                        type="button"
+                        onClick={() => {
+                          setPage(1);
+                          setModalityFilter(item.value);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                          isSelected
+                            ? "bg-sky-600 text-white shadow-sm"
+                            : "bg-slate-800/80 text-slate-300 hover:text-white border border-slate-700/70"
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* Right: Unified Sort & Actions */}
-              <div className="flex flex-wrap items-center gap-2">
+              {/* Right: Sort, All Filters Modal Trigger & Actions */}
+              <div
+                data-testid="sorting-controls-row"
+                className="flex flex-wrap items-center gap-2"
+              >
                 <div className="flex items-center gap-1.5 text-xs text-slate-400">
                   <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span>Sort:</span>
+                  <span className="hidden sm:inline">Sort:</span>
                   <select
                     value={sortBy}
                     onChange={(e) => {
@@ -1015,7 +1057,7 @@ export function Dashboard({
                       setSortBy(e.target.value);
                     }}
                     aria-label="Sort match opportunities"
-                    className="bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+                    className="bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
                   >
                     <option value="score">Best Match</option>
                     <option value="date">Most Recent</option>
@@ -1023,11 +1065,30 @@ export function Dashboard({
                   </select>
                 </div>
 
+                <button
+                  type="button"
+                  onClick={() => setIsFilterModalOpen(true)}
+                  data-testid="open-filter-modal-btn"
+                  className={`px-2.5 py-1 rounded-xl font-semibold border transition-all flex items-center gap-1.5 ${
+                    advancedFilterCount > 0
+                      ? "bg-sky-500/15 text-sky-300 border-sky-500/50"
+                      : "bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700"
+                  }`}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-sky-400" />
+                  <span>All Filters</span>
+                  {advancedFilterCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-sky-500 text-white font-bold">
+                      {advancedFilterCount}
+                    </span>
+                  )}
+                </button>
+
                 {activeFilterCount > 0 && (
                   <button
                     onClick={handleClearFilters}
                     title="Reset all filters to defaults"
-                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-xs font-medium rounded-xl border border-slate-700 transition-colors"
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-xs font-medium rounded-xl border border-slate-700 transition-colors"
                   >
                     Clear All
                   </button>
@@ -1036,12 +1097,12 @@ export function Dashboard({
                 <button
                   onClick={fetchMatches}
                   disabled={matchesLoading}
-                  className="px-3 py-1.5 bg-slate-700/60 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl transition-colors flex items-center gap-1.5"
+                  className="px-2.5 py-1 bg-slate-700/60 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl transition-colors flex items-center gap-1.5"
                 >
                   <RefreshCw
                     className={`w-3.5 h-3.5 ${matchesLoading ? "animate-spin" : ""}`}
                   />
-                  Re-Score
+                  <span className="hidden sm:inline">Re-Score</span>
                 </button>
               </div>
             </div>
@@ -1084,167 +1145,187 @@ export function Dashboard({
 
           {/* Master-Detail Split-Pane Opportunities View */}
           {!matchesLoading && !matchesError && matches.length > 0 && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">
-                  {searchMode === "unbiased"
-                    ? `Market Explorer Opportunities (${totalMatches})`
-                    : `Ranked Match Opportunities (${totalMatches})`}
-                </h2>
-                <span className="text-xs text-slate-400" data-testid="pagination-summary">
-                  Showing {showingFrom}–{showingTo} of {totalMatches} (max {PAGE_SIZE} per page)
-                </span>
-              </div>
-
+            <div className="space-y-2">
               <div
                 data-testid="matches-split-pane"
-                className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start"
+                className="grid grid-cols-1 lg:grid-cols-12 gap-5 h-[calc(100vh-190px)] min-h-[580px] items-stretch"
               >
-                {/* LEFT PANEL (40% width / 5 cols): Compact Scannable Opportunity List + Pagination */}
-                <div className="lg:col-span-5 space-y-3" data-testid="matches-left-list">
-                  {matches.map((match) => {
-                    const isSelected = selectedMatch?.job_id === match.job_id;
-                    const showScore =
-                      searchMode !== "unbiased" &&
-                      match.match_score !== null &&
-                      match.match_score !== undefined;
-                    const matchPct = showScore
-                      ? Math.round(match.match_score * 100)
-                      : null;
-                    const isHigh = match.probability_band === "high";
-                    const isModerate = match.probability_band === "moderate";
+                {/* LEFT PANEL (5 cols): Equal-height Flex Container with Scrollable Opportunity List + Pinned Pagination */}
+                <div
+                  className="lg:col-span-5 h-full flex flex-col bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden p-3"
+                  data-testid="matches-left-list"
+                >
+                  {/* Left Panel Header Counter */}
+                  <div className="shrink-0 flex items-center justify-between pb-2 border-b border-slate-800/80 mb-2">
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      {searchMode === "unbiased"
+                        ? `Market Opportunities (${totalMatches})`
+                        : `Ranked Matches (${totalMatches})`}
+                    </h2>
+                    <span
+                      className="text-[11px] text-slate-500"
+                      data-testid="pagination-summary"
+                    >
+                      Showing {showingFrom}–{showingTo} of {totalMatches} (max{" "}
+                      {PAGE_SIZE} per page)
+                    </span>
+                  </div>
 
-                    return (
-                      <div
-                        key={match.job_id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => setSelectedMatchId(match.job_id)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            setSelectedMatchId(match.job_id);
-                          }
-                        }}
-                        data-testid={`match-card-${match.job_id}`}
-                        className={`text-left rounded-2xl p-4 border transition-all cursor-pointer space-y-2.5 ${
-                          isSelected
-                            ? "bg-slate-800/95 border-sky-500 ring-1 ring-sky-500/40 shadow-lg shadow-sky-950/50"
-                            : "bg-slate-800/60 border-slate-700/70 hover:bg-slate-800/80 hover:border-slate-600"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="space-y-1 min-w-0">
-                            <h3 className="text-sm font-bold text-white leading-snug truncate">
-                              {match.title}
-                            </h3>
-                            <p className="text-xs font-medium text-sky-300 truncate">
-                              {match.company_name}
-                            </p>
-                          </div>
+                  {/* Scrollable Match Cards List */}
+                  <div className="flex-1 overflow-y-auto pr-1 space-y-2">
+                    {matches.map((match) => {
+                      const isSelected = selectedMatch?.job_id === match.job_id;
+                      const showScore =
+                        searchMode !== "unbiased" &&
+                        match.match_score !== null &&
+                        match.match_score !== undefined;
+                      const matchPct = showScore
+                        ? Math.round(match.match_score * 100)
+                        : null;
+                      const isHigh = match.probability_band === "high";
+                      const isModerate = match.probability_band === "moderate";
 
-                          {showScore && (
-                            <span
-                              className={`shrink-0 text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg flex items-center gap-1 ${
-                                isHigh
-                                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
-                                  : isModerate
-                                  ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
-                                  : "bg-sky-500/20 text-sky-300 border border-sky-500/40"
-                              }`}
-                            >
-                              <TrendingUp className="w-3 h-3" />
-                              {matchPct}% Match
-                            </span>
-                          )}
-                        </div>
+                      return (
+                        <div
+                          key={match.job_id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setSelectedMatchId(match.job_id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedMatchId(match.job_id);
+                            }
+                          }}
+                          data-testid={`match-card-${match.job_id}`}
+                          className={`text-left rounded-xl p-3 border transition-all cursor-pointer space-y-2 ${
+                            isSelected
+                              ? "bg-slate-800/95 border-sky-500 ring-1 ring-sky-500/40 shadow-md shadow-sky-950/50"
+                              : "bg-slate-800/50 border-slate-700/60 hover:bg-slate-800/80 hover:border-slate-600"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="space-y-0.5 min-w-0">
+                              <h3 className="text-xs font-bold text-white leading-snug truncate">
+                                {match.title}
+                              </h3>
+                              <p className="text-[11px] font-medium text-sky-300 truncate">
+                                {match.company_name}
+                              </p>
+                            </div>
 
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-slate-500" />
-                            {match.location}
-                          </span>
-                          {match.workplace_type && (
-                            <span className="uppercase px-1.5 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-700 text-[10px] font-semibold">
-                              {match.workplace_type}
-                            </span>
-                          )}
-                          {match.salary_range && (
-                            <span className="text-emerald-400 font-medium">
-                              {match.salary_range}
-                            </span>
-                          )}
-                          {match.posted_at && (
-                            <span className="flex items-center gap-1 text-slate-500">
-                              <Clock className="w-3 h-3" />
-                              {formatRelativeTime(match.posted_at)}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Top 3 Matched Skills Preview */}
-                        {showScore && match.matched_skills?.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                            {match.matched_skills.slice(0, 3).map((s, idx) => (
+                            {showScore && (
                               <span
-                                key={idx}
-                                className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
+                                className={`shrink-0 text-[10px] font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1 ${
+                                  isHigh
+                                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
+                                    : isModerate
+                                      ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
+                                      : "bg-sky-500/20 text-sky-300 border border-sky-500/40"
+                                }`}
                               >
-                                {s}
-                              </span>
-                            ))}
-                            {match.matched_skills.length > 3 && (
-                              <span className="text-[10px] text-slate-500">
-                                +{match.matched_skills.length - 3} more
+                                <TrendingUp className="w-2.5 h-2.5" />
+                                {matchPct}% Match
                               </span>
                             )}
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
 
-                  {/* Pagination Footer Bar (Max 15 per page) */}
+                          <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-2.5 h-2.5 text-slate-500" />
+                              {match.location}
+                            </span>
+                            {match.workplace_type && (
+                              <span className="uppercase px-1.5 py-0.2 rounded bg-slate-900 text-slate-300 border border-slate-700 text-[9px] font-semibold">
+                                {match.workplace_type}
+                              </span>
+                            )}
+                            {match.salary_range && (
+                              <span className="text-emerald-400 font-medium">
+                                {match.salary_range}
+                              </span>
+                            )}
+                            {match.posted_at && (
+                              <span className="flex items-center gap-1 text-slate-500">
+                                <Clock className="w-2.5 h-2.5" />
+                                {formatRelativeTime(match.posted_at)}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Top 3 Matched Skills Preview */}
+                          {showScore && match.matched_skills?.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                              {match.matched_skills
+                                .slice(0, 3)
+                                .map((s, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
+                                  >
+                                    {s}
+                                  </span>
+                                ))}
+                              {match.matched_skills.length > 3 && (
+                                <span className="text-[9px] text-slate-500">
+                                  +{match.matched_skills.length - 3} more
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Pinned Pagination Footer Bar */}
                   {totalPages > 1 && (
                     <div
                       data-testid="matches-pagination"
-                      className="flex items-center justify-between pt-3 border-t border-slate-800 text-xs"
+                      className="shrink-0 flex items-center justify-between pt-2 mt-2 border-t border-slate-800 text-xs"
                     >
                       <button
                         type="button"
                         disabled={page <= 1}
                         onClick={() => setPage((p) => Math.max(1, p - 1))}
-                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 font-medium border border-slate-700 flex items-center gap-1 transition-colors"
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 font-medium border border-slate-700 flex items-center gap-1 transition-colors text-xs"
                       >
-                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <ChevronLeft className="w-3 h-3" />
                         Previous
                       </button>
 
-                      <span className="text-slate-400 font-medium">
-                        Page <span className="text-white font-bold">{page}</span> of{" "}
-                        <span className="text-white font-bold">{totalPages}</span>
+                      <span className="text-slate-400 font-medium text-[11px]">
+                        Page{" "}
+                        <span className="text-white font-bold">{page}</span> of{" "}
+                        <span className="text-white font-bold">
+                          {totalPages}
+                        </span>
                       </span>
 
                       <button
                         type="button"
                         disabled={page >= totalPages}
-                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 font-medium border border-slate-700 flex items-center gap-1 transition-colors"
+                        onClick={() =>
+                          setPage((p) => Math.min(totalPages, p + 1))
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 font-medium border border-slate-700 flex items-center gap-1 transition-colors text-xs"
                       >
                         Next
-                        <ChevronRight className="w-3.5 h-3.5" />
+                        <ChevronRight className="w-3 h-3" />
                       </button>
                     </div>
                   )}
                 </div>
 
-                {/* RIGHT PANEL (60% width / 7 cols): Sticky Job Detail Inspector */}
-                <div className="lg:col-span-7">
+                {/* RIGHT PANEL (7 cols): Full Height Job Detail Panel */}
+                <div className="lg:col-span-7 h-full">
                   <JobDetailPanel
                     match={selectedMatch}
                     searchMode={searchMode}
                     onTailorCV={(m) => onSelectJob(normalizeJobMatch(m))}
-                    onStartInterview={(m) => onStartInterview(normalizeJobMatch(m))}
+                    onStartInterview={(m) =>
+                      onStartInterview(normalizeJobMatch(m))
+                    }
                     onOpenDiagnostics={(m) => setSelectedJobForDiag(m)}
                   />
                 </div>
@@ -1320,7 +1401,10 @@ export function Dashboard({
                 className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 text-white font-medium rounded-xl text-sm transition-all shadow-md shadow-sky-600/20 flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-sky-400"
               >
                 {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                  <Loader2
+                    className="w-4 h-4 animate-spin"
+                    aria-hidden="true"
+                  />
                 ) : (
                   "Search"
                 )}
@@ -1333,7 +1417,8 @@ export function Dashboard({
             <div className="flex flex-col items-center justify-center py-16 space-y-3">
               <Loader2 className="w-8 h-8 text-sky-400 animate-spin" />
               <p className="text-sm text-slate-400">
-                Scanning local synced ATS boards and enriching company tech stacks...
+                Scanning local synced ATS boards and enriching company tech
+                stacks...
               </p>
             </div>
           )}
@@ -1418,7 +1503,9 @@ export function Dashboard({
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-lg font-bold text-white">{job.title}</h3>
+                            <h3 className="text-lg font-bold text-white">
+                              {job.title}
+                            </h3>
                             <JobProvenanceBadge job={job} />
                             {(job.ats_requirements?.visa_sponsorship ||
                               job.visa_sponsorship === "yes") && (
@@ -1489,7 +1576,8 @@ export function Dashboard({
                             onClick={() => onStartInterview(job)}
                             className="px-4 py-2 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md shadow-indigo-600/20 flex items-center gap-1.5"
                           >
-                            <MessageSquare className="w-3.5 h-3.5" /> Mock Interview
+                            <MessageSquare className="w-3.5 h-3.5" /> Mock
+                            Interview
                           </button>
                         </div>
                       </div>
@@ -1497,14 +1585,16 @@ export function Dashboard({
                       {/* Skills tags */}
                       {job.ats_requirements?.required_skills?.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 pt-1">
-                          {job.ats_requirements.required_skills.map((skill, sIdx) => (
-                            <span
-                              key={sIdx}
-                              className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-900 text-slate-300 border border-slate-700/60"
-                            >
-                              {skill}
-                            </span>
-                          ))}
+                          {job.ats_requirements.required_skills.map(
+                            (skill, sIdx) => (
+                              <span
+                                key={sIdx}
+                                className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-900 text-slate-300 border border-slate-700/60"
+                              >
+                                {skill}
+                              </span>
+                            ),
+                          )}
                         </div>
                       )}
 
