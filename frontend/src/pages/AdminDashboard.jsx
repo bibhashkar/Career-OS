@@ -20,7 +20,6 @@ import {
   Coins,
   Radio,
   Flame,
-  Check,
   Search,
 } from "lucide-react";
 import {
@@ -34,6 +33,7 @@ import {
   flushMatchCache,
   updateUserStatus,
 } from "../services/api";
+import { getStatusBadgeClass } from "../utils/statusBadges";
 
 export function AdminDashboard() {
   const [data, setData] = useState(null);
@@ -100,7 +100,8 @@ export function AdminDashboard() {
   };
 
   const handleSyncAllBoards = async () => {
-    if (!window.confirm("Enqueue sync tasks for all active ATS boards?")) return;
+    if (!window.confirm("Enqueue sync tasks for all active ATS boards?"))
+      return;
     try {
       const res = await syncAllBoards();
       showNotification(`Enqueued sync for ${res.enqueued_count} boards.`);
@@ -121,7 +122,8 @@ export function AdminDashboard() {
   };
 
   const handlePurgeFailed = async () => {
-    if (!window.confirm("Permanently purge all failed ingestion queue tasks?")) return;
+    if (!window.confirm("Permanently purge all failed ingestion queue tasks?"))
+      return;
     try {
       const res = await purgeFailedTasks();
       showNotification(`Purged ${res.purged_count} failed tasks.`);
@@ -142,7 +144,12 @@ export function AdminDashboard() {
   };
 
   const handleFlushCache = async () => {
-    if (!window.confirm("Flush all cached candidate match scores? Candidates will re-rank on next search.")) return;
+    if (
+      !window.confirm(
+        "Flush all cached candidate match scores? Candidates will re-rank on next search.",
+      )
+    )
+      return;
     try {
       const res = await flushMatchCache();
       showNotification(`Flushed ${res.flushed_count} cached match scores.`);
@@ -186,7 +193,9 @@ export function AdminDashboard() {
         industry: boardForm.industry,
         crawl_now: boardForm.sync_now,
       });
-      showNotification(`Registered and queued board: ${boardForm.company_name}`);
+      showNotification(
+        `Registered and queued board: ${boardForm.company_name}`,
+      );
       setIsAddBoardOpen(false);
       setBoardForm({
         company_name: "",
@@ -207,7 +216,9 @@ export function AdminDashboard() {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center p-8 text-slate-400">
         <RefreshCw className="w-8 h-8 animate-spin text-sky-400 mb-4" />
-        <p className="text-sm font-medium">Loading telemetry and system status...</p>
+        <p className="text-sm font-medium">
+          Loading telemetry and system status...
+        </p>
       </div>
     );
   }
@@ -271,8 +282,12 @@ export function AdminDashboard() {
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Logged in as <strong className="text-slate-200">{current_operator?.email}</strong>{" "}
-              ({current_operator?.role}) • Real-time crawler, pipeline & cost telemetry
+              Logged in as{" "}
+              <strong className="text-slate-200">
+                {current_operator?.email}
+              </strong>{" "}
+              ({current_operator?.role}) • Real-time crawler, pipeline & cost
+              telemetry
             </p>
           </div>
         </div>
@@ -295,7 +310,9 @@ export function AdminDashboard() {
             disabled={refreshing}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition-all cursor-pointer shadow-sm"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-sky-400" : ""}`} />
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-sky-400" : ""}`}
+            />
             <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
           </button>
         </div>
@@ -307,7 +324,8 @@ export function AdminDashboard() {
         <div className="p-4 rounded-2xl bg-slate-850/60 border border-slate-800 shadow-md">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
             <span className="font-medium flex items-center gap-1.5">
-              <Database className="w-3.5 h-3.5 text-sky-400" /> Database & Health
+              <Database className="w-3.5 h-3.5 text-sky-400" /> Database &
+              Health
             </span>
             <span
               className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${
@@ -325,11 +343,17 @@ export function AdminDashboard() {
             </span>
           </div>
           <div className="text-2xl font-black text-white">
-            {system_health?.database_latency_ms} <span className="text-xs font-normal text-slate-400">ms ping</span>
+            {system_health?.database_latency_ms}{" "}
+            <span className="text-xs font-normal text-slate-400">ms ping</span>
           </div>
           <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between">
-            <span>Pool: {system_health?.connection_pool?.checked_out}/{system_health?.connection_pool?.pool_size} active</span>
-            <span>Uptime: {Math.floor((system_health?.uptime_seconds || 0) / 60)}m</span>
+            <span>
+              Pool: {system_health?.connection_pool?.checked_out}/
+              {system_health?.connection_pool?.pool_size} active
+            </span>
+            <span>
+              Uptime: {Math.floor((system_health?.uptime_seconds || 0) / 60)}m
+            </span>
           </div>
         </div>
 
@@ -345,14 +369,21 @@ export function AdminDashboard() {
           </div>
           <div className="flex items-baseline gap-2">
             <div className="text-2xl font-black text-white">
-              {(crawler_pipeline?.queue?.pending || 0) + (crawler_pipeline?.queue?.processing || 0)}
+              {(crawler_pipeline?.queue?.pending || 0) +
+                (crawler_pipeline?.queue?.processing || 0)}
             </div>
             <span className="text-xs text-slate-400 font-medium">in queue</span>
           </div>
           <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-3">
-            <span className="text-amber-400 font-medium">{crawler_pipeline?.queue?.pending || 0} pending</span>
-            <span className="text-sky-400 font-medium">{crawler_pipeline?.queue?.processing || 0} running</span>
-            <span className="text-rose-400 font-medium">{crawler_pipeline?.queue?.failed || 0} failed</span>
+            <span className="text-amber-400 font-medium">
+              {crawler_pipeline?.queue?.pending || 0} pending
+            </span>
+            <span className="text-sky-400 font-medium">
+              {crawler_pipeline?.queue?.processing || 0} running
+            </span>
+            <span className="text-rose-400 font-medium">
+              {crawler_pipeline?.queue?.failed || 0} failed
+            </span>
           </div>
         </div>
 
@@ -368,11 +399,15 @@ export function AdminDashboard() {
           </div>
           <div className="text-2xl font-black text-white">
             {catalog_breakdown?.active_jobs || 0}
-            <span className="text-xs font-normal text-slate-400 ml-1.5">live jobs</span>
+            <span className="text-xs font-normal text-slate-400 ml-1.5">
+              live jobs
+            </span>
           </div>
           <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between">
             <span>{catalog_breakdown?.closed_jobs || 0} archived</span>
-            <span className="text-sky-400">{catalog_breakdown?.cached_matches || 0} cached matches</span>
+            <span className="text-sky-400">
+              {catalog_breakdown?.cached_matches || 0} cached matches
+            </span>
           </div>
         </div>
 
@@ -388,7 +423,12 @@ export function AdminDashboard() {
             ${(ai_cost_and_quotas?.total_estimated_cost_usd || 0).toFixed(4)}
           </div>
           <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between">
-            <span>{((ai_cost_and_quotas?.total_tokens_consumed || 0) / 1000).toFixed(1)}k tokens</span>
+            <span>
+              {(
+                (ai_cost_and_quotas?.total_tokens_consumed || 0) / 1000
+              ).toFixed(1)}
+              k tokens
+            </span>
             <span className="text-emerald-400 font-medium">Bounded Budget</span>
           </div>
         </div>
@@ -404,7 +444,8 @@ export function AdminDashboard() {
               : "text-slate-400 hover:text-white hover:bg-slate-800"
           }`}
         >
-          <Radio className="w-4 h-4" /> Crawlers & Pipeline ({crawler_pipeline?.tracked_boards?.length || 0})
+          <Radio className="w-4 h-4" /> Crawlers & Pipeline (
+          {crawler_pipeline?.tracked_boards?.length || 0})
         </button>
 
         <button
@@ -452,9 +493,12 @@ export function AdminDashboard() {
           {/* Quick Action Ribbon */}
           <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl bg-slate-800/40 border border-slate-800">
             <div>
-              <h3 className="text-sm font-bold text-white">Crawler Pipeline Operations</h3>
+              <h3 className="text-sm font-bold text-white">
+                Crawler Pipeline Operations
+              </h3>
               <p className="text-xs text-slate-400">
-                Trigger synchronization sweeps, register portals, or retry failed queue tasks
+                Trigger synchronization sweeps, register portals, or retry
+                failed queue tasks
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
@@ -468,13 +512,15 @@ export function AdminDashboard() {
                 onClick={handleSyncAllBoards}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
               >
-                <Play className="w-3.5 h-3.5 text-emerald-400" /> Sync All Boards
+                <Play className="w-3.5 h-3.5 text-emerald-400" /> Sync All
+                Boards
               </button>
               <button
                 onClick={handleRetryFailed}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
               >
-                <RotateCcw className="w-3.5 h-3.5 text-amber-400" /> Retry Failed ({crawler_pipeline?.queue?.failed || 0})
+                <RotateCcw className="w-3.5 h-3.5 text-amber-400" /> Retry
+                Failed ({crawler_pipeline?.queue?.failed || 0})
               </button>
               <button
                 onClick={handlePurgeFailed}
@@ -489,7 +535,8 @@ export function AdminDashboard() {
           <div className="rounded-2xl bg-slate-850/60 border border-slate-800 overflow-hidden shadow-md">
             <div className="p-4 border-b border-slate-800 flex items-center justify-between">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Radio className="w-4 h-4 text-sky-400" /> Tracked Company Career Portals
+                <Radio className="w-4 h-4 text-sky-400" /> Tracked Company
+                Career Portals
               </h3>
               <span className="text-xs text-slate-400">
                 {crawler_pipeline?.tracked_boards?.length || 0} registered
@@ -510,14 +557,21 @@ export function AdminDashboard() {
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {crawler_pipeline?.tracked_boards?.map((b) => (
-                    <tr key={b.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="px-4 py-3 font-semibold text-white">{b.company_name}</td>
+                    <tr
+                      key={b.id}
+                      className="hover:bg-slate-800/40 transition-colors"
+                    >
+                      <td className="px-4 py-3 font-semibold text-white">
+                        {b.company_name}
+                      </td>
                       <td className="px-4 py-3">
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 border border-slate-700 uppercase">
                           {b.provider}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-300 font-mono text-[11px]">{b.slug}</td>
+                      <td className="px-4 py-3 text-slate-300 font-mono text-[11px]">
+                        {b.slug}
+                      </td>
                       <td className="px-4 py-3">
                         <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-sky-500/10 text-sky-400 border border-sky-500/20">
                           {b.industry}
@@ -526,7 +580,8 @@ export function AdminDashboard() {
                       <td className="px-4 py-3">
                         {b.consecutive_failures > 0 ? (
                           <span className="text-rose-400 flex items-center gap-1 font-semibold">
-                            <AlertTriangle className="w-3.5 h-3.5" /> {b.consecutive_failures} fails
+                            <AlertTriangle className="w-3.5 h-3.5" />{" "}
+                            {b.consecutive_failures} fails
                           </span>
                         ) : (
                           <span className="text-emerald-400 flex items-center gap-1 font-semibold">
@@ -554,10 +609,15 @@ export function AdminDashboard() {
                       </td>
                     </tr>
                   ))}
-                  {(!crawler_pipeline?.tracked_boards || crawler_pipeline.tracked_boards.length === 0) && (
+                  {(!crawler_pipeline?.tracked_boards ||
+                    crawler_pipeline.tracked_boards.length === 0) && (
                     <tr>
-                      <td colSpan="7" className="text-center py-6 text-slate-500">
-                        No company career portals registered yet. Click "Add ATS Board" above.
+                      <td
+                        colSpan="7"
+                        className="text-center py-6 text-slate-500"
+                      >
+                        No company career portals registered yet. Click "Add ATS
+                        Board" above.
                       </td>
                     </tr>
                   )}
@@ -570,7 +630,8 @@ export function AdminDashboard() {
           <div className="rounded-2xl bg-slate-850/60 border border-slate-800 overflow-hidden shadow-md">
             <div className="p-4 border-b border-slate-800">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Clock className="w-4 h-4 text-emerald-400" /> Recent Synchronization Batches
+                <Clock className="w-4 h-4 text-emerald-400" /> Recent
+                Synchronization Batches
               </h3>
             </div>
             <div className="overflow-x-auto">
@@ -589,24 +650,37 @@ export function AdminDashboard() {
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {crawler_pipeline?.recent_runs?.map((r) => (
-                    <tr key={r.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="px-4 py-3 font-medium text-white">{r.board_slug}</td>
-                      <td className="px-4 py-3 uppercase text-[10px] text-slate-400">{r.provider}</td>
+                    <tr
+                      key={r.id}
+                      className="hover:bg-slate-800/40 transition-colors"
+                    >
+                      <td className="px-4 py-3 font-medium text-white">
+                        {r.board_slug}
+                      </td>
+                      <td className="px-4 py-3 uppercase text-[10px] text-slate-400">
+                        {r.provider}
+                      </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            r.status === "completed"
-                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                              : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
-                          }`}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${getStatusBadgeClass(
+                            r.status,
+                          )}`}
                         >
                           {r.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-semibold text-white">{r.fetched_count}</td>
-                      <td className="px-4 py-3 text-emerald-400 font-semibold">+{r.new_count}</td>
-                      <td className="px-4 py-3 text-sky-400 font-semibold">{r.updated_count}</td>
-                      <td className="px-4 py-3 text-slate-400">{r.duration_ms} ms</td>
+                      <td className="px-4 py-3 font-semibold text-white">
+                        {r.fetched_count}
+                      </td>
+                      <td className="px-4 py-3 text-emerald-400 font-semibold">
+                        +{r.new_count}
+                      </td>
+                      <td className="px-4 py-3 text-sky-400 font-semibold">
+                        {r.updated_count}
+                      </td>
+                      <td className="px-4 py-3 text-slate-400">
+                        {r.duration_ms} ms
+                      </td>
                       <td className="px-4 py-3 text-slate-400">
                         {new Date(r.created_at).toLocaleTimeString([], {
                           hour: "2-digit",
@@ -616,9 +690,13 @@ export function AdminDashboard() {
                       </td>
                     </tr>
                   ))}
-                  {(!crawler_pipeline?.recent_runs || crawler_pipeline.recent_runs.length === 0) && (
+                  {(!crawler_pipeline?.recent_runs ||
+                    crawler_pipeline.recent_runs.length === 0) && (
                     <tr>
-                      <td colSpan="8" className="text-center py-6 text-slate-500">
+                      <td
+                        colSpan="8"
+                        className="text-center py-6 text-slate-500"
+                      >
                         No recent sync batches recorded.
                       </td>
                     </tr>
@@ -638,7 +716,8 @@ export function AdminDashboard() {
           {/* Circuit Breakers */}
           <div>
             <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-              <Server className="w-4 h-4 text-sky-400" /> External Adapter Circuit Breakers
+              <Server className="w-4 h-4 text-sky-400" /> External Adapter
+              Circuit Breakers
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {ai_cost_and_quotas?.circuit_breakers?.map((cb) => (
@@ -648,7 +727,9 @@ export function AdminDashboard() {
                 >
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-bold text-sm text-white uppercase">{cb.provider}</span>
+                      <span className="font-bold text-sm text-white uppercase">
+                        {cb.provider}
+                      </span>
                       <span
                         className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                           cb.is_circuit_open
@@ -656,11 +737,16 @@ export function AdminDashboard() {
                             : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
                         }`}
                       >
-                        {cb.is_circuit_open ? "TRIPPED (OPEN)" : "NORMAL (CLOSED)"}
+                        {cb.is_circuit_open
+                          ? "TRIPPED (OPEN)"
+                          : "NORMAL (CLOSED)"}
                       </span>
                     </div>
                     <p className="text-xs text-slate-400">
-                      Failure Count: <strong className="text-slate-200">{cb.failure_count}</strong>
+                      Failure Count:{" "}
+                      <strong className="text-slate-200">
+                        {cb.failure_count}
+                      </strong>
                     </p>
                     {cb.last_error_message && (
                       <p className="text-[11px] text-rose-300 mt-2 line-clamp-2 bg-rose-500/5 p-1.5 rounded border border-rose-500/10">
@@ -673,7 +759,8 @@ export function AdminDashboard() {
                       onClick={() => handleResetBreaker(cb.provider)}
                       className="w-full py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer flex items-center justify-center gap-1.5"
                     >
-                      <RotateCcw className="w-3.5 h-3.5 text-sky-400" /> Reset Breaker
+                      <RotateCcw className="w-3.5 h-3.5 text-sky-400" /> Reset
+                      Breaker
                     </button>
                   </div>
                 </div>
@@ -686,10 +773,12 @@ export function AdminDashboard() {
             <div className="p-4 border-b border-slate-800 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-400" /> Recent System Exceptions & Crashes
+                  <AlertTriangle className="w-4 h-4 text-rose-400" /> Recent
+                  System Exceptions & Crashes
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Captured unhandled 5xx exceptions and HTTP error events from in-memory ring buffer
+                  Captured unhandled 5xx exceptions and HTTP error events from
+                  in-memory ring buffer
                 </p>
               </div>
               <span className="text-xs text-slate-400">
@@ -699,7 +788,10 @@ export function AdminDashboard() {
 
             <div className="divide-y divide-slate-800/60">
               {system_health?.recent_crashes?.map((err, idx) => (
-                <div key={idx} className="p-4 hover:bg-slate-800/30 transition-colors">
+                <div
+                  key={idx}
+                  className="p-4 hover:bg-slate-800/30 transition-colors"
+                >
                   <div className="flex items-center justify-between gap-4 mb-1.5">
                     <div className="flex items-center gap-2">
                       <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[10px] font-bold">
@@ -710,7 +802,9 @@ export function AdminDashboard() {
                       </span>
                     </div>
                     <span className="text-[11px] text-slate-500">
-                      {err.timestamp ? new Date(err.timestamp).toLocaleString() : "Just now"}
+                      {err.timestamp
+                        ? new Date(err.timestamp).toLocaleString()
+                        : "Just now"}
                     </span>
                   </div>
                   <p className="text-xs font-mono text-rose-300 bg-rose-950/20 p-2.5 rounded-xl border border-rose-500/10 break-all">
@@ -718,10 +812,13 @@ export function AdminDashboard() {
                   </p>
                 </div>
               ))}
-              {(!system_health?.recent_crashes || system_health.recent_crashes.length === 0) && (
+              {(!system_health?.recent_crashes ||
+                system_health.recent_crashes.length === 0) && (
                 <div className="p-8 text-center text-slate-500">
                   <CheckCircle2 className="w-8 h-8 text-emerald-400/50 mx-auto mb-2" />
-                  <p className="text-xs font-medium">Zero crashes recorded. System operating normally.</p>
+                  <p className="text-xs font-medium">
+                    Zero crashes recorded. System operating normally.
+                  </p>
                 </div>
               )}
             </div>
@@ -737,18 +834,24 @@ export function AdminDashboard() {
           {/* Quota Utilization Cards */}
           <div>
             <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-              <Coins className="w-4 h-4 text-amber-400" /> Daily Provider Quotas & Token Consumption
+              <Coins className="w-4 h-4 text-amber-400" /> Daily Provider Quotas
+              & Token Consumption
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {ai_cost_and_quotas?.daily_usages?.map((u) => {
-                const pct = Math.min(100, Math.round((u.call_count / (u.max_calls || 1)) * 100));
+                const pct = Math.min(
+                  100,
+                  Math.round((u.call_count / (u.max_calls || 1)) * 100),
+                );
                 return (
                   <div
                     key={u.provider}
                     className="p-5 rounded-2xl bg-slate-850/60 border border-slate-800 shadow-md space-y-3"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-sm text-white uppercase">{u.provider}</span>
+                      <span className="font-bold text-sm text-white uppercase">
+                        {u.provider}
+                      </span>
                       <span className="text-xs font-semibold text-amber-400">
                         ${(u.estimated_cost_usd || 0).toFixed(4)}
                       </span>
@@ -763,20 +866,30 @@ export function AdminDashboard() {
                       <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all duration-300 ${
-                            pct > 80 ? "bg-rose-500" : pct > 50 ? "bg-amber-500" : "bg-sky-500"
+                            pct > 80
+                              ? "bg-rose-500"
+                              : pct > 50
+                                ? "bg-amber-500"
+                                : "bg-sky-500"
                           }`}
                           style={{ width: `${pct}%` }}
                         />
                       </div>
                     </div>
                     <div className="text-[11px] text-slate-400 flex items-center justify-between pt-2 border-t border-slate-800/80">
-                      <span>In: {((u.input_tokens || 0) / 1000).toFixed(1)}k tokens</span>
-                      <span>Out: {((u.output_tokens || 0) / 1000).toFixed(1)}k tokens</span>
+                      <span>
+                        In: {((u.input_tokens || 0) / 1000).toFixed(1)}k tokens
+                      </span>
+                      <span>
+                        Out: {((u.output_tokens || 0) / 1000).toFixed(1)}k
+                        tokens
+                      </span>
                     </div>
                   </div>
                 );
               })}
-              {(!ai_cost_and_quotas?.daily_usages || ai_cost_and_quotas.daily_usages.length === 0) && (
+              {(!ai_cost_and_quotas?.daily_usages ||
+                ai_cost_and_quotas.daily_usages.length === 0) && (
                 <div className="p-6 rounded-2xl bg-slate-850/40 border border-slate-800 col-span-3 text-center text-slate-500 text-xs">
                   No LLM usage events recorded for today's billing period.
                 </div>
@@ -793,9 +906,12 @@ export function AdminDashboard() {
         <div className="space-y-6 animate-in fade-in duration-150">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-800/40 border border-slate-800">
             <div>
-              <h3 className="text-sm font-bold text-white">Cache & User Operations</h3>
+              <h3 className="text-sm font-bold text-white">
+                Cache & User Operations
+              </h3>
               <p className="text-xs text-slate-400">
-                Invalidate stale match scores or manage account activation and permissions
+                Invalidate stale match scores or manage account activation and
+                permissions
               </p>
             </div>
             <button
@@ -803,7 +919,9 @@ export function AdminDashboard() {
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold transition-all cursor-pointer shadow-sm"
             >
               <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-              <span>Flush Match Cache ({catalog_breakdown?.cached_matches || 0})</span>
+              <span>
+                Flush Match Cache ({catalog_breakdown?.cached_matches || 0})
+              </span>
             </button>
           </div>
 
@@ -811,7 +929,8 @@ export function AdminDashboard() {
           <div className="rounded-2xl bg-slate-850/60 border border-slate-800 overflow-hidden shadow-md">
             <div className="p-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Users className="w-4 h-4 text-sky-400" /> Registered Candidate & Operator Accounts
+                <Users className="w-4 h-4 text-sky-400" /> Registered Candidate
+                & Operator Accounts
               </h3>
               <div className="relative">
                 <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
@@ -840,10 +959,17 @@ export function AdminDashboard() {
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {filteredUsers.map((u) => (
-                    <tr key={u.id} className="hover:bg-slate-800/40 transition-colors">
+                    <tr
+                      key={u.id}
+                      className="hover:bg-slate-800/40 transition-colors"
+                    >
                       <td className="px-4 py-3">
-                        <div className="font-semibold text-white">{u.full_name || "Unnamed"}</div>
-                        <div className="text-[11px] text-slate-400 font-mono">{u.email}</div>
+                        <div className="font-semibold text-white">
+                          {u.full_name || "Unnamed"}
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-mono">
+                          {u.email}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -867,8 +993,12 @@ export function AdminDashboard() {
                           {u.is_active ? "Active" : "Suspended"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-300 font-semibold">{u.personas_count}</td>
-                      <td className="px-4 py-3 text-slate-300 font-semibold">{u.cv_blocks_count}</td>
+                      <td className="px-4 py-3 text-slate-300 font-semibold">
+                        {u.personas_count}
+                      </td>
+                      <td className="px-4 py-3 text-slate-300 font-semibold">
+                        {u.cv_blocks_count}
+                      </td>
                       <td className="px-4 py-3 text-slate-400 text-[11px]">
                         {u.last_login_at
                           ? new Date(u.last_login_at).toLocaleString([], {
@@ -887,7 +1017,9 @@ export function AdminDashboard() {
                           {u.role === "admin" ? "Demote" : "Make Admin"}
                         </button>
                         <button
-                          onClick={() => handleToggleUserActive(u.id, u.is_active)}
+                          onClick={() =>
+                            handleToggleUserActive(u.id, u.is_active)
+                          }
                           className={`px-2 py-1 rounded text-[10px] font-medium transition-all cursor-pointer ${
                             u.is_active
                               ? "bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30"
@@ -912,29 +1044,40 @@ export function AdminDashboard() {
       {isAddBoardOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden p-6">
-            <h2 className="text-base font-bold text-white mb-1">Register ATS Company Careers Board</h2>
+            <h2 className="text-base font-bold text-white mb-1">
+              Register ATS Company Careers Board
+            </h2>
             <p className="text-xs text-slate-400 mb-4">
-              Add a public company careers portal to the continuous crawler index
+              Add a public company careers portal to the continuous crawler
+              index
             </p>
 
             <form onSubmit={handleCreateBoard} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Company Name</label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Company Name
+                </label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Tempus AI"
                   value={boardForm.company_name}
-                  onChange={(e) => setBoardForm({ ...boardForm, company_name: e.target.value })}
+                  onChange={(e) =>
+                    setBoardForm({ ...boardForm, company_name: e.target.value })
+                  }
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">ATS Provider</label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  ATS Provider
+                </label>
                 <select
                   value={boardForm.provider}
-                  onChange={(e) => setBoardForm({ ...boardForm, provider: e.target.value })}
+                  onChange={(e) =>
+                    setBoardForm({ ...boardForm, provider: e.target.value })
+                  }
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-sky-500"
                 >
                   <option value="greenhouse">Greenhouse</option>
@@ -946,22 +1089,30 @@ export function AdminDashboard() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Board Token / Slug</label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Board Token / Slug
+                </label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. tempus or jobs.ashbyhq.com/tempus"
                   value={boardForm.board_token}
-                  onChange={(e) => setBoardForm({ ...boardForm, board_token: e.target.value })}
+                  onChange={(e) =>
+                    setBoardForm({ ...boardForm, board_token: e.target.value })
+                  }
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-sky-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Industry Sector</label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Industry Sector
+                </label>
                 <select
                   value={boardForm.industry}
-                  onChange={(e) => setBoardForm({ ...boardForm, industry: e.target.value })}
+                  onChange={(e) =>
+                    setBoardForm({ ...boardForm, industry: e.target.value })
+                  }
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-sky-500"
                 >
                   <option value="healthtech">Healthtech</option>
@@ -979,10 +1130,15 @@ export function AdminDashboard() {
                   type="checkbox"
                   id="syncNow"
                   checked={boardForm.sync_now}
-                  onChange={(e) => setBoardForm({ ...boardForm, sync_now: e.target.checked })}
+                  onChange={(e) =>
+                    setBoardForm({ ...boardForm, sync_now: e.target.checked })
+                  }
                   className="rounded border-slate-700 text-sky-600 focus:ring-sky-500 cursor-pointer"
                 />
-                <label htmlFor="syncNow" className="text-xs text-slate-300 cursor-pointer select-none">
+                <label
+                  htmlFor="syncNow"
+                  className="text-xs text-slate-300 cursor-pointer select-none"
+                >
                   Enqueue immediate synchronization job
                 </label>
               </div>
