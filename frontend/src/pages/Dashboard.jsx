@@ -663,7 +663,7 @@ export function Dashboard({
   const showingTo = Math.min(page * PAGE_SIZE, totalMatches);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
+    <div className="max-w-7xl mx-auto px-4 py-3 space-y-3 h-full flex flex-col min-h-0 w-full">
       {/* Ultra-Compact Top Header Bar (~44px) */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
         {/* Left: Brand Title & Active Persona Lens */}
@@ -1145,14 +1145,14 @@ export function Dashboard({
 
           {/* Master-Detail Split-Pane Opportunities View */}
           {!matchesLoading && !matchesError && matches.length > 0 && (
-            <div className="space-y-2">
+            <div className="flex-1 min-h-0 flex flex-col space-y-2">
               <div
                 data-testid="matches-split-pane"
-                className="grid grid-cols-1 lg:grid-cols-12 gap-5 h-[calc(100vh-190px)] min-h-[580px] items-stretch"
+                className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch overflow-hidden"
               >
                 {/* LEFT PANEL (5 cols): Equal-height Flex Container with Scrollable Opportunity List + Pinned Pagination */}
                 <div
-                  className="lg:col-span-5 h-full flex flex-col bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden p-3"
+                  className="lg:col-span-5 h-full min-h-0 flex flex-col bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden p-3"
                   data-testid="matches-left-list"
                 >
                   {/* Left Panel Header Counter */}
@@ -1318,7 +1318,7 @@ export function Dashboard({
                 </div>
 
                 {/* RIGHT PANEL (7 cols): Full Height Job Detail Panel */}
-                <div className="lg:col-span-7 h-full">
+                <div className="lg:col-span-7 h-full min-h-0 overflow-hidden">
                   <JobDetailPanel
                     match={selectedMatch}
                     searchMode={searchMode}

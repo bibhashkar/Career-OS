@@ -30,11 +30,7 @@ import { getCurrentUser, logout } from "./services/api";
 function InterviewRouteWrapper({ job, onBack }) {
   const { threadId } = useParams();
   return (
-    <InterviewSimulator
-      job={job}
-      initialThreadId={threadId}
-      onBack={onBack}
-    />
+    <InterviewSimulator job={job} initialThreadId={threadId} onBack={onBack} />
   );
 }
 
@@ -61,7 +57,8 @@ export function App() {
   const handleAuthSuccess = (user) => {
     setCurrentUser(user);
     if (user?.personas?.length > 0) {
-      const defaultP = user.personas.find((p) => p.is_default) || user.personas[0];
+      const defaultP =
+        user.personas.find((p) => p.is_default) || user.personas[0];
       setActivePersona(defaultP);
     }
   };
@@ -86,9 +83,9 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
+    <div className="h-screen overflow-hidden bg-slate-900 text-slate-100 flex flex-col font-sans">
       {/* Top Application Navigation */}
-      <header className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-6 py-3.5">
+      <header className="shrink-0 z-50 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-6 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           {/* Logo & Platform identity */}
           <div
@@ -229,7 +226,7 @@ export function App() {
       </header>
 
       {/* Main View Router */}
-      <main className="flex-1">
+      <main className="flex-1 min-h-0 overflow-y-auto flex flex-col relative">
         <Routes>
           <Route
             path="/"
@@ -271,16 +268,12 @@ export function App() {
           />
           <Route
             path="/audit"
-            element={<CandidateAuditView onNavigateBack={() => navigate("/")} />}
+            element={
+              <CandidateAuditView onNavigateBack={() => navigate("/")} />
+            }
           />
-          <Route
-            path="/onboarding"
-            element={<OnboardingWizard />}
-          />
-          <Route
-            path="/admin"
-            element={<AdminDashboard />}
-          />
+          <Route path="/onboarding" element={<OnboardingWizard />} />
+          <Route path="/admin" element={<AdminDashboard />} />
         </Routes>
 
         <AuthModal
@@ -299,7 +292,8 @@ export function App() {
           onPersonasChanged={(personas) => {
             if (
               personas.length > 0 &&
-              (!activePersona || !personas.some((p) => p.id === activePersona.id))
+              (!activePersona ||
+                !personas.some((p) => p.id === activePersona.id))
             ) {
               const def = personas.find((p) => p.is_default) || personas[0];
               setActivePersona(def);
@@ -309,9 +303,10 @@ export function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/80 py-4 px-6 text-center text-xs text-slate-500">
+      <footer className="shrink-0 z-30 bg-slate-900 border-t border-slate-800 py-2.5 px-6 text-center text-xs text-slate-500">
         <p>
-          Career-OS • Multi-Persona Candidate Intelligence • Two-Stage Retrieval (ADR-008) • FastAPI + PostgreSQL pgvector
+          Career-OS • Multi-Persona Candidate Intelligence • Two-Stage Retrieval
+          (ADR-008) • FastAPI + PostgreSQL pgvector
         </p>
       </footer>
     </div>
