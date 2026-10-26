@@ -15,8 +15,8 @@ describe("CVTailorView Component", () => {
 
     expect(screen.getByText("No Target Job Selected")).toBeInTheDocument();
     expect(
-      screen.getByText(/Select a target position from the Discovery dashboard/i)
+      screen.getByText(/Select a target position from the Jobs view/i)
     ).toBeInTheDocument();
-    expect(screen.getByText("Go to Job Discovery")).toBeInTheDocument();
+    expect(screen.getByText("Go to Jobs")).toBeInTheDocument();
   });
 });

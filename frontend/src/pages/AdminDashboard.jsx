@@ -21,6 +21,15 @@ import {
   Radio,
   Flame,
   Search,
+  MapPin,
+  DollarSign,
+  ShieldCheck,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  PlusCircle,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 import {
   getAdminOverview,
@@ -32,8 +41,26 @@ import {
   resetCircuitBreaker,
   flushMatchCache,
   updateUserStatus,
+  searchJobs,
+  crossCheckJob,
 } from "../services/api";
+import { CompanyDossierCard } from "../components/CompanyDossierCard";
+import { JobProvenanceBadge } from "../components/JobProvenanceBadge";
+import { AddJobModal } from "../components/AddJobModal";
 import { getStatusBadgeClass } from "../utils/statusBadges";
+
+const SAMPLE_KEYWORDS = [
+  { label: "Software Developer", query: "Software Developer" },
+  { label: "Frontend Developer", query: "Frontend Developer" },
+  { label: "Backend Engineer", query: "Backend Engineer" },
+  { label: "Full Stack Engineer", query: "Full Stack" },
+  { label: "AI / ML Engineer", query: "AI Engineer" },
+  { label: "OpenAI", query: "OpenAI" },
+  { label: "Stripe", query: "Stripe" },
+  { label: "Cloudflare", query: "Cloudflare" },
+  { label: "Spotify", query: "Spotify" },
+  { label: "Ramp", query: "Ramp" },
+];
 
 export function AdminDashboard() {
   const [data, setData] = useState(null);
@@ -56,6 +83,18 @@ export function AdminDashboard() {
 
   // User search/filter
   const [userSearch, setUserSearch] = useState("");
+
+  // Job Ingestion & Live ATS Search state
+  const [isAddJobOpen, setIsAddJobOpen] = useState(false);
+  const [atsQuery, setAtsQuery] = useState("");
+  const [atsLocation, setAtsLocation] = useState("");
+  const [atsVisaRequired, setAtsVisaRequired] = useState(false);
+  const [atsJobs, setAtsJobs] = useState([]);
+  const [atsLoading, setAtsLoading] = useState(false);
+  const [atsError, setAtsError] = useState(null);
+  const [atsSearched, setAtsSearched] = useState(false);
+  const [expandedJobId, setExpandedJobId] = useState(null);
+  const [crossCheckingIds, setCrossCheckingIds] = useState(new Set());
 
   const fetchOverview = useCallback(async (isSilent = false) => {
     if (!isSilent) setRefreshing(true);
@@ -210,6 +249,58 @@ export function AdminDashboard() {
     } finally {
       setSubmittingBoard(false);
     }
+  };
+
+  const handleAtsSearch = async (overrideQuery, overrideLoc) => {
+    const q = overrideQuery !== undefined ? overrideQuery : atsQuery;
+    const loc = overrideLoc !== undefined ? overrideLoc : atsLocation;
+    if (!q.trim() && !loc.trim()) {
+      setAtsJobs([]);
+      setAtsError(null);
+      setAtsSearched(false);
+      return;
+    }
+    setAtsLoading(true);
+    setAtsError(null);
+    setAtsSearched(true);
+    try {
+      const res = await searchJobs(q.trim(), loc.trim(), atsVisaRequired);
+      setAtsJobs(res?.jobs || []);
+    } catch (err) {
+      setAtsError(
+        err.response?.data?.detail || "Failed to search external ATS boards. Please retry.",
+      );
+    } finally {
+      setAtsLoading(false);
+    }
+  };
+
+  const handleAtsCrossCheck = async (jobId) => {
+    setCrossCheckingIds((prev) => new Set(prev).add(jobId));
+    try {
+      const res = await crossCheckJob(jobId);
+      if (res.verification) {
+        setAtsJobs((prev) =>
+          prev.map((j) =>
+            j.id === jobId ? { ...j, verification: res.verification } : j,
+          ),
+        );
+      }
+    } catch (err) {
+      console.warn("Cross check failed for job:", jobId, err);
+    } finally {
+      setCrossCheckingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(jobId);
+        return next;
+      });
+    }
+  };
+
+  const handleJobImported = (newJob) => {
+    setAtsJobs((prev) => [newJob, ...prev]);
+    showNotification("Job imported successfully into database catalog.");
+    fetchOverview(true);
   };
 
   if (loading) {
@@ -483,6 +574,17 @@ export function AdminDashboard() {
         >
           <Users className="w-4 h-4" /> User Accounts ({users.length})
         </button>
+
+        <button
+          onClick={() => setActiveTab("ingest")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === "ingest"
+              ? "bg-sky-600 text-white shadow-md shadow-sky-600/20"
+              : "text-slate-400 hover:text-white hover:bg-slate-800"
+          }`}
+        >
+          <Search className="w-4 h-4" /> Job Ingestion & ATS Search
+        </button>
       </div>
 
       {/* ==================================================================== */}
@@ -502,6 +604,13 @@ export function AdminDashboard() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsAddJobOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+              >
+                <PlusCircle className="w-3.5 h-3.5" /> Import Job (URL / Text)
+              </button>
               <button
                 onClick={() => setIsAddBoardOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
@@ -1039,6 +1148,296 @@ export function AdminDashboard() {
       )}
 
       {/* ==================================================================== */}
+      {/* TAB 5: JOB INGESTION & DIRECT ATS SEARCH */}
+      {/* ==================================================================== */}
+      {activeTab === "ingest" && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Header & Quick Ingest Actions */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-slate-900 border border-slate-800">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Search className="w-5 h-5 text-sky-400" /> Direct ATS Hunting & Job Ingestion
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Directly query live external ATS career boards (JSearch, Greenhouse, Ashby) or manually ingest job postings via URL or raw description.
+              </p>
+            </div>
+            <button
+              onClick={() => setIsAddJobOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-sky-500/20 transition-all cursor-pointer whitespace-nowrap self-start sm:self-auto"
+            >
+              <PlusCircle className="w-4 h-4" /> Import Job (URL / Text)
+            </button>
+          </div>
+
+          {/* Search Controls Card */}
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleAtsSearch();
+              }}
+              className="grid grid-cols-1 md:grid-cols-12 gap-3"
+            >
+              <div className="relative md:col-span-5">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Job title, keywords, or company..."
+                  value={atsQuery}
+                  onChange={(e) => setAtsQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all"
+                />
+              </div>
+
+              <div className="relative md:col-span-4">
+                <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Location or 'Remote'..."
+                  value={atsLocation}
+                  onChange={(e) => setAtsLocation(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all"
+                />
+              </div>
+
+              <div className="flex items-center justify-between md:justify-end gap-3 md:col-span-3">
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300 select-none">
+                  <input
+                    type="checkbox"
+                    checked={atsVisaRequired}
+                    onChange={(e) => setAtsVisaRequired(e.target.checked)}
+                    className="rounded border-slate-700 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                  />
+                  <span>Visa Required</span>
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={atsLoading}
+                  className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md shadow-sky-600/20 cursor-pointer flex items-center gap-2"
+                >
+                  {atsLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Search className="w-4 h-4" />
+                  )}
+                  Search ATS
+                </button>
+              </div>
+            </form>
+
+            {/* Keyword Chips */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-800/80">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-1">
+                Suggested:
+              </span>
+              {SAMPLE_KEYWORDS.map((kw, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setAtsQuery(kw.query);
+                    handleAtsSearch(kw.query, atsLocation);
+                  }}
+                  className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-all cursor-pointer"
+                >
+                  {kw.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Results Area */}
+          {atsLoading && (
+            <div className="p-12 text-center rounded-2xl bg-slate-900 border border-slate-800">
+              <Loader2 className="w-8 h-8 animate-spin text-sky-400 mx-auto mb-3" />
+              <p className="text-sm font-medium text-slate-300">
+                Searching real-time ATS postings across external providers...
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
+                Querying live search API with rate-limiting and deduplication.
+              </p>
+            </div>
+          )}
+
+          {atsError && (
+            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400" />
+                <span>{atsError}</span>
+              </div>
+              <button
+                onClick={() => handleAtsSearch()}
+                className="px-3 py-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 rounded font-medium cursor-pointer"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {!atsLoading && atsSearched && atsJobs.length === 0 && !atsError && (
+            <div className="p-12 text-center rounded-2xl bg-slate-900 border border-slate-800">
+              <Search className="w-8 h-8 text-slate-600 mx-auto mb-3" />
+              <h4 className="text-sm font-bold text-white mb-1">
+                No ATS Postings Found
+              </h4>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto mb-4">
+                No active roles matched your query. Try broadening your keywords, clearing location filters, or manually importing via URL.
+              </p>
+              <button
+                onClick={() => setIsAddJobOpen(true)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold cursor-pointer"
+              >
+                Import Custom Job
+              </button>
+            </div>
+          )}
+
+          {!atsLoading && atsJobs.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                <span>
+                  Found <strong className="text-slate-200">{atsJobs.length}</strong> postings
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {atsJobs.map((job) => {
+                  const isExpanded = expandedJobId === job.id;
+                  const isCrossChecking = crossCheckingIds.has(job.id);
+                  const hasDossier = !!job.company_dossier;
+
+                  return (
+                    <div
+                      key={job.id}
+                      className="p-5 rounded-2xl bg-slate-900 border border-slate-800 hover:border-slate-700/80 transition-all space-y-4"
+                    >
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                        <div className="space-y-1.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="text-base font-bold text-white hover:text-sky-400 transition-colors">
+                              <a
+                                href={job.apply_url || job.url}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {job.title}
+                              </a>
+                            </h4>
+                            <JobProvenanceBadge provenance={job.provenance} />
+                            {job.visa_sponsorship_status === "available" && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                Visa Sponsored
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
+                            <span className="font-semibold text-slate-200">
+                              {job.company_name}
+                            </span>
+                            {job.location && (
+                              <span className="flex items-center gap-1 text-slate-400">
+                                <MapPin className="w-3.5 h-3.5 text-slate-500" />
+                                {job.location}
+                              </span>
+                            )}
+                            {(job.salary_min || job.salary_max) && (
+                              <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                                <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
+                                {job.salary_currency || "$"}
+                                {job.salary_min?.toLocaleString()} - {job.salary_currency || "$"}
+                                {job.salary_max?.toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => handleAtsCrossCheck(job.id)}
+                            disabled={isCrossChecking}
+                            title="Cross-check listing against secondary aggregator"
+                            className="px-3 py-1.5 text-xs font-medium rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 transition-colors flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                          >
+                            {isCrossChecking ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
+                            ) : (
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                            )}
+                            Cross-Check
+                          </button>
+
+                          {hasDossier && (
+                            <button
+                              onClick={() =>
+                                setExpandedJobId(isExpanded ? null : job.id)
+                              }
+                              className="px-3 py-1.5 text-xs font-medium rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 transition-colors flex items-center gap-1.5 cursor-pointer"
+                            >
+                              Company Intel
+                              {isExpanded ? (
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          )}
+
+                          <a
+                            href={job.apply_url || job.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-sky-600 hover:bg-sky-500 text-white transition-all shadow-md shadow-sky-600/20 flex items-center gap-1.5"
+                          >
+                            View ATS Posting
+                          </a>
+                        </div>
+                      </div>
+
+                      {/* Skills tags */}
+                      {job.ats_requirements?.required_skills?.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {job.ats_requirements.required_skills.map((skill, sIdx) => (
+                            <span
+                              key={sIdx}
+                              className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700/60"
+                            >
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Expanded Company Dossier View */}
+                      {isExpanded && hasDossier && (
+                        <div className="pt-2 animate-in fade-in duration-150">
+                          <CompanyDossierCard
+                            dossier={job.company_dossier}
+                            onDossierUpdated={(updated) => {
+                              setAtsJobs((prev) =>
+                                prev.map((j) =>
+                                  j.id === job.id
+                                    ? { ...j, company_dossier: updated }
+                                    : j,
+                                ),
+                              );
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================================================================== */}
       {/* MODAL: REGISTER ATS CAREERS PORTAL */}
       {/* ==================================================================== */}
       {isAddBoardOpen && (
@@ -1163,6 +1562,15 @@ export function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {/* ==================================================================== */}
+      {/* MODAL: DIRECT JOB IMPORT (URL / RAW TEXT) */}
+      {/* ==================================================================== */}
+      <AddJobModal
+        isOpen={isAddJobOpen}
+        onClose={() => setIsAddJobOpen(false)}
+        onJobAdded={handleJobImported}
+      />
     </div>
   );
 }

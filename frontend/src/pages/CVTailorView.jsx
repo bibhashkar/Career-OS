@@ -46,7 +46,7 @@ export function CVTailorView({ job, onBack, onStartInterview }) {
         <div className="space-y-2">
           <h2 className="text-xl font-bold text-white">No Target Job Selected</h2>
           <p className="text-sm text-slate-400 max-w-md mx-auto">
-            Select a target position from the Discovery dashboard to run the multi-agent
+            Select a target position from the Jobs view to run the multi-agent
             tailoring loop, retrieve matching career blocks, and optimize ATS score.
           </p>
         </div>
@@ -54,7 +54,7 @@ export function CVTailorView({ job, onBack, onStartInterview }) {
           onClick={onBack}
           className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-sky-600/20 transition-all inline-flex items-center gap-2"
         >
-          <ArrowLeft className="w-4 h-4" /> Go to Job Discovery
+          <ArrowLeft className="w-4 h-4" /> Go to Jobs
         </button>
       </div>
     );
@@ -68,7 +68,7 @@ export function CVTailorView({ job, onBack, onStartInterview }) {
           onClick={onBack}
           className="inline-flex items-center gap-2 text-xs font-medium text-slate-400 hover:text-white transition-colors"
         >
-          <ArrowLeft className="w-4 h-4" /> Back to Dashboard
+          <ArrowLeft className="w-4 h-4" /> Back to Jobs
         </button>
 
         {data && !loading && (

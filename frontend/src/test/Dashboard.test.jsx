@@ -80,13 +80,41 @@ function renderDashboard(props = {}, initialEntries = ["/"]) {
   );
 }
 
-describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
+describe("Jobs Dashboard & Split-Pane Master-Detail View", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
   });
 
-  describe("High-Probability Matches Tab & Split-Pane Master-Detail View", () => {
+  describe("Jobs Feed & Split-Pane Master-Detail View", () => {
+    it("renders the Jobs header and no dual tab buttons or database corpus count badge", async () => {
+      api.getJobMatches.mockResolvedValueOnce({
+        total_count: 2,
+        page: 1,
+        page_size: 15,
+        jobs: [mockMatchJob],
+      });
+
+      renderDashboard();
+
+      expect(
+        screen.getByRole("heading", { name: /^Jobs$/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/High-Probability Matches/i),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Direct ATS Search & Ingest/i }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Import Job/i }),
+      ).not.toBeInTheDocument();
+
+      await waitFor(() => {
+        expect(api.getJobMatches).toHaveBeenCalled();
+      });
+    });
+
     it("calls getJobMatches with page_size=15 and renders split-pane list and detail panel", async () => {
       api.getJobMatches.mockResolvedValueOnce({
         persona_id: "persona-123",
@@ -620,89 +648,6 @@ describe("Dashboard Dual-Mode: Matches and ATS Search", () => {
       expect(screen.getByTestId("omnibar-chips-row")).toHaveTextContent(
         "HealthTech",
       );
-    });
-  });
-
-  describe("Direct ATS Search & Ingest Tab", () => {
-    it("renders empty state with sample keywords and does not call searchJobs on initial load", () => {
-      api.getJobMatches.mockResolvedValueOnce({ jobs: [], total_count: 0 });
-
-      renderDashboard({ defaultTab: "search" });
-
-      expect(
-        screen.getByText(/Ready to explore open positions\?/i),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(/Suggested Search Keywords/i),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Software Developer")).toBeInTheDocument();
-      expect(screen.getByText("Stripe")).toBeInTheDocument();
-      expect(screen.getByText("OpenAI")).toBeInTheDocument();
-
-      expect(api.searchJobs).not.toHaveBeenCalled();
-    });
-
-    it("submitting empty search does not trigger searchJobs and maintains clean empty state", () => {
-      api.getJobMatches.mockResolvedValueOnce({ jobs: [], total_count: 0 });
-
-      renderDashboard({ defaultTab: "search" });
-
-      const searchButton = screen.getByRole("button", { name: /Search jobs/i });
-      fireEvent.click(searchButton);
-
-      expect(api.searchJobs).not.toHaveBeenCalled();
-      expect(
-        screen.getByText(/Ready to explore open positions\?/i),
-      ).toBeInTheDocument();
-    });
-
-    it("clicking a sample keyword populates query and executes search", async () => {
-      api.getJobMatches.mockResolvedValueOnce({ jobs: [], total_count: 0 });
-      api.searchJobs.mockResolvedValueOnce({
-        jobs: [
-          {
-            id: "job-stripe-101",
-            title: "Software Engineer - Payments",
-            company_name: "Stripe",
-            location: "San Francisco, CA",
-            salary_range: "$170,000 - $210,000",
-            data_origin: "live",
-            source_confidence: "high",
-            ats_requirements: { required_skills: ["Python", "Go"] },
-          },
-        ],
-      });
-
-      renderDashboard({ defaultTab: "search" });
-
-      const stripeKeywordBtn = screen.getByRole("button", { name: "Stripe" });
-      fireEvent.click(stripeKeywordBtn);
-
-      await waitFor(() => {
-        expect(api.searchJobs).toHaveBeenCalledWith("Stripe", "", false);
-      });
-
-      expect(
-        await screen.findByText("Software Engineer - Payments"),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Stripe")).toBeInTheDocument();
-    });
-
-    it("can switch between Matches and ATS Search tabs via tab buttons", async () => {
-      api.getJobMatches.mockResolvedValueOnce({ jobs: [], total_count: 0 });
-
-      renderDashboard();
-
-      expect(screen.getByText(/High-Probability Matches/i)).toBeInTheDocument();
-
-      const searchTabBtn = screen.getByRole("button", {
-        name: /Direct ATS Search & Ingest/i,
-      });
-      fireEvent.click(searchTabBtn);
-
-      expect(
-        await screen.findByText(/Suggested Search Keywords/i),
-      ).toBeInTheDocument();
     });
   });
 });

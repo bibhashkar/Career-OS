@@ -3,10 +3,12 @@ import {
   Routes,
   Route,
   NavLink,
+  Navigate,
   useNavigate,
   useParams,
 } from "react-router-dom";
 import {
+  Briefcase,
   Compass,
   FileText,
   MessageSquare,
@@ -123,7 +125,7 @@ export function App() {
                 }`
               }
             >
-              <Compass className="w-3.5 h-3.5" /> Matches & Intel
+              <Briefcase className="w-3.5 h-3.5" /> Jobs
             </NavLink>
 
             <NavLink
@@ -239,6 +241,7 @@ export function App() {
               />
             }
           />
+          <Route path="/jobs" element={<Navigate to="/" replace />} />
           <Route
             path="/cv-tailor"
             element={

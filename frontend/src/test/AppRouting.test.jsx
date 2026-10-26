@@ -13,10 +13,19 @@ describe("App Routing and Navigation", () => {
     );
 
     expect(
-      screen.getByText(/Career Intelligence & Hunter/i)
+      screen.getByRole("heading", { name: /^Jobs$/i })
     ).toBeInTheDocument();
+  });
+
+  it("redirects '/jobs' route to the Jobs view", () => {
+    render(
+      <MemoryRouter initialEntries={["/jobs"]}>
+        <App />
+      </MemoryRouter>
+    );
+
     expect(
-      screen.getByText(/High-Probability Matches/i)
+      screen.getByRole("heading", { name: /^Jobs$/i })
     ).toBeInTheDocument();
   });
 
@@ -28,7 +37,7 @@ describe("App Routing and Navigation", () => {
     );
 
     expect(screen.getByText("No Target Job Selected")).toBeInTheDocument();
-    expect(screen.getByText("Go to Job Discovery")).toBeInTheDocument();
+    expect(screen.getByText("Go to Jobs")).toBeInTheDocument();
   });
 
   it("renders InterviewSimulator on '/interview' route", () => {
