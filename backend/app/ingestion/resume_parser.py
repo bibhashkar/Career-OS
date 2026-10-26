@@ -182,7 +182,7 @@ class ParsedCandidateData(BaseModel):
     blocks: list[ParsedCVBlock] = Field(default_factory=list)
     raw_text: str = ""
     inferred_years_experience: int = 0
-    inferred_seniority_level: str = "mid"
+    inferred_seniority_level: str = "entry"
     inferred_target_roles: list[str] = Field(default_factory=list)
     career_intelligence: dict[str, Any] = Field(default_factory=dict)
     completeness: dict[str, Any] = Field(default_factory=dict)

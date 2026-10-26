@@ -10,6 +10,9 @@ vi.mock("../services/api", () => ({
   deleteCandidatePersona: vi.fn(),
   setDefaultPersona: vi.fn(),
   createCandidatePersona: vi.fn(),
+  parseResumeDocument: vi.fn(),
+  parseResumeText: vi.fn(),
+  createCVBlock: vi.fn(),
 }));
 
 describe("PersonaManagementModal Component", () => {
@@ -349,6 +352,280 @@ describe("PersonaManagementModal Component", () => {
       expect(
         screen.getByText(/Add Hackathons, Awards, or LeetCode achievements/i)
       ).toBeInTheDocument();
+    });
+  });
+
+  it("renders zero-state experience as '0y experience' and pre-fills 0 into edit form for uncalibrated personas", async () => {
+    const zeroStatePersona = [
+      {
+        id: "p-zero",
+        name: "Admin Profile",
+        is_common_persona: true,
+        headline: "",
+        seniority_level: "entry",
+        years_experience: 0,
+        target_roles: [],
+        is_default: true,
+        skill_count: 0,
+        block_count: 0,
+        skills: [],
+      },
+    ];
+    api.getCandidatePersonas.mockResolvedValueOnce(zeroStatePersona);
+
+    render(
+      <PersonaManagementModal
+        isOpen={true}
+        onClose={vi.fn()}
+        activePersonaId="p-zero"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("0y experience")).toBeInTheDocument();
+      expect(screen.queryByText("10y experience")).not.toBeInTheDocument();
+      expect(screen.getByTestId("upload-cv-card-btn-p-zero")).toBeInTheDocument();
+    });
+
+    // Enter edit mode
+    fireEvent.click(screen.getByTestId("edit-persona-btn-p-zero"));
+
+    // Check that years experience input is 0, NOT 10 or 3
+    const yearsInput = screen.getByDisplayValue("0");
+    expect(yearsInput).toBeInTheDocument();
+    expect(yearsInput.getAttribute("type")).toBe("number");
+  });
+
+  it("handles resume document file upload and auto-fills persona edit fields", async () => {
+    const zeroStatePersona = [
+      {
+        id: "p-zero",
+        name: "Admin Profile",
+        is_common_persona: true,
+        headline: "",
+        seniority_level: "entry",
+        years_experience: 0,
+        target_roles: [],
+        is_default: true,
+        skill_count: 0,
+        block_count: 0,
+      },
+    ];
+    api.getCandidatePersonas.mockResolvedValueOnce(zeroStatePersona);
+    api.parseResumeDocument.mockResolvedValueOnce({
+      full_name: "Alex Mercer",
+      headline: "Distributed Systems & Machine Learning Engineer",
+      seniority_level: "senior",
+      years_experience: 5,
+      target_roles: ["Backend Architect", "MLOps Engineer"],
+      skills: ["Python", "FastAPI", "PostgreSQL", "PyTorch"],
+      education: [
+        {
+          degree: "B.S. Computer Science",
+          major: "Computer Systems",
+          institution: "Stanford University",
+          graduation_year: 2021,
+          institution_tier: "tier_1",
+        },
+      ],
+      blocks: [
+        {
+          category: "work_experience",
+          title: "Senior Engineer",
+          organization: "Tech Corp",
+          content: "Built real-time streaming pipeline processing 10k eps.",
+          metrics: { speedup: "4x" },
+          skills: ["Python", "Kafka"],
+        },
+      ],
+    });
+
+    render(
+      <PersonaManagementModal
+        isOpen={true}
+        onClose={vi.fn()}
+        activePersonaId="p-zero"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("edit-persona-btn-p-zero")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId("edit-persona-btn-p-zero"));
+
+    const fileInput = screen.getByTestId("persona-cv-file-input");
+    const fakeFile = new File(["dummy resume content"], "resume.pdf", {
+      type: "application/pdf",
+    });
+
+    fireEvent.change(fileInput, { target: { files: [fakeFile] } });
+
+    await waitFor(() => {
+      expect(api.parseResumeDocument).toHaveBeenCalledWith(fakeFile);
+      expect(screen.getByTestId("cv-parse-success")).toBeInTheDocument();
+      expect(screen.getByText(/1 career block staged/i)).toBeInTheDocument();
+    });
+
+    // Check that form inputs were auto-filled
+    expect(screen.getByTestId("edit-persona-headline-input")).toHaveValue(
+      "Distributed Systems & Machine Learning Engineer"
+    );
+    expect(screen.getByDisplayValue("5")).toBeInTheDocument(); // Years of experience
+    expect(
+      screen.getByDisplayValue("Backend Architect, MLOps Engineer")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("Python, FastAPI, PostgreSQL, PyTorch")
+    ).toBeInTheDocument();
+  });
+
+  it("handles resume text paste and auto-fills persona edit fields", async () => {
+    const zeroStatePersona = [
+      {
+        id: "p-zero",
+        name: "Admin Profile",
+        is_common_persona: true,
+        headline: "",
+        seniority_level: "entry",
+        years_experience: 0,
+        target_roles: [],
+        is_default: true,
+        skill_count: 0,
+        block_count: 0,
+      },
+    ];
+    api.getCandidatePersonas.mockResolvedValueOnce(zeroStatePersona);
+    api.parseResumeText.mockResolvedValueOnce({
+      headline: "Senior Cloud Architect",
+      seniority_level: "lead",
+      years_experience: 8,
+      target_roles: ["Staff Infrastructure Engineer"],
+      skills: ["Kubernetes", "Terraform", "Go"],
+      blocks: [],
+    });
+
+    render(
+      <PersonaManagementModal
+        isOpen={true}
+        onClose={vi.fn()}
+        activePersonaId="p-zero"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("edit-persona-btn-p-zero")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId("edit-persona-btn-p-zero"));
+
+    // Open paste text section
+    fireEvent.click(screen.getByRole("button", { name: /Paste Text/i }));
+
+    const textarea = screen.getByTestId("paste-resume-textarea");
+    expect(textarea).toBeInTheDocument();
+
+    fireEvent.change(textarea, {
+      target: {
+        value: "Senior Cloud Architect with 8 years building Kubernetes platforms.",
+      },
+    });
+
+    fireEvent.click(screen.getByTestId("submit-resume-text-btn"));
+
+    await waitFor(() => {
+      expect(api.parseResumeText).toHaveBeenCalledWith(
+        "Senior Cloud Architect with 8 years building Kubernetes platforms."
+      );
+      expect(screen.getByTestId("cv-parse-success")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("edit-persona-headline-input")).toHaveValue(
+      "Senior Cloud Architect"
+    );
+    expect(screen.getByDisplayValue("8")).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("Staff Infrastructure Engineer")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("Kubernetes, Terraform, Go")
+    ).toBeInTheDocument();
+  });
+
+  it("persists staged CV blocks via createCVBlock when saving an auto-filled persona", async () => {
+    const zeroStatePersona = [
+      {
+        id: "p-zero",
+        name: "Admin Profile",
+        is_common_persona: true,
+        headline: "",
+        seniority_level: "entry",
+        years_experience: 0,
+        target_roles: [],
+        is_default: true,
+        skill_count: 0,
+        block_count: 0,
+      },
+    ];
+    api.getCandidatePersonas.mockResolvedValue(zeroStatePersona);
+    api.updateCandidatePersona.mockResolvedValueOnce({
+      ...zeroStatePersona[0],
+      years_experience: 4,
+    });
+    api.createCVBlock.mockResolvedValue({ id: "block-1", title: "Core Platform" });
+
+    api.parseResumeDocument.mockResolvedValueOnce({
+      headline: "Platform Engineer",
+      seniority_level: "mid",
+      years_experience: 4,
+      target_roles: ["Platform Engineer"],
+      skills: ["Docker", "Kubernetes"],
+      blocks: [
+        {
+          category: "work_experience",
+          title: "Core Platform",
+          organization: "Acme",
+          content: "Maintained Kubernetes clusters",
+          metrics: {},
+          skills: ["Kubernetes"],
+        },
+      ],
+    });
+
+    render(
+      <PersonaManagementModal
+        isOpen={true}
+        onClose={vi.fn()}
+        activePersonaId="p-zero"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("edit-persona-btn-p-zero")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId("edit-persona-btn-p-zero"));
+
+    const fileInput = screen.getByTestId("persona-cv-file-input");
+    const fakeFile = new File(["dummy cv"], "cv.pdf", { type: "application/pdf" });
+    fireEvent.change(fileInput, { target: { files: [fakeFile] } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("cv-parse-success")).toBeInTheDocument();
+    });
+
+    // Save the persona
+    fireEvent.click(screen.getByTestId("save-persona-btn"));
+
+    await waitFor(() => {
+      expect(api.updateCandidatePersona).toHaveBeenCalled();
+      expect(api.createCVBlock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Core Platform",
+          organization: "Acme",
+          persona_ids: ["p-zero"],
+        })
+      );
     });
   });
 });

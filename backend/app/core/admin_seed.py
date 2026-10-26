@@ -10,6 +10,7 @@ import logging
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.core.auth import hash_password
 from app.core.config import settings
@@ -44,6 +45,42 @@ async def ensure_default_admin() -> None:
                     logger.info(
                         "Upgraded existing user %s to 'admin' role", admin_email
                     )
+                # Self-heal legacy seeded persona with dummy 10y experience and fake target roles
+                p_stmt = (
+                    select(CandidatePersona)
+                    .where(
+                        CandidatePersona.user_account_id == account.id,
+                        CandidatePersona.is_common_persona.is_(True),
+                    )
+                    .options(selectinload(CandidatePersona.skills))
+                )
+                p_res = await db.execute(p_stmt)
+                persona = p_res.scalar_one_or_none()
+                if persona:
+                    healed = False
+                    ci = persona.career_intelligence or {}
+                    has_real_ci = bool(
+                        ci.get("education")
+                        or ci.get("projects")
+                        or ci.get("hackathons_competitions")
+                    )
+                    if (
+                        persona.years_experience == 10
+                        and not persona.skills
+                        and not has_real_ci
+                    ):
+                        persona.years_experience = 0
+                        persona.seniority_level = "entry"
+                        healed = True
+                    if persona.target_roles == ["Administrator"] and not persona.skills:
+                        persona.target_roles = []
+                        healed = True
+                    if healed:
+                        await db.commit()
+                        logger.info(
+                            "Self-healed uncalibrated admin persona values for %s to zero-state defaults",
+                            admin_email,
+                        )
                 return
 
             account_id = uuid.uuid4()
@@ -67,10 +104,10 @@ async def ensure_default_admin() -> None:
                 name="Admin Profile",
                 is_common_persona=True,
                 headline="Platform Administrator",
-                target_roles=["Administrator"],
+                target_roles=[],
                 target_industries=[],
-                years_experience=10,
-                seniority_level="staff",
+                years_experience=0,
+                seniority_level="entry",
                 is_default=True,
             )
             db.add(persona)
@@ -83,7 +120,7 @@ async def ensure_default_admin() -> None:
                 visa_status="Citizen",
                 remote_preference="Remote",
                 tone_directives={},
-                target_roles=["Administrator"],
+                target_roles=[],
                 target_locations=[],
             )
             db.add(legacy_profile)

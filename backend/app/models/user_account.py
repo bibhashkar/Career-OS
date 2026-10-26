@@ -163,7 +163,7 @@ class CandidatePersona(Base, UUIDMixin, TimestampMixin):
     )
     years_experience: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     seniority_level: Mapped[str] = mapped_column(
-        String(50), default="mid", nullable=False
+        String(50), default="entry", nullable=False
     )
     min_salary: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

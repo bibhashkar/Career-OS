@@ -1342,10 +1342,10 @@ async def get_job_diagnostics(
                 is_common_persona=True,
                 is_default=True,
                 headline=f"{acc.full_name} — Universal Profile",
-                target_roles=["Senior Software Engineer"],
-                target_industries=["technology_software"],
-                years_experience=3,
-                seniority_level="mid",
+                target_roles=[],
+                target_industries=[],
+                years_experience=0,
+                seniority_level="entry",
             )
             db.add(new_persona)
             await db.flush()

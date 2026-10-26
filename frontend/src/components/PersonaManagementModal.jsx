@@ -20,6 +20,10 @@ import {
   FolderGit2,
   CheckCircle2,
   TrendingUp,
+  Upload,
+  FileText,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import {
   getCandidatePersonas,
@@ -27,6 +31,9 @@ import {
   deleteCandidatePersona,
   setDefaultPersona,
   createCandidatePersona,
+  parseResumeDocument,
+  parseResumeText,
+  createCVBlock,
 } from "../services/api";
 
 export function PersonaManagementModal({
@@ -47,13 +54,22 @@ export function PersonaManagementModal({
     headline: "",
     target_roles: "",
     target_industries: "",
-    seniority_level: "mid",
+    seniority_level: "entry",
     years_experience: 0,
     min_salary: "",
     skills: "",
   });
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState(null);
+
+  // Resume / CV Ingestion State
+  const fileInputRef = React.useRef(null);
+  const [parsingResume, setParsingResume] = useState(false);
+  const [parseSuccessMsg, setParseSuccessMsg] = useState(null);
+  const [parseErrorMsg, setParseErrorMsg] = useState(null);
+  const [showPasteText, setShowPasteText] = useState(false);
+  const [pastedResumeText, setPastedResumeText] = useState("");
+  const [stagedBlocks, setStagedBlocks] = useState([]);
 
   // Creating new specialized persona state
   const [isCreating, setIsCreating] = useState(false);
@@ -62,8 +78,8 @@ export function PersonaManagementModal({
     headline: "",
     target_roles: "",
     target_industries: "",
-    seniority_level: "mid",
-    years_experience: 3,
+    seniority_level: "entry",
+    years_experience: 0,
     skills: "",
   });
   const [createLoading, setCreateLoading] = useState(false);
@@ -108,9 +124,21 @@ export function PersonaManagementModal({
     setEditingPersona(p);
     setIsCreating(false);
     setSaveError(null);
+    setParseSuccessMsg(null);
+    setParseErrorMsg(null);
+    setStagedBlocks([]);
+    setShowPasteText(false);
+    setPastedResumeText("");
     const ci = p.career_intelligence || {};
     const edu = ci.education?.[0] || {};
     const links = ci.external_links || {};
+    const existingSkills = Array.isArray(p.skills)
+      ? p.skills
+          .map((s) => (typeof s === "string" ? s : s.skill_name || s.name))
+          .filter(Boolean)
+          .join(", ")
+      : "";
+
     setEditForm({
       name: p.name || "",
       headline: p.headline || "",
@@ -118,10 +146,10 @@ export function PersonaManagementModal({
       target_industries: Array.isArray(p.target_industries)
         ? p.target_industries.join(", ")
         : "",
-      seniority_level: p.seniority_level || "mid",
-      years_experience: p.years_experience || 0,
+      seniority_level: p.seniority_level || "entry",
+      years_experience: p.years_experience ?? 0,
       min_salary: p.min_salary || "",
-      skills: "",
+      skills: existingSkills,
       // Candidate Intelligence Dimensions
       degree: edu.degree || "",
       major: edu.major || "",
@@ -136,6 +164,159 @@ export function PersonaManagementModal({
       leetcode_url: links.leetcode_url || "",
       leetcode_solved: links.leetcode_solved || "",
     });
+  }
+
+  function applyParsedDataToForm(data) {
+    if (!data) return;
+    const parsedYears = data.years_experience ?? data.total_years_experience;
+    const parsedSeniority = data.seniority_level || data.inferred_seniority_level;
+    const parsedRoles = data.target_roles || data.inferred_target_roles;
+    const edu = data.education?.[0] || {};
+    const links = data.external_links || {};
+
+    setEditForm((prev) => {
+      // Merge skills without duplicates
+      const existingSkillsList = prev.skills
+        ? prev.skills.split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
+      const newSkillsList = Array.isArray(data.skills) ? data.skills : [];
+      const combinedSkills = Array.from(
+        new Set([...existingSkillsList, ...newSkillsList])
+      ).join(", ");
+
+      // Target roles
+      let rolesStr = prev.target_roles;
+      if (Array.isArray(parsedRoles) && parsedRoles.length > 0) {
+        rolesStr = parsedRoles.join(", ");
+      }
+
+      // Projects
+      let projectsStr = prev.projects_text;
+      if (Array.isArray(data.projects) && data.projects.length > 0) {
+        const prjLines = data.projects.map(
+          (prj) => `${prj.name}: ${prj.description || prj.name}`
+        );
+        projectsStr = prjLines.join("\n");
+      }
+
+      // Hackathons
+      let hackathonsStr = prev.hackathons_text;
+      if (
+        Array.isArray(data.hackathons_competitions) &&
+        data.hackathons_competitions.length > 0
+      ) {
+        hackathonsStr = data.hackathons_competitions
+          .map((h) => `${h.name}${h.rank_or_award ? ` - ${h.rank_or_award}` : ""}`)
+          .join("\n");
+      }
+
+      // Awards
+      let awardsStr = prev.awards_text;
+      if (
+        Array.isArray(data.awards_recognitions) &&
+        data.awards_recognitions.length > 0
+      ) {
+        awardsStr = data.awards_recognitions
+          .map((a) => `${a.title}${a.description ? `: ${a.description}` : ""}`)
+          .join("\n");
+      }
+
+      return {
+        ...prev,
+        headline:
+          data.headline ||
+          (parsedRoles?.[0] ? `${parsedRoles[0]} Professional` : prev.headline),
+        target_roles: rolesStr,
+        seniority_level: parsedSeniority || prev.seniority_level || "entry",
+        years_experience:
+          parsedYears !== undefined && parsedYears !== null
+            ? Number(parsedYears)
+            : prev.years_experience,
+        skills: combinedSkills,
+        degree: edu.degree || prev.degree,
+        major: edu.major || prev.major,
+        institution: edu.institution || prev.institution,
+        graduation_year: edu.graduation_year || prev.graduation_year,
+        institution_tier: edu.institution_tier || prev.institution_tier,
+        projects_text: projectsStr,
+        hackathons_text: hackathonsStr,
+        awards_text: awardsStr,
+        linkedin_url: links.linkedin_url || prev.linkedin_url,
+        github_url: links.github_url || prev.github_url,
+        leetcode_url: links.leetcode_url || prev.leetcode_url,
+        leetcode_solved: links.leetcode_solved || prev.leetcode_solved,
+      };
+    });
+
+    if (Array.isArray(data.blocks) && data.blocks.length > 0) {
+      setStagedBlocks(data.blocks);
+    }
+  }
+
+  async function handleResumeFileUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setParsingResume(true);
+      setParseErrorMsg(null);
+      setParseSuccessMsg(null);
+      const data = await parseResumeDocument(file);
+      applyParsedDataToForm(data);
+      const blockCount = data.blocks?.length || 0;
+      setParseSuccessMsg(
+        `Successfully extracted profile data${blockCount > 0 ? ` and ${blockCount} experience blocks` : ""} from ${file.name}. Review below and save.`
+      );
+    } catch (err) {
+      console.error("Resume file parse error:", err);
+      setParseErrorMsg(
+        err.response?.data?.detail ||
+          "Failed to parse resume document. You can paste resume text below."
+      );
+    } finally {
+      setParsingResume(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }
+
+  async function handleResumePasteSubmit() {
+    if (!pastedResumeText || pastedResumeText.trim().length < 20) {
+      setParseErrorMsg("Please paste at least 20 characters of resume text.");
+      return;
+    }
+
+    try {
+      setParsingResume(true);
+      setParseErrorMsg(null);
+      setParseSuccessMsg(null);
+      const data = await parseResumeText(pastedResumeText.trim());
+      applyParsedDataToForm(data);
+      const blockCount = data.blocks?.length || 0;
+      setParseSuccessMsg(
+        `Successfully parsed resume text${blockCount > 0 ? ` and extracted ${blockCount} blocks` : ""}. Review below and save.`
+      );
+      setShowPasteText(false);
+      setPastedResumeText("");
+    } catch (err) {
+      console.error("Resume text parse error:", err);
+      setParseErrorMsg(
+        err.response?.data?.detail ||
+          "Failed to parse resume text. Please check format and retry."
+      );
+    } finally {
+      setParsingResume(false);
+    }
+  }
+
+  function handleCardUploadClick(p) {
+    startEditing(p);
+    setTimeout(() => {
+      if (fileInputRef.current) {
+        fileInputRef.current.click();
+      }
+    }, 100);
   }
 
   async function handleSaveEdit(e) {
@@ -230,6 +411,27 @@ export function PersonaManagementModal({
 
     try {
       const updated = await updateCandidatePersona(editingPersona.id, payload);
+
+      // Persist any staged CV blocks extracted from resume
+      if (stagedBlocks.length > 0) {
+        for (const block of stagedBlocks) {
+          try {
+            await createCVBlock({
+              category: block.category || "work_experience",
+              title: block.title || "Experience",
+              organization: block.organization || "",
+              content: block.content || "",
+              metrics: block.metrics || {},
+              skills: block.skills || [],
+              persona_ids: [editingPersona.id],
+            });
+          } catch (blockErr) {
+            console.warn("Failed to persist staged CV block:", blockErr);
+          }
+        }
+        setStagedBlocks([]);
+      }
+
       setEditingPersona(null);
       await loadPersonas();
       if (onPersonaSelect && updated.id === activePersonaId) {
@@ -290,8 +492,8 @@ export function PersonaManagementModal({
         headline: "",
         target_roles: "",
         target_industries: "",
-        seniority_level: "mid",
-        years_experience: 3,
+        seniority_level: "entry",
+        years_experience: 0,
         skills: "",
       });
       await loadPersonas();
@@ -417,6 +619,140 @@ export function PersonaManagementModal({
               )}
 
               <form onSubmit={handleSaveEdit} className="space-y-3">
+                {/* Auto-Fill Persona from CV / Resume Section */}
+                <div className="p-3.5 rounded-xl bg-gradient-to-r from-sky-950/40 to-indigo-950/40 border border-sky-500/30 space-y-2.5">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-lg bg-sky-500/20 text-sky-400">
+                        <Upload className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-semibold text-white">
+                          Auto-Fill Persona from CV / Resume
+                        </h4>
+                        <p className="text-[10px] text-slate-400">
+                          Upload PDF/DOCX/TXT or paste text to auto-populate experience, skills, and education.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        accept=".pdf,.docx,.txt"
+                        onChange={handleResumeFileUpload}
+                        className="hidden"
+                        id="persona-cv-upload-input"
+                        data-testid="persona-cv-file-input"
+                      />
+                      <label
+                        htmlFor="persona-cv-upload-input"
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium cursor-pointer shadow-sm transition-all ${
+                          parsingResume ? "opacity-50 pointer-events-none" : ""
+                        }`}
+                      >
+                        {parsingResume ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Parsing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>Upload CV / Resume</span>
+                          </>
+                        )}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowPasteText((prev) => !prev)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 cursor-pointer"
+                        title="Paste Resume Text"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Paste Text</span>
+                        {showPasteText ? (
+                          <ChevronUp className="w-3 h-3 text-slate-400" />
+                        ) : (
+                          <ChevronDown className="w-3 h-3 text-slate-400" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Parse Status Feedback */}
+                  {parseSuccessMsg && (
+                    <div
+                      className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center gap-1.5"
+                      data-testid="cv-parse-success"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                      <span>{parseSuccessMsg}</span>
+                    </div>
+                  )}
+                  {parseErrorMsg && (
+                    <div
+                      className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center gap-1.5"
+                      data-testid="cv-parse-error"
+                    >
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                      <span>{parseErrorMsg}</span>
+                    </div>
+                  )}
+
+                  {/* Staged CV Blocks info pill */}
+                  {stagedBlocks.length > 0 && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-sky-300 bg-sky-950/60 px-2.5 py-1 rounded-lg border border-sky-800/60">
+                      <Layers className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                      <span>
+                        {stagedBlocks.length} career block{stagedBlocks.length === 1 ? "" : "s"} staged from your resume will be attached when you save.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Collapsible Text Area for Direct Paste */}
+                  {showPasteText && (
+                    <div className="pt-2 border-t border-slate-800 space-y-2">
+                      <textarea
+                        rows={4}
+                        data-testid="paste-resume-textarea"
+                        value={pastedResumeText}
+                        onChange={(e) => setPastedResumeText(e.target.value)}
+                        placeholder="Paste your raw resume text, LinkedIn profile, or CV contents here..."
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowPasteText(false);
+                            setPastedResumeText("");
+                          }}
+                          className="px-2.5 py-1 text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="submit-resume-text-btn"
+                          disabled={parsingResume || !pastedResumeText.trim()}
+                          onClick={handleResumePasteSubmit}
+                          className="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          {parsingResume ? (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              <span>Parsing...</span>
+                            </>
+                          ) : (
+                            <span>Parse & Auto-Fill</span>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-medium text-slate-300">
@@ -484,10 +820,12 @@ export function PersonaManagementModal({
                       }
                       className="w-full px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-sky-500"
                     >
+                      <option value="entry">Entry-Level</option>
                       <option value="junior">Junior</option>
                       <option value="mid">Mid-Level</option>
                       <option value="senior">Senior</option>
                       <option value="lead">Lead</option>
+                      <option value="staff">Staff</option>
                       <option value="principal">Principal</option>
                       <option value="executive">Executive</option>
                     </select>
@@ -764,11 +1102,14 @@ export function PersonaManagementModal({
                       }
                       className="w-full px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
                     >
+                      <option value="entry">Entry-Level</option>
                       <option value="junior">Junior</option>
                       <option value="mid">Mid-Level</option>
                       <option value="senior">Senior</option>
                       <option value="lead">Lead</option>
+                      <option value="staff">Staff</option>
                       <option value="principal">Principal</option>
+                      <option value="executive">Executive</option>
                     </select>
                   </div>
 
@@ -1022,6 +1363,17 @@ export function PersonaManagementModal({
 
                         {/* Card Action Controls */}
                         <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleCardUploadClick(p)}
+                            data-testid={`upload-cv-card-btn-${p.id}`}
+                            title="Upload CV to auto-fill this persona"
+                            className="px-2.5 py-1.5 rounded-lg border border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Upload className="w-3.5 h-3.5 text-sky-400" />
+                            <span>Upload CV</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => startEditing(p)}

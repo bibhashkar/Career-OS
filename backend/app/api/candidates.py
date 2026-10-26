@@ -65,8 +65,8 @@ class CreateSpecializedPersonaRequest(BaseModel):
     headline: str | None = Field(None, examples=["Specializing in LLM Orchestration"])
     target_roles: list[str] = Field(default_factory=list)
     target_industries: list[str] = Field(default_factory=list)
-    seniority_level: str = Field(default="mid")
-    years_experience: int = Field(default=3)
+    seniority_level: str = Field(default="entry")
+    years_experience: int = Field(default=0, ge=0)
     skills: list[str] = Field(default_factory=list)
 
 
@@ -428,7 +428,7 @@ async def commit_onboarding(
                 skill_name=skill_name_clean,
                 category="tool",
                 proficiency="intermediate",
-                years_experience=max(1, req.years_experience),
+                years_experience=req.years_experience or 0,
                 is_core=True,
             )
             db.add(new_skill)
@@ -704,7 +704,7 @@ async def update_persona(
                     skill_name=s_clean,
                     category="tool",
                     proficiency="intermediate",
-                    years_experience=max(1, req.years_experience),
+                    years_experience=req.years_experience or 0,
                     is_core=True,
                 )
                 db.add(new_skill)

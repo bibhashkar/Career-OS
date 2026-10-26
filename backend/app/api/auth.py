@@ -193,7 +193,7 @@ async def register_account(
         target_roles=[],
         target_industries=[],
         years_experience=0,
-        seniority_level="mid",
+        seniority_level="entry",
         is_default=True,
     )
     db.add(universal_persona)
