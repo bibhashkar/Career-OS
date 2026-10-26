@@ -45,10 +45,10 @@ describe("PersonaSwitcher Component", () => {
 
     render(<PersonaSwitcher onPersonaChange={vi.fn()} onOpenAudit={vi.fn()} />);
 
-    const switcherBtn = await screen.findByTitle(/Switch active career persona lens/i);
+    const switcherBtn = await screen.findByTitle(/Manage Career Profile/i);
     fireEvent.click(switcherBtn);
 
-    expect(await screen.findByText("Target Career Personas")).toBeInTheDocument();
+    expect(await screen.findByText("Career Profile")).toBeInTheDocument();
     expect(screen.getByText("AI Platform Engineer")).toBeInTheDocument();
   });
 
@@ -64,7 +64,7 @@ describe("PersonaSwitcher Component", () => {
       />
     );
 
-    const switcherBtn = await screen.findByTitle(/Switch active career persona lens/i);
+    const switcherBtn = await screen.findByTitle(/Manage Career Profile/i);
     fireEvent.click(switcherBtn);
 
     const aiPersonaBtn = await screen.findByText("AI Platform Engineer");
@@ -89,7 +89,7 @@ describe("PersonaSwitcher Component", () => {
       />
     );
 
-    const switcherBtn = await screen.findByTitle(/Switch active career persona lens/i);
+    const switcherBtn = await screen.findByTitle(/Manage Career Profile/i);
     fireEvent.click(switcherBtn);
 
     const auditBtn = await screen.findByRole("button", { name: /360° Audit/i });

@@ -105,13 +105,13 @@ export function App() {
                 </span>
               </div>
               <p className="text-[10px] text-slate-400 font-medium hidden sm:block">
-                Multi-Persona Intelligence & Matching
+                AI Career Intelligence & Matching
               </p>
             </div>
           </div>
 
           {/* Navigation Tab Bar */}
-          <nav className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60 overflow-x-auto">
+          <nav className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60 overflow-x-auto scrollbar-none shrink-0">
             <NavLink
               to="/"
               end

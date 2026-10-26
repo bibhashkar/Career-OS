@@ -164,6 +164,7 @@ class PersonaDetailResponse(BaseModel):
     skills: list[str] = Field(default_factory=list)
     career_intelligence: dict[str, Any] = Field(default_factory=dict)
     completeness: dict[str, Any] = Field(default_factory=dict)
+    completeness_score: int = 0
 
 
 def _build_persona_detail_response(
@@ -207,6 +208,7 @@ def _build_persona_detail_response(
         skills=skill_names,
         career_intelligence=career_intel,
         completeness=completeness.model_dump(),
+        completeness_score=completeness.score,
     )
 
 

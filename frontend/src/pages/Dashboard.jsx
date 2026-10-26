@@ -191,7 +191,7 @@ export function Dashboard({
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
   // Candidate Intelligence & Cold-Start State
-  const [profileReady, setProfileReady] = useState(true);
+  const [profileReady, setProfileReady] = useState(false);
   const [profileStatusReason, setProfileStatusReason] = useState("");
   const [completenessData, setCompletenessData] = useState(null);
 
@@ -541,6 +541,11 @@ export function Dashboard({
         if (!res.profile_ready) {
           setSearchMode("unbiased");
         }
+      } else {
+        const hasScore = nextJobs.some(
+          (j) => j.match_score !== null && j.match_score !== undefined,
+        );
+        setProfileReady(hasScore);
       }
       if (res?.profile_status_reason !== undefined) {
         setProfileStatusReason(res.profile_status_reason);
@@ -754,20 +759,12 @@ export function Dashboard({
     <div className="max-w-7xl mx-auto px-4 py-3 space-y-3 h-full flex flex-col min-h-0 w-full">
       {/* Ultra-Compact Top Header Bar (~44px) */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
-        {/* Left: Brand Title & Active Persona Lens */}
+        {/* Left: Brand Title */}
         <div className="flex items-center gap-3">
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             <Briefcase className="w-6 h-6 text-sky-400" /> Career Intelligence &
             Hunter
           </h1>
-          {activeTab === "matches" && (
-            <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-400 bg-slate-900/90 border border-slate-800 px-2.5 py-1 rounded-lg">
-              <span className="text-slate-500 font-medium">Lens:</span>
-              <span className="font-semibold text-sky-300 truncate max-w-[160px]">
-                {activePersona ? activePersona.name : "Universal Profile"}
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Center/Right: Dual Tab Navigation & Actions */}
@@ -1358,6 +1355,7 @@ export function Dashboard({
                         const isSelected =
                           selectedMatch?.job_id === match.job_id;
                         const showScore =
+                          profileReady &&
                           searchMode !== "unbiased" &&
                           match.match_score !== null &&
                           match.match_score !== undefined;

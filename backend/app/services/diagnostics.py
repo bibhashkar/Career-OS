@@ -319,34 +319,59 @@ def calculate_persona_completeness(
             )
         )
 
-    total_score = (
-        role_score
-        + skill_score
-        + exp_score
-        + edu_score
-        + proj_score
-        + achieve_score
-        + logistics_score
+    has_capability_signals = (
+        bool(skills)
+        or bool(blocks)
+        or bool(education)
+        or bool(role_tenures)
+        or bool(projects)
+        or bool(hackathons)
+        or bool(awards)
     )
-    total_score = min(100, max(0, total_score))
-    is_ready = total_score >= 10
 
-    if total_score == 0:
+    if not has_capability_signals:
+        total_score = 0
+        role_score = 0
+        skill_score = 0
+        exp_score = 0
+        edu_score = 0
+        proj_score = 0
+        achieve_score = 0
+        logistics_score = 0
+        is_ready = False
         reason = (
             "Because you haven't shared your skills or profile with us yet, we cannot "
             "calculate personalized match scores or show the best-matched jobs for your background. "
             "You are currently browsing in Explorer Mode. Upload your CV or add your skills to unlock "
             "personalized Grounded matching."
         )
-    elif total_score < 100:
-        reason = (
-            f"Your profile is {total_score}% complete. Grounded matching is active. Complete remaining "
-            "dimensions to maximize match precision."
-        )
     else:
-        reason = (
-            "Your profile is 100% complete with full candidate intelligence active."
+        total_score = (
+            role_score
+            + skill_score
+            + exp_score
+            + edu_score
+            + proj_score
+            + achieve_score
+            + logistics_score
         )
+        total_score = min(100, max(0, total_score))
+        is_ready = total_score >= 10
+
+        if not is_ready:
+            reason = (
+                f"Your profile is {total_score}% complete. You need at least 10% completeness "
+                "with verified capability signals to unlock Grounded matching."
+            )
+        elif total_score < 100:
+            reason = (
+                f"Your profile is {total_score}% complete. Grounded matching is active. Complete remaining "
+                "dimensions to maximize match precision."
+            )
+        else:
+            reason = (
+                "Your profile is 100% complete with full candidate intelligence active."
+            )
 
     return PersonaCompletenessResult(
         score=total_score,

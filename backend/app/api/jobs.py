@@ -1255,7 +1255,7 @@ async def get_job_matches(
     if total_count == 0:
         diagnostics = await diagnose_zero_results(db, filter_dto)
 
-    if not profile_ready:
+    if not profile_ready or search_mode == "unbiased":
         for j in ranked_jobs:
             j.match_score = None
             j.breakdown = None

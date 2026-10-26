@@ -72,7 +72,7 @@ describe("PersonaManagementModal Component", () => {
       expect(screen.getByText("Universal Profile")).toBeInTheDocument();
       expect(screen.getAllByText("AI Platform Engineer").length).toBeGreaterThan(0);
       expect(screen.getByText("Universal Baseline")).toBeInTheDocument();
-      expect(screen.getByText("Default Lens")).toBeInTheDocument();
+      expect(screen.getByText("Default Profile")).toBeInTheDocument();
     });
   });
 

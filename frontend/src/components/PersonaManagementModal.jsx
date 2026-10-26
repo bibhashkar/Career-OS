@@ -975,7 +975,7 @@ export function PersonaManagementModal({
                               )}
                               {p.is_default && (
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                                  <Check className="w-2.5 h-2.5" /> Default Lens
+                                  <Check className="w-2.5 h-2.5" /> Default Profile
                                 </span>
                               )}
                               {isActive && !p.is_default && (

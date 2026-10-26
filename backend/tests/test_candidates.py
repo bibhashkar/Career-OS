@@ -21,6 +21,7 @@ from app.ingestion.resume_parser import (
     parse_resume_bytes,
 )
 from app.main import app
+from app.services.diagnostics import calculate_persona_completeness
 
 
 def test_extract_skills_from_text() -> None:
@@ -458,3 +459,44 @@ async def test_persona_management_and_uniqueness_flow(
             assert univ_after["is_default"] is True
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+def test_calculate_persona_completeness_capability_gating() -> None:
+    """
+    Verify deterministic candidate capability gating:
+    If candidate sets roles/visa/seniority but zero capability signals (skills, CV blocks,
+    education, projects, role tenures), completeness must strictly evaluate to 0% and
+    is_profile_ready must be False with honest cold-start status reason.
+    """
+    # 1. Zero capability signals (Admin seed profile / fresh empty user)
+    cold_result = calculate_persona_completeness(
+        target_roles=["Administrator"],
+        years_experience=10,
+        seniority_level="staff",
+        skills=[],
+        blocks=[],
+        career_intelligence={},
+        visa_status="Citizen",
+        preferred_locations=["Remote"],
+    )
+    assert cold_result.score == 0
+    assert cold_result.is_profile_ready is False
+    assert "haven't shared your skills or profile" in cold_result.status_reason
+    assert cold_result.pillars.role_trajectory == 0
+    assert cold_result.pillars.skills_inventory == 0
+
+    # 2. Candidate adds capability signal (1 skill + roles)
+    active_result = calculate_persona_completeness(
+        target_roles=["Administrator"],
+        years_experience=10,
+        seniority_level="staff",
+        skills=["Kubernetes"],
+        blocks=[],
+        career_intelligence={},
+        visa_status="Citizen",
+        preferred_locations=["Remote"],
+    )
+    # role (8+4=12) + skills (4) + logistics (3+3=6) = 22%
+    assert active_result.score >= 10
+    assert active_result.is_profile_ready is True
+    assert "Grounded matching is active" in active_result.status_reason
