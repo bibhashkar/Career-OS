@@ -39,8 +39,332 @@ logger = logging.getLogger("career_os.services.diagnostics")
 
 
 # ---------------------------------------------------------------------------
-# Tier 0: Holistic 360° Candidate Audit Schemas
+# Persona Completeness & Readiness Engine (ADR-009)
 # ---------------------------------------------------------------------------
+class PersonaCompletenessPillars(BaseModel):
+    """Granular score breakdown across 7 candidate intelligence dimensions (0-100)."""
+
+    role_trajectory: int = Field(
+        ..., description="Role targets & per-role YoE (max 15)"
+    )
+    skills_inventory: int = Field(
+        ..., description="Core, tool & domain skills (max 20)"
+    )
+    work_experience: int = Field(
+        ..., description="Work history & quantified STAR impact (max 20)"
+    )
+    education: int = Field(
+        ..., description="Education major/minor, degree, university tier (max 15)"
+    )
+    projects: int = Field(..., description="Projects & open source (max 10)")
+    achievements: int = Field(
+        ..., description="Hackathons, LeetCode, competitions, awards (max 10)"
+    )
+    external_logistics: int = Field(
+        ..., description="LinkedIn/GitHub, work auth, salary/location (max 10)"
+    )
+
+
+class CompletenessMissingStep(BaseModel):
+    """Actionable step guiding user on what to complete to reach 100% accuracy."""
+
+    pillar: str
+    weight: int
+    title: str
+    action_prompt: str
+    why_it_matters: str
+    action_key: str
+
+
+class PersonaCompletenessResult(BaseModel):
+    """Evaluated profile completeness score, readiness gate, and actionable checklist."""
+
+    score: int
+    is_profile_ready: bool
+    pillars: PersonaCompletenessPillars
+    missing_steps: list[CompletenessMissingStep]
+    status_reason: str
+
+
+def calculate_persona_completeness(
+    target_roles: list[str] | None,
+    years_experience: int | None,
+    seniority_level: str | None,
+    skills: list[str] | None,
+    blocks: list[Any] | None,
+    career_intelligence: dict[str, Any] | None,
+    visa_status: str | None = None,
+    preferred_locations: list[str] | None = None,
+    min_salary: int | None = None,
+    linkedin_url: str | None = None,
+    github_url: str | None = None,
+) -> PersonaCompletenessResult:
+    """
+    Deterministic 7-dimension profile completeness scoring engine (0-100%).
+
+    Threshold Rules:
+      - 0% completeness: profile_ready = False. Grounded mode locked.
+      - >= 10% completeness: profile_ready = True. Grounded mode unlocked with honest telemetry.
+    """
+    target_roles = target_roles or []
+    skills = skills or []
+    blocks = blocks or []
+    career_intel = career_intelligence or {}
+    role_tenures = career_intel.get("role_tenures") or []
+    education = career_intel.get("education") or []
+    projects = career_intel.get("projects") or []
+    hackathons = career_intel.get("hackathons_competitions") or []
+    awards = career_intel.get("awards_recognitions") or []
+    ext_links = career_intel.get("external_links") or {}
+
+    missing_steps: list[CompletenessMissingStep] = []
+
+    # 1. Role Trajectory & Per-Role YoE (Max 15%)
+    role_score = 0
+    if target_roles:
+        role_score += 8
+    if (years_experience and years_experience > 0) or (
+        seniority_level and seniority_level != "mid"
+    ):
+        role_score += 4
+    if role_tenures:
+        role_score += 3
+
+    if role_score < 15:
+        missing_steps.append(
+            CompletenessMissingStep(
+                pillar="role_trajectory",
+                weight=15 - role_score,
+                title="Target Roles & Per-Role Experience",
+                action_prompt=f"+{15 - role_score}%: Add your target roles and experience duration per role.",
+                why_it_matters="Distinguishes your exact years in each role (e.g. 3 yrs Senior SWE vs 1 yr QA) to prevent mismatched levels.",
+                action_key="add_roles",
+            )
+        )
+
+    # 2. Skills Inventory (Max 20%)
+    skill_count = len(skills)
+    skill_score = min(20, skill_count * 4)
+    if skill_score < 20:
+        needed = 5 - min(5, skill_count)
+        missing_steps.append(
+            CompletenessMissingStep(
+                pillar="skills_inventory",
+                weight=20 - skill_score,
+                title="Core & Domain Skills",
+                action_prompt=f"+{20 - skill_score}%: Add {needed} more core, cloud, or domain skills.",
+                why_it_matters="Powers exact and directional skill-graph matching against non-negotiable job dealbreakers.",
+                action_key="add_skills",
+            )
+        )
+
+    # 3. Work Experience & Quantified Impact (Max 20%)
+    exp_score = 0
+    exp_blocks = [
+        b
+        for b in blocks
+        if getattr(b, "category", "") == "experience"
+        or (isinstance(b, dict) and b.get("category") == "experience")
+    ]
+    total_exp_items = max(len(exp_blocks), len(role_tenures))
+    if total_exp_items >= 2:
+        exp_score += 12
+    elif total_exp_items == 1:
+        exp_score += 6
+
+    # Quantified metric detection
+    has_quantified = False
+    for b in blocks:
+        metrics = getattr(b, "metrics", {}) or {}
+        is_quant = getattr(b, "is_quantified", False)
+        if metrics or is_quant:
+            has_quantified = True
+            break
+        content = getattr(b, "content", "") or ""
+        if any(char in content for char in ("%", "$")) or any(
+            unit in content.lower()
+            for unit in ("ms", "users", "dau", "mau", "reduced", "increased")
+        ):
+            has_quantified = True
+            break
+    if not has_quantified:
+        for r in role_tenures:
+            desc = r.get("description", "")
+            if any(char in desc for char in ("%", "$")):
+                has_quantified = True
+                break
+
+    if has_quantified:
+        exp_score += 8
+
+    if exp_score < 20:
+        missing_steps.append(
+            CompletenessMissingStep(
+                pillar="work_experience",
+                weight=20 - exp_score,
+                title="Work History & Quantified Outcomes",
+                action_prompt=f"+{20 - exp_score}%: Add work experience with quantified impact metrics (%, $, scale).",
+                why_it_matters="Powers 1536-dim semantic matching and proves proven business impact to employers.",
+                action_key="add_experience",
+            )
+        )
+
+    # 4. Education Intelligence (Max 15%)
+    edu_score = 0
+    edu_blocks = [
+        b
+        for b in blocks
+        if getattr(b, "category", "") == "education"
+        or (isinstance(b, dict) and b.get("category") == "education")
+    ]
+    if education or edu_blocks:
+        first_edu = education[0] if education else {}
+        if first_edu.get("degree") or edu_blocks:
+            edu_score += 6
+        if first_edu.get("major"):
+            edu_score += 5
+        if first_edu.get("institution") or (
+            edu_blocks and getattr(edu_blocks[0], "organization", None)
+        ):
+            edu_score += 4
+        if edu_score == 0 and (education or edu_blocks):
+            edu_score = 15
+
+    if edu_score < 15:
+        missing_steps.append(
+            CompletenessMissingStep(
+                pillar="education",
+                weight=15 - edu_score,
+                title="Education & Academic Pedigree",
+                action_prompt=f"+{15 - edu_score}%: Add your Degree, Major/Minor, and University name.",
+                why_it_matters="Qualifies you for degree-gated positions and activates university prestige boosters.",
+                action_key="add_education",
+            )
+        )
+
+    # 5. Projects & Open Source (Max 10%)
+    proj_score = 0
+    proj_blocks = [
+        b
+        for b in blocks
+        if getattr(b, "category", "") in ("project", "open_source")
+        or (isinstance(b, dict) and b.get("category") in ("project", "open_source"))
+    ]
+    if projects or proj_blocks:
+        proj_score = 10
+    else:
+        missing_steps.append(
+            CompletenessMissingStep(
+                pillar="projects",
+                weight=10,
+                title="Technical Projects & Open Source",
+                action_prompt="+10%: Showcase 1+ key technical Projects or Open-Source contributions.",
+                why_it_matters="Demonstrates builder competency for skills not reflected in formal employer titles.",
+                action_key="add_projects",
+            )
+        )
+
+    # 6. Hackathons, LeetCode & Awards (Max 10%)
+    achieve_score = 0
+    achieve_blocks = [
+        b
+        for b in blocks
+        if getattr(b, "category", "") in ("hackathon_achievement", "award")
+        or (
+            isinstance(b, dict)
+            and b.get("category") in ("hackathon_achievement", "award")
+        )
+    ]
+    has_leetcode = bool(
+        ext_links.get("leetcode_url") or ext_links.get("leetcode_stats")
+    )
+    if hackathons or awards or achieve_blocks or has_leetcode:
+        achieve_score = 10
+    else:
+        missing_steps.append(
+            CompletenessMissingStep(
+                pillar="achievements",
+                weight=10,
+                title="Hackathons, LeetCode & Distinctions",
+                action_prompt="+10%: Add Hackathon wins, Awards, or LeetCode/Competition rankings.",
+                why_it_matters="Highlights your competitive edge to boost match probability on high-bar engineering teams.",
+                action_key="add_achievements",
+            )
+        )
+
+    # 7. External Profiles & Search Logistics (Max 10%)
+    logistics_score = 0
+    has_ext = bool(
+        linkedin_url
+        or github_url
+        or ext_links.get("linkedin_url")
+        or ext_links.get("github_url")
+    )
+    if has_ext:
+        logistics_score += 4
+    if visa_status and visa_status.lower() not in ("none", "unknown", ""):
+        logistics_score += 3
+    if preferred_locations or (min_salary and min_salary > 0):
+        logistics_score += 3
+
+    if logistics_score < 10:
+        missing_steps.append(
+            CompletenessMissingStep(
+                pillar="external_logistics",
+                weight=10 - logistics_score,
+                title="External Links & Search Constraints",
+                action_prompt=f"+{10 - logistics_score}%: Add LinkedIn/GitHub links, work authorization, and salary floor.",
+                why_it_matters="Prevents wasted applications by hard-filtering out roles incompatible with your visa, location, or salary.",
+                action_key="add_logistics",
+            )
+        )
+
+    total_score = (
+        role_score
+        + skill_score
+        + exp_score
+        + edu_score
+        + proj_score
+        + achieve_score
+        + logistics_score
+    )
+    total_score = min(100, max(0, total_score))
+    is_ready = total_score >= 10
+
+    if total_score == 0:
+        reason = (
+            "Because you haven't shared your skills or profile with us yet, we cannot "
+            "calculate personalized match scores or show the best-matched jobs for your background. "
+            "You are currently browsing in Explorer Mode. Upload your CV or add your skills to unlock "
+            "personalized Grounded matching."
+        )
+    elif total_score < 100:
+        reason = (
+            f"Your profile is {total_score}% complete. Grounded matching is active. Complete remaining "
+            "dimensions to maximize match precision."
+        )
+    else:
+        reason = (
+            "Your profile is 100% complete with full candidate intelligence active."
+        )
+
+    return PersonaCompletenessResult(
+        score=total_score,
+        is_profile_ready=is_ready,
+        pillars=PersonaCompletenessPillars(
+            role_trajectory=role_score,
+            skills_inventory=skill_score,
+            work_experience=exp_score,
+            education=edu_score,
+            projects=proj_score,
+            achievements=achieve_score,
+            external_logistics=logistics_score,
+        ),
+        missing_steps=missing_steps,
+        status_reason=reason,
+    )
+
+
 class CompetencyDomainScore(BaseModel):
     """Domain score for T-Shaped radar chart."""
 

@@ -736,14 +736,30 @@ def compute_asymmetric_skill_score(
         normalize_skill(s) for s in (core_job_skills or []) if normalize_skill(s)
     }
 
-    # Job has zero declared skill requirements: return neutral calibrated baseline
+    # Candidate has zero skills: return 0.0 with all job skills marked missing
+    clean_cand_skills = [
+        normalize_skill(s) for s in candidate_skills if normalize_skill(s)
+    ]
+    if not clean_cand_skills:
+        missing_core_cnt = len(core_set)
+        d_core = (
+            max(0.25, round(0.70**missing_core_cnt, 3)) if missing_core_cnt > 0 else 1.0
+        )
+        return SkillGraphEvaluation(
+            skill_score=0.0,
+            d_core=d_core,
+            matched_skills=[],
+            transferred_skills=[],
+            missing_skills=sorted(clean_job_skills),
+            cold_start_applied=False,
+        )
+
+    # Job has zero declared skill requirements: return 0.0 (never fabricate 70%)
     if not clean_job_skills:
         return SkillGraphEvaluation(
-            skill_score=0.70,
+            skill_score=0.0,
             d_core=1.0,
-            matched_skills=sorted(
-                {normalize_skill(s) for s in candidate_skills if normalize_skill(s)}
-            )[:5],
+            matched_skills=[],
             transferred_skills=[],
             missing_skills=[],
             cold_start_applied=False,

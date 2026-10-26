@@ -38,6 +38,7 @@ def test_table_names_are_singular() -> None:
         "persona_skill",
         "persona_cv_block_rel",
         "job_match_cache",
+        "llm_usage_event",
     }
     actual_tables = {table.name for table in Base.metadata.tables.values()}
     assert expected_tables == actual_tables

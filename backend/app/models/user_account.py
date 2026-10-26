@@ -19,7 +19,7 @@ Architecture Overview:
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     JSON,
@@ -167,6 +167,9 @@ class CandidatePersona(Base, UUIDMixin, TimestampMixin):
     )
     min_salary: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    career_intelligence: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), default=dict, nullable=False
+    )
 
     # Relationships
     user_account: Mapped["UserAccount"] = relationship(

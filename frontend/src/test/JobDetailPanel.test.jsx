@@ -146,4 +146,57 @@ describe("JobDetailPanel Dual-Mode Presentation", () => {
     fireEvent.click(whyMatchBtn);
     expect(onOpenDiag).toHaveBeenCalledWith(onSiteJob);
   });
+
+  it("renders Profile Required card and suppresses Match Breakdown when profileReady is false", () => {
+    const onOpenProfile = vi.fn();
+    render(
+      <JobDetailPanel
+        match={mockJob}
+        profileReady={false}
+        onOpenProfileModal={onOpenProfile}
+        onTailorCV={vi.fn()}
+        onStartInterview={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("profile-required-grounded-card")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Profile Required for Grounded Matching/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Match Breakdown & Skill Alignment/i)).not.toBeInTheDocument();
+
+    const unlockBtn = screen.getByTestId("detail-open-profile-btn");
+    fireEvent.click(unlockBtn);
+    expect(onOpenProfile).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders honest Unstated and 0% (No Blocks) labels in factor breakdown", () => {
+    const jobWithHonestBreakdown = {
+      ...mockJob,
+      match_score: 0.45,
+      breakdown: {
+        skill_score: 0.6,
+        seniority_score: 0.8,
+        semantic_score: 0.0,
+        comp_score: 1.0,
+        freshness_booster: 0.1,
+        factor_status: {
+          comp: "unstated_in_job",
+          semantic: "missing_cv_blocks",
+        },
+      },
+    };
+
+    render(
+      <JobDetailPanel
+        match={jobWithHonestBreakdown}
+        profileReady={true}
+        onTailorCV={vi.fn()}
+        onStartInterview={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/Unstated/i)).toBeInTheDocument();
+    expect(screen.getByText(/0% \(No Blocks\)/i)).toBeInTheDocument();
+  });
 });

@@ -40,6 +40,7 @@ from app.models.user_profile import UserProfile
 from app.services.diagnostics import (
     HolisticCandidateAudit,
     PersonaBenchmarkReport,
+    calculate_persona_completeness,
     generate_holistic_audit,
     generate_persona_market_benchmark,
 )
@@ -89,6 +90,7 @@ class UpdatePersonaRequest(BaseModel):
     years_experience: int = Field(default=0, ge=0)
     min_salary: int | None = Field(default=None, ge=0)
     skills: list[str] = Field(default_factory=list)
+    career_intelligence: dict[str, Any] = Field(default_factory=dict)
 
 
 class OnboardingCommitRequest(BaseModel):
@@ -107,6 +109,7 @@ class OnboardingCommitRequest(BaseModel):
     seniority_level: str = "mid"
     skills: list[str] = Field(default_factory=list)
     blocks: list[ParsedCVBlock] = Field(default_factory=list)
+    career_intelligence: dict[str, Any] = Field(default_factory=dict)
     specialized_personas: list[CreateSpecializedPersonaRequest] = Field(
         default_factory=list
     )
@@ -152,11 +155,59 @@ class PersonaDetailResponse(BaseModel):
     headline: str | None
     seniority_level: str
     years_experience: int
+    min_salary: int | None = None
     target_roles: list[str]
     target_industries: list[str]
     is_default: bool
     skill_count: int
     block_count: int
+    skills: list[str] = Field(default_factory=list)
+    career_intelligence: dict[str, Any] = Field(default_factory=dict)
+    completeness: dict[str, Any] = Field(default_factory=dict)
+
+
+def _build_persona_detail_response(
+    persona: CandidatePersona,
+    account: UserAccount | None = None,
+    blocks: list[Any] | None = None,
+) -> PersonaDetailResponse:
+    skill_names = [s.skill_name for s in (persona.skills or [])]
+    cv_blocks = blocks or []
+    career_intel = persona.career_intelligence or {}
+    visa = getattr(account, "visa_status", None)
+    locs = getattr(account, "preferred_locations", None)
+
+    completeness = calculate_persona_completeness(
+        target_roles=list(persona.target_roles or []),
+        years_experience=persona.years_experience,
+        seniority_level=persona.seniority_level,
+        skills=skill_names,
+        blocks=cv_blocks,
+        career_intelligence=career_intel,
+        visa_status=visa,
+        preferred_locations=locs,
+        min_salary=persona.min_salary,
+    )
+
+    return PersonaDetailResponse(
+        id=str(persona.id),
+        name=persona.name,
+        is_common_persona=persona.is_common_persona,
+        headline=persona.headline,
+        seniority_level=persona.seniority_level,
+        years_experience=persona.years_experience,
+        min_salary=persona.min_salary,
+        target_roles=list(persona.target_roles or []),
+        target_industries=list(persona.target_industries or []),
+        is_default=persona.is_default,
+        skill_count=len(skill_names),
+        block_count=len(persona.cv_block_rels or [])
+        if blocks is None
+        else len(cv_blocks),
+        skills=skill_names,
+        career_intelligence=career_intel,
+        completeness=completeness.model_dump(),
+    )
 
 
 def _get_user_uuid(current_user: CurrentUser) -> uuid.UUID:
@@ -292,6 +343,7 @@ async def commit_onboarding(
             target_industries=req.target_industries,
             years_experience=req.years_experience,
             seniority_level=req.seniority_level,
+            career_intelligence=req.career_intelligence or {},
         )
         db.add(universal_persona)
         await db.flush()
@@ -300,6 +352,8 @@ async def commit_onboarding(
         universal_persona.target_industries = req.target_industries
         universal_persona.years_experience = req.years_experience
         universal_persona.seniority_level = req.seniority_level
+        if req.career_intelligence:
+            universal_persona.career_intelligence = req.career_intelligence
 
     # 3. Also synchronize UserProfile for backward-compatibility
     prof_stmt = select(UserProfile).where(UserProfile.id == account.id)
@@ -465,22 +519,10 @@ async def list_personas(
     result = await db.execute(stmt)
     personas = result.scalars().all()
 
-    return [
-        PersonaDetailResponse(
-            id=str(p.id),
-            name=p.name,
-            is_common_persona=p.is_common_persona,
-            headline=p.headline,
-            seniority_level=p.seniority_level,
-            years_experience=p.years_experience,
-            target_roles=list(p.target_roles or []),
-            target_industries=list(p.target_industries or []),
-            is_default=p.is_default,
-            skill_count=len(p.skills or []),
-            block_count=len(p.cv_block_rels or []),
-        )
-        for p in personas
-    ]
+    acc_stmt = select(UserAccount).where(UserAccount.id == user_uuid)
+    account = (await db.execute(acc_stmt)).scalar_one_or_none()
+
+    return [_build_persona_detail_response(p, account=account) for p in personas]
 
 
 @router.post(
@@ -494,7 +536,8 @@ async def create_persona(
     db: DatabaseSession,
 ) -> PersonaDetailResponse:
     """
-    Create a new specialized candidate persona.
+    Create or update the unified candidate persona.
+    Enforces single-profile mode across all users (including admin right now).
     """
     user_uuid = _get_user_uuid(current_user)
     account = await _get_or_create_account(db, user_uuid, current_user.email)
@@ -506,7 +549,7 @@ async def create_persona(
             detail="Persona name cannot be empty.",
         )
 
-    # Enforce case-insensitive duplicate name check per candidate account
+    # Check for duplicate name among user's personas
     dup_stmt = select(CandidatePersona).where(
         CandidatePersona.user_account_id == account.id,
         func.lower(CandidatePersona.name) == clean_name.lower(),
@@ -533,6 +576,7 @@ async def create_persona(
         target_industries=req.target_industries,
         seniority_level=req.seniority_level,
         years_experience=req.years_experience,
+        career_intelligence={},
     )
     db.add(persona)
 
@@ -551,20 +595,9 @@ async def create_persona(
         )
 
     await db.commit()
+    await db.refresh(persona, attribute_names=["skills", "cv_block_rels"])
 
-    return PersonaDetailResponse(
-        id=str(persona_id),
-        name=persona.name,
-        is_common_persona=persona.is_common_persona,
-        headline=persona.headline,
-        seniority_level=persona.seniority_level,
-        years_experience=persona.years_experience,
-        target_roles=list(persona.target_roles or []),
-        target_industries=list(persona.target_industries or []),
-        is_default=persona.is_default,
-        skill_count=len(req.skills),
-        block_count=0,
-    )
+    return _build_persona_detail_response(persona, account=account)
 
 
 @router.put(
@@ -654,8 +687,10 @@ async def update_persona(
     persona.seniority_level = req.seniority_level
     persona.years_experience = req.years_experience
     persona.min_salary = req.min_salary
+    if req.career_intelligence:
+        persona.career_intelligence = req.career_intelligence
 
-    # 4. Sync skills if provided
+    # 2. Sync skills if provided
     if req.skills:
         existing_skills = {s.skill_name.lower(): s for s in (persona.skills or [])}
         for s in req.skills:
@@ -675,19 +710,10 @@ async def update_persona(
     await db.commit()
     await db.refresh(persona, attribute_names=["skills", "cv_block_rels"])
 
-    return PersonaDetailResponse(
-        id=str(persona.id),
-        name=persona.name,
-        is_common_persona=persona.is_common_persona,
-        headline=persona.headline,
-        seniority_level=persona.seniority_level,
-        years_experience=persona.years_experience,
-        target_roles=list(persona.target_roles or []),
-        target_industries=list(persona.target_industries or []),
-        is_default=persona.is_default,
-        skill_count=len(persona.skills or []),
-        block_count=len(persona.cv_block_rels or []),
-    )
+    acc_stmt = select(UserAccount).where(UserAccount.id == user_uuid)
+    account = (await db.execute(acc_stmt)).scalar_one_or_none()
+
+    return _build_persona_detail_response(persona, account=account)
 
 
 @router.put(

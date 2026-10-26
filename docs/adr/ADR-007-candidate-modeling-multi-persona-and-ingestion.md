@@ -69,6 +69,13 @@ We will decouple user identity from career personas and implement a multi-modal,
 
 ---
 
+## Evolution & ADR-009 Supersession Note
+While ADR-007 introduced the underlying relational foundations for multi-persona branching (`CandidatePersona`, `PersonaSkill`, `PersonaCVBlockRel`), candidate feedback and user research demonstrated that displaying multiple distinct personas simultaneously caused UI clutter and cognitive fatigue. 
+
+As formalized in [**ADR-009**](ADR-009-deep-candidate-intelligence-and-completeness-engine.md), the presentation layer now unifies candidate modeling into a single, cohesive Career Profile with live completeness telemetry across 7 intelligence pillars, while soft validation preserves multi-persona schema capabilities for future enterprise/admin expansions.
+
+---
+
 ## References
 
 1. LinkedIn Talent Solutions Developer Portal: [Partner Ecosystem & Scopes](https://learn.microsoft.com/en-us/linkedin/talent/)

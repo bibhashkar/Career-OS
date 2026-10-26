@@ -541,6 +541,7 @@ Detailed architectural rationale and design choices are documented in [docs/adr/
 - [ADR-006: Unmetered Direct-to-ATS Data Ingestion Pipeline](docs/adr/ADR-006-unmetered-data-ingestion-pipeline.md)
 - [ADR-007: Candidate Modeling, Multi-Modal Ingestion & Multi-Persona Architecture](docs/adr/ADR-007-candidate-modeling-multi-persona-and-ingestion.md)
 - [ADR-008: High-Probability Job Matching, Two-Stage Retrieval & Fault-Tolerant Ranking](docs/adr/ADR-008-high-probability-job-matching-and-fault-tolerant-ranking.md)
+- [ADR-009: Deep Candidate Intelligence, 7-Dimension Profile Understanding & Cold-Start Guardrails](docs/adr/ADR-009-deep-candidate-intelligence-and-completeness-engine.md)
 
 ---
 

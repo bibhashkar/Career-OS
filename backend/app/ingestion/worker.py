@@ -300,6 +300,29 @@ class IngestionWorker:
             await verification_service.verify_job(uuid.UUID(job_id_str), force=True)
             logger.info("Successfully cross-checked job: %s", job_id_str)
 
+        elif task_type == IngestionTaskType.EXTRACT_REQUIREMENTS:
+            job_id_str = payload.get("job_id", "")
+            if not job_id_str:
+                raise ValueError("EXTRACT_REQUIREMENTS payload missing job_id")
+            stmt = select(JobListing).where(JobListing.id == uuid.UUID(job_id_str))
+            job = (await session.execute(stmt)).scalar_one_or_none()
+            if not job:
+                raise ValueError(f"Job not found for id {job_id_str}")
+
+            extractor = HybridRequirementsExtractor()
+            reqs = await extractor.extract_requirements(
+                title=job.title,
+                raw_description=job.raw_description,
+                company_name=job.company_name,
+            )
+            job.ats_requirements = reqs.model_dump()
+            job.industry_vertical = reqs.industry_vertical
+            job.domain_strictness = reqs.domain_strictness
+            if reqs.visa_sponsorship.value != "unknown":
+                job.visa_sponsorship = str(reqs.visa_sponsorship.value)
+            await session.flush()
+            logger.info("Successfully extracted requirements for job: %s", job_id_str)
+
         else:
             logger.warning("Unhandled task type '%s'", task_type)
 

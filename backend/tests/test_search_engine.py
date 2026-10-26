@@ -15,7 +15,7 @@ from app.core.database import get_db
 from app.main import app
 from app.models.ingestion import ATSBoard, ATSProvider, IndustrySector
 from app.models.job_listing import JobListing
-from app.models.user_account import CandidatePersona, UserAccount
+from app.models.user_account import CandidatePersona, PersonaSkill, UserAccount
 from app.schemas.search import (
     JobSearchFilterDTO,
     SearchMode,
@@ -385,7 +385,25 @@ async def test_search_precision_excludes_bdr_on_software_engineer_query(
         priority=10,
         is_active=True,
     )
-    db_session.add_all([account, persona, provider, board])
+    skill1 = PersonaSkill(
+        id=uuid.uuid4(),
+        persona_id=persona.id,
+        skill_name="Python",
+        category="language",
+        proficiency="advanced",
+        years_experience=4,
+        is_core=True,
+    )
+    skill2 = PersonaSkill(
+        id=uuid.uuid4(),
+        persona_id=persona.id,
+        skill_name="Rust",
+        category="language",
+        proficiency="advanced",
+        years_experience=3,
+        is_core=True,
+    )
+    db_session.add_all([account, persona, skill1, skill2, provider, board])
     await db_session.flush()
 
     # Job 1: Actual Software Engineer role

@@ -67,10 +67,11 @@ export function OnboardingWizard() {
   const [visaStatus, setVisaStatus] = useState("Citizen");
   const [locations, setLocations] = useState(["Remote"]);
   const [remotePref, setRemotePref] = useState("Remote");
-  const [targetRoles, setTargetRoles] = useState(["Senior Software Engineer"]);
-  const [yearsExperience, setYearsExperience] = useState(4);
+  const [targetRoles, setTargetRoles] = useState([]);
+  const [yearsExperience, setYearsExperience] = useState(0);
   const [seniorityLevel, setSeniorityLevel] = useState("mid");
-  const [skills, setSkills] = useState(["Python", "PostgreSQL", "Docker"]);
+  const [skills, setSkills] = useState([]);
+  const [careerIntelligence, setCareerIntelligence] = useState({});
   const [skillInput, setSkillInput] = useState("");
   const [roleInput, setRoleInput] = useState("");
   const [blocks, setBlocks] = useState([]);
@@ -143,6 +144,26 @@ export function OnboardingWizard() {
     if (data.blocks && data.blocks.length > 0) {
       setBlocks(data.blocks);
     }
+    const parsedRoles = data.target_roles || data.inferred_target_roles;
+    if (parsedRoles && parsedRoles.length > 0) {
+      setTargetRoles(parsedRoles);
+    }
+    const parsedYears = data.years_experience ?? data.total_years_experience;
+    if (parsedYears !== undefined && parsedYears !== null) {
+      setYearsExperience(Number(parsedYears));
+    }
+    const parsedSeniority = data.seniority_level || data.inferred_seniority_level;
+    if (parsedSeniority) {
+      setSeniorityLevel(parsedSeniority);
+    }
+    setCareerIntelligence({
+      education: data.education || [],
+      role_tenures: data.role_tenures || [],
+      projects: data.projects || [],
+      hackathons_competitions: data.hackathons_competitions || [],
+      awards_recognitions: data.awards_recognitions || [],
+      external_links: data.external_links || {},
+    });
   }
 
   // 3. Guided Wizard Handlers
@@ -242,6 +263,7 @@ export function OnboardingWizard() {
         seniority_level: seniorityLevel,
         skills,
         blocks,
+        career_intelligence: careerIntelligence,
         specialized_personas: specializedPersonas,
       };
 

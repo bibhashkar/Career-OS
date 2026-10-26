@@ -16,6 +16,7 @@ This directory maintains the historical log of significant architectural and des
 | [**ADR-006**](ADR-006-unmetered-data-ingestion-pipeline.md) | Unmetered Direct-to-ATS Data Ingestion Pipeline | 2026-10-09 | **Accepted** | Direct HTTP ingestion across 5 major public ATS engines (Greenhouse, Lever, Ashby, Workable, SmartRecruiters) and scaled 1,000+ catalog. |
 | [**ADR-007**](ADR-007-candidate-modeling-multi-persona-and-ingestion.md) | Candidate Modeling, Multi-Modal Ingestion & Multi-Persona Architecture | 2026-10-15 | **Accepted** | Decoupled user account identity, Universal Persona with hybrid strengths, specialized career personas, and 5-tier STAR CV blocks. |
 | [**ADR-008**](ADR-008-high-probability-job-matching-and-fault-tolerant-ranking.md) | High-Probability Job Matching, Two-Stage Retrieval & Fault-Tolerant Ranking | 2026-10-15 | **Accepted** | Two-stage Galene-inspired retrieval (Stage 1 SQL filter <15ms + Stage 2 precision reranker) with Bayesian uncertainty gating $G_{\text{prob}}$ and pedigree boosters. |
+| [**ADR-009**](ADR-009-deep-candidate-intelligence-and-completeness-engine.md) | Deep Candidate Intelligence, 7-Dimension Profile Understanding & Cold-Start Guardrails | 2026-10-26 | **Accepted** | 7-pillar candidate modeling, cold-start guardrails at 0%, progressive Grounded unlocking at $\ge 10\%$, zero fake data policy, crawl-time JD requirements extraction, and single-profile candidate UX. |
 
 ---
 

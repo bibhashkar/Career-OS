@@ -24,6 +24,7 @@ from app.ingestion.adapters.ats import (
 )
 from app.ingestion.deterministic_extractor import (
     classify_industry_vertical,
+    extract_deterministic_requirements,
     extract_domain_strictness,
 )
 from app.ingestion.models import (
@@ -208,6 +209,10 @@ class BoardSyncService:
             dto.title, dto.raw_description, board.company_name or dto.company_name
         )
         strictness = extract_domain_strictness(dto.title, dto.raw_description, vertical)
+        reqs = extract_deterministic_requirements(
+            dto.title, dto.raw_description, board.company_name or dto.company_name
+        )
+        ats_reqs_dict = reqs.model_dump()
 
         if existing is None:
             new_job = JobListing(
@@ -234,7 +239,8 @@ class BoardSyncService:
                 remote_scope=scope,
                 salary_range=dto.salary_range,
                 raw_description=dto.raw_description,
-                visa_sponsorship=dto.visa_sponsorship,
+                visa_sponsorship=dto.visa_sponsorship
+                or str(reqs.visa_sponsorship.value),
                 visa_notes=dto.visa_notes,
                 visa_types=dto.visa_types,
                 posted_at=dto.posted_at,
@@ -246,7 +252,7 @@ class BoardSyncService:
                 status=ListingStatus.ACTIVE,
                 data_origin=str(dto.data_origin),
                 source_confidence=str(dto.source_confidence),
-                ats_requirements={},
+                ats_requirements=ats_reqs_dict,
                 verification={},
             )
             self.session.add(new_job)
@@ -270,13 +276,18 @@ class BoardSyncService:
             existing.visa_sponsorship = dto.visa_sponsorship
             existing.visa_notes = dto.visa_notes
             existing.visa_types = dto.visa_types
+        elif not existing.visa_sponsorship and reqs.visa_sponsorship.value != "unknown":
+            existing.visa_sponsorship = str(reqs.visa_sponsorship.value)
         if not existing.industry_vertical:
             existing.industry_vertical = vertical
             existing.domain_strictness = strictness
+        if not existing.ats_requirements or existing.ats_requirements == {}:
+            existing.ats_requirements = ats_reqs_dict
 
         if existing.content_hash != content_hash:
             existing.raw_description = dto.raw_description
             existing.content_hash = content_hash
             existing.title = dto.title
+            existing.ats_requirements = ats_reqs_dict
 
         return False

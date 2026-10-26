@@ -235,6 +235,7 @@ export function App() {
                 activePersona={activePersona}
                 onSelectJob={handleSelectJobForCV}
                 onStartInterview={handleStartInterview}
+                onOpenProfileModal={() => setIsPersonaModalOpen(true)}
               />
             }
           />

@@ -14,6 +14,12 @@ import {
   Calendar,
   Layers,
   ArrowLeft,
+  GraduationCap,
+  Award,
+  Link as LinkIcon,
+  FolderGit2,
+  CheckCircle2,
+  TrendingUp,
 } from "lucide-react";
 import {
   getCandidatePersonas,
@@ -102,6 +108,9 @@ export function PersonaManagementModal({
     setEditingPersona(p);
     setIsCreating(false);
     setSaveError(null);
+    const ci = p.career_intelligence || {};
+    const edu = ci.education?.[0] || {};
+    const links = ci.external_links || {};
     setEditForm({
       name: p.name || "",
       headline: p.headline || "",
@@ -113,6 +122,19 @@ export function PersonaManagementModal({
       years_experience: p.years_experience || 0,
       min_salary: p.min_salary || "",
       skills: "",
+      // Candidate Intelligence Dimensions
+      degree: edu.degree || "",
+      major: edu.major || "",
+      institution: edu.institution || "",
+      graduation_year: edu.graduation_year || "",
+      institution_tier: edu.institution_tier || "standard",
+      projects_text: ci.projects?.map((prj) => `${prj.name}: ${prj.description || ""}`).join("\n") || "",
+      hackathons_text: ci.hackathons_competitions?.map((h) => `${h.name}${h.rank_or_award ? ` - ${h.rank_or_award}` : ""}`).join("\n") || "",
+      awards_text: ci.awards_recognitions?.map((a) => `${a.title}${a.description ? `: ${a.description}` : ""}`).join("\n") || "",
+      linkedin_url: links.linkedin_url || "",
+      github_url: links.github_url || "",
+      leetcode_url: links.leetcode_url || "",
+      leetcode_solved: links.leetcode_solved || "",
     });
   }
 
@@ -138,6 +160,60 @@ export function PersonaManagementModal({
       .map((s) => s.trim())
       .filter(Boolean);
 
+    const careerIntelligence = {
+      ...(editingPersona.career_intelligence || {}),
+      education: (editForm.degree || editForm.institution)
+        ? [
+            {
+              degree: editForm.degree.trim(),
+              major: editForm.major.trim(),
+              institution: editForm.institution.trim(),
+              graduation_year: editForm.graduation_year ? Number(editForm.graduation_year) : null,
+              institution_tier: editForm.institution_tier || "standard",
+            },
+          ]
+        : (editingPersona.career_intelligence?.education || []),
+      external_links: {
+        linkedin_url: editForm.linkedin_url?.trim() || null,
+        github_url: editForm.github_url?.trim() || null,
+        leetcode_url: editForm.leetcode_url?.trim() || null,
+        leetcode_solved: editForm.leetcode_solved ? Number(editForm.leetcode_solved) : null,
+      },
+    };
+
+    if (editForm.projects_text?.trim()) {
+      careerIntelligence.projects = editForm.projects_text
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const parts = line.split(":");
+          return {
+            name: parts[0]?.trim(),
+            description: parts.slice(1).join(":")?.trim() || parts[0]?.trim(),
+          };
+        });
+    }
+
+    if (editForm.hackathons_text?.trim()) {
+      careerIntelligence.hackathons_competitions = editForm.hackathons_text
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => ({ name: line.trim() }));
+    }
+
+    if (editForm.awards_text?.trim()) {
+      careerIntelligence.awards_recognitions = editForm.awards_text
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const parts = line.split(":");
+          return {
+            title: parts[0]?.trim(),
+            description: parts.slice(1).join(":")?.trim() || "",
+          };
+        });
+    }
+
     const payload = {
       name: editingPersona.is_common_persona
         ? editingPersona.name
@@ -149,6 +225,7 @@ export function PersonaManagementModal({
       years_experience: Number(editForm.years_experience) || 0,
       min_salary: editForm.min_salary ? Number(editForm.min_salary) : null,
       skills: skillsList,
+      career_intelligence: careerIntelligence,
     };
 
     try {
@@ -466,6 +543,125 @@ export function PersonaManagementModal({
                   />
                 </div>
 
+                {/* 3. Education & Institution Tier */}
+                <div className="pt-2 border-t border-slate-800 space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                    <GraduationCap className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Education & Prestige Tier</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Degree (e.g. B.S., M.S.)"
+                      value={editForm.degree}
+                      onChange={(e) => setEditForm({ ...editForm, degree: e.target.value })}
+                      className="px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Major (e.g. Computer Science)"
+                      value={editForm.major}
+                      onChange={(e) => setEditForm({ ...editForm, major: e.target.value })}
+                      className="px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    />
+                    <input
+                      type="text"
+                      placeholder="University / Institution"
+                      value={editForm.institution}
+                      onChange={(e) => setEditForm({ ...editForm, institution: e.target.value })}
+                      className="px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="number"
+                      placeholder="Graduation Year (e.g. 2022)"
+                      value={editForm.graduation_year}
+                      onChange={(e) => setEditForm({ ...editForm, graduation_year: e.target.value })}
+                      className="px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    />
+                    <select
+                      value={editForm.institution_tier}
+                      onChange={(e) => setEditForm({ ...editForm, institution_tier: e.target.value })}
+                      className="px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-sky-500"
+                    >
+                      <option value="standard">Standard University</option>
+                      <option value="tier_2">Tier 2 Top 50 University</option>
+                      <option value="tier_1">Tier 1 Target School (MIT, Stanford, CMU, Berkeley...)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 4. Projects & Open Source */}
+                <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                    <FolderGit2 className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Technical Projects & Open Source (Name: Description)</span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={editForm.projects_text}
+                    onChange={(e) => setEditForm({ ...editForm, projects_text: e.target.value })}
+                    placeholder="e.g. Distributed Ledger: Built low-latency payment engine in Rust processing 10k ops/sec"
+                    className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                {/* 5. Hackathons, LeetCode & Awards */}
+                <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                    <Award className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Hackathons, Awards & Competitions (one per line)</span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={editForm.hackathons_text}
+                    onChange={(e) => setEditForm({ ...editForm, hackathons_text: e.target.value })}
+                    placeholder="e.g. ETHGlobal San Francisco - 1st Place DeFi Track&#10;LeetCode Top 5% (Rating 2150)"
+                    className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                {/* 6. External Links & Compensation Logistics */}
+                <div className="pt-2 border-t border-slate-800 space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                    <LinkIcon className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>External Profile Links & Logistics</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="url"
+                      placeholder="LinkedIn URL (https://linkedin.com/in/...)"
+                      value={editForm.linkedin_url}
+                      onChange={(e) => setEditForm({ ...editForm, linkedin_url: e.target.value })}
+                      className="px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    />
+                    <input
+                      type="url"
+                      placeholder="GitHub URL (https://github.com/...)"
+                      value={editForm.github_url}
+                      onChange={(e) => setEditForm({ ...editForm, github_url: e.target.value })}
+                      className="px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="url"
+                      placeholder="LeetCode Profile URL"
+                      value={editForm.leetcode_url}
+                      onChange={(e) => setEditForm({ ...editForm, leetcode_url: e.target.value })}
+                      className="px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Min Base Salary USD ($)"
+                      value={editForm.min_salary}
+                      onChange={(e) => setEditForm({ ...editForm, min_salary: e.target.value })}
+                      className="px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-end gap-2 pt-1">
                   <button
                     type="button"
@@ -657,6 +853,94 @@ export function PersonaManagementModal({
               </div>
             ) : (
               <div className="space-y-3" data-testid="persona-list">
+                {/* 7-Dimension Profile Completeness Overview Card */}
+                {(() => {
+                  const defaultPersona = personas.find((p) => p.is_default) || personas[0];
+                  const score = defaultPersona?.completeness_score ?? 0;
+                  const missing = defaultPersona?.completeness?.missing_steps || [];
+                  const isZero = score === 0;
+
+                  return (
+                    <div
+                      data-testid="profile-completeness-overview"
+                      className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-sky-400" />
+                          <span className="text-xs font-bold text-white uppercase tracking-wider">
+                            Candidate Intelligence Completeness
+                          </span>
+                        </div>
+                        <span
+                          className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full border ${
+                            isZero
+                              ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
+                              : score >= 75
+                                ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                                : score >= 50
+                                  ? "bg-sky-500/15 text-sky-300 border-sky-500/30"
+                                  : "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                          }`}
+                        >
+                          {score}% Complete
+                        </span>
+                      </div>
+
+                      {/* Visual Progress Bar */}
+                      <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            isZero
+                              ? "bg-rose-500"
+                              : score >= 75
+                                ? "bg-emerald-500"
+                                : score >= 50
+                                  ? "bg-sky-500"
+                                  : "bg-amber-500"
+                          }`}
+                          style={{ width: `${Math.max(3, score)}%` }}
+                        />
+                      </div>
+
+                      {/* Actionable Checklist */}
+                      {missing.length > 0 ? (
+                        <div className="space-y-1.5 pt-1">
+                          <p className="text-[11px] font-semibold text-slate-400">
+                            Actionable Checklist to Reach 100% Matching Precision:
+                          </p>
+                          <div className="space-y-1">
+                            {missing.slice(0, 4).map((step, idx) => (
+                              <div
+                                key={idx}
+                                className="flex items-start justify-between gap-2 p-2 rounded-lg bg-slate-900/60 border border-slate-800/80 text-xs text-slate-300"
+                              >
+                                <div className="flex items-start gap-1.5 min-w-0">
+                                  <span className="text-sky-400 font-bold shrink-0">+{step.potential_gain_pct}%</span>
+                                  <span className="leading-tight text-[11px] text-slate-300">{step.prompt}</span>
+                                </div>
+                                {defaultPersona && (
+                                  <button
+                                    type="button"
+                                    onClick={() => startEditing(defaultPersona)}
+                                    className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold shrink-0 cursor-pointer"
+                                  >
+                                    Complete →
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-emerald-400 font-medium flex items-center gap-1.5 pt-1">
+                          <Check className="w-3.5 h-3.5" /> All candidate intelligence dimensions complete (100%)!
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {personas.map((p) => {
                   const isActive = p.id === activePersonaId;
                   return (

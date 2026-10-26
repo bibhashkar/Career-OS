@@ -406,6 +406,288 @@ def extract_years_of_experience(text: str) -> int | None:
     return None
 
 
+def extract_seniority_level(
+    title: str, text: str = "", min_years: int | None = None
+) -> str:
+    """Infer seniority tier from title tokens, description text, and minimum experience years."""
+    t_lower = f" {title.lower()} "
+    if any(k in t_lower for k in (" intern", "internship", "co-op", "apprentice")):
+        return "intern"
+    if any(
+        k in t_lower
+        for k in (
+            "chief",
+            "vp ",
+            "vice president",
+            "head of",
+            "director",
+            "executive",
+        )
+    ):
+        return "director"
+    if any(k in t_lower for k in ("principal", "distinguished", "fellow")):
+        return "principal"
+    if any(k in t_lower for k in ("staff", "architect")):
+        return "staff"
+    if any(
+        k in t_lower
+        for k in ("senior", "sr.", "sr ", "lead", "tech lead", " iii ", " iv ")
+    ):
+        return "senior"
+    if any(
+        k in t_lower
+        for k in (
+            "junior",
+            "jr.",
+            "jr ",
+            "entry",
+            "associate",
+            "graduate",
+            " i ",
+        )
+    ):
+        return "entry"
+    if any(k in t_lower for k in (" ii ", " mid ")):
+        return "mid"
+    if min_years is not None:
+        if min_years >= 8:
+            return "staff"
+        if min_years >= 5:
+            return "senior"
+        if min_years >= 2:
+            return "mid"
+        if min_years >= 0:
+            return "entry"
+    return "mid"
+
+
+def extract_education_level(text: str) -> str | None:
+    """Extract minimum required education degree from description text."""
+    t_lower = text.lower()
+    if re.search(r"\b(ph\.?d|doctorate|doctoral)\b", t_lower):
+        return "phd"
+    if re.search(r"\b(master'?s?|m\.s\.|msc|m\.eng)\b", t_lower):
+        return "masters"
+    if re.search(
+        r"\b(bachelor'?s?|b\.s\.|bsc|b\.tech|undergraduate degree)\b", t_lower
+    ):
+        return "bachelors"
+    return None
+
+
+def classify_functional_family(
+    title: str,
+    department: str | None = None,
+    raw_description: str | None = None,
+) -> str:
+    """
+    Classify a job title and optional department into a canonical functional family.
+    Evaluates explicit non-technical role patterns first so titles like
+    'Business Development Representative', 'Equity Administrator', or 'Recruiter'
+    do not leak into technical streams.
+    """
+    text = f"{title or ''} {department or ''}".lower()
+
+    # 1. Non-technical functions (evaluated first for precision)
+    people_hr_terms = (
+        "recruiter",
+        "recruiting",
+        "talent acquisition",
+        "sourcer",
+        "people partner",
+        "people operations",
+        "hrbp",
+        "human resources",
+        "talent partner",
+        "people coordinator",
+        "onboarding specialist",
+    )
+    if any(term in text for term in people_hr_terms):
+        return "people_hr"
+
+    sales_gtm_terms = (
+        "business development representative",
+        "bdr",
+        "sales development",
+        "sdr",
+        "account executive",
+        "account manager",
+        "customer success",
+        "sales manager",
+        "regional sales",
+        "enterprise sales",
+        "solutions consultant",
+        "partner manager",
+        "partnerships",
+        "revenue operations",
+        "deal desk",
+        "sales operations",
+        "commercial",
+        "channel manager",
+        "business development",
+    )
+    if any(term in text for term in sales_gtm_terms) and "engineer" not in text:
+        return "sales_gtm"
+
+    legal_finance_terms = (
+        "counsel",
+        "attorney",
+        "legal",
+        "paralegal",
+        "public policy",
+        "government affairs",
+        "accountant",
+        "accounting",
+        "controller",
+        "fp&a",
+        "tax ",
+        "payroll",
+        "internal audit",
+        "compliance officer",
+        "compliance",
+        "equity administrator",
+        "stock administrator",
+        "stock administration",
+        "equity operations",
+        "equity plan",
+        "benefits administrator",
+        "benefits",
+        "total rewards",
+        "compensation analyst",
+        "finance manager",
+        "financial analyst",
+        "accounts payable",
+        "accounts receivable",
+        "bookkeeper",
+        "treasury",
+    )
+    if any(term in text for term in legal_finance_terms) and "engineer" not in text:
+        return "legal_finance"
+
+    marketing_terms = (
+        "marketing",
+        "brand ",
+        "communications",
+        "public relations",
+        "social media",
+        "copywriter",
+        "content strategist",
+        "events manager",
+        "demand generation",
+        "community manager",
+        "growth marketer",
+        "seo",
+    )
+    if any(term in text for term in marketing_terms) and "engineer" not in text:
+        return "marketing"
+
+    operations_terms = (
+        "executive assistant",
+        "office manager",
+        "receptionist",
+        "facilities",
+        "workplace manager",
+        "workplace",
+        "physical security",
+        "administrative assistant",
+        "chief of staff",
+        "operations manager",
+        "operations coordinator",
+        "operations associate",
+        "office coordinator",
+    )
+    if any(term in text for term in operations_terms) and "engineer" not in text:
+        return "operations"
+
+    # Support
+    support_terms = (
+        "customer support",
+        "client support",
+        "customer care",
+        "help desk",
+        "desktop support",
+        "technical support specialist",
+        "support specialist",
+    )
+    if any(term in text for term in support_terms) and "engineer" not in text:
+        return "operations"
+
+    # 2. Technical & Product functions
+    data_ai_terms = (
+        "machine learning",
+        "data scientist",
+        "data engineer",
+        "ai ",
+        "ml ",
+        "research scientist",
+        "research engineer",
+        "deep learning",
+        "computer vision",
+        "nlp",
+        "llm",
+        "quant ",
+        "quantitative",
+        "analytics engineer",
+    )
+    if any(term in text for term in data_ai_terms):
+        return "data_ai"
+
+    security_terms = (
+        "security",
+        "cybersecurity",
+        "infosec",
+        "appsec",
+        "cryptography",
+        "penetration",
+    )
+    if any(term in text for term in security_terms):
+        return "security_it"
+
+    product_design_terms = (
+        "product manager",
+        "product designer",
+        "ux ",
+        "ui/ux",
+        "user researcher",
+        "technical program manager",
+        "tpm",
+        "design systems",
+        "interaction designer",
+    )
+    if any(term in text for term in product_design_terms):
+        return "product_design"
+
+    engineering_terms = (
+        "software",
+        "engineer",
+        "developer",
+        "frontend",
+        "front-end",
+        "backend",
+        "back-end",
+        "full stack",
+        "fullstack",
+        "sre",
+        "devops",
+        "platform",
+        "infrastructure",
+        "systems",
+        "architect",
+        "firmware",
+        "embedded",
+        "cloud engineer",
+        "qa engineer",
+        "test engineer",
+        "mobile developer",
+        "ios",
+        "android",
+    )
+    if any(term in text for term in engineering_terms):
+        return "engineering"
+
+    return "general"
+
+
 def extract_deterministic_requirements(
     title: str,
     raw_description: str,
@@ -413,44 +695,77 @@ def extract_deterministic_requirements(
 ) -> ParsedRequirementsDTO:
     """
     Deterministic Pass 1:
-    Extracts skills, minimum experience, visa status, industry vertical,
-    and domain strictness without any LLM cost.
+    Extracts skills (with section-aware required vs preferred separation),
+    minimum experience, seniority level, functional family, education level,
+    visa status, industry vertical, and domain strictness without any LLM cost.
     """
     combined_text = f"{title}\n{raw_description}"
-    words_boundary_text = f" {combined_text.lower()} "
 
-    detected_skills: list[str] = []
+    # Check for Preferred / Nice to have section
+    preferred_idx = -1
+    preferred_headers = [
+        "preferred qualification",
+        "nice to have",
+        "bonus point",
+        "pluses",
+        "preferred skill",
+        "what gives you an edge",
+    ]
+    comb_lower = combined_text.lower()
+    for header in preferred_headers:
+        pos = comb_lower.find(header)
+        if pos != -1 and (preferred_idx == -1 or pos < preferred_idx):
+            preferred_idx = pos
+
+    required_skills: list[str] = []
+    preferred_skills: list[str] = []
     evidence: dict[str, list[str]] = {}
 
     for canonical_name, aliases in SKILL_TAXONOMY.items():
         matched_aliases: list[str] = []
+        first_match_pos = len(comb_lower)
+
         for alias in aliases:
             # Word boundary check to prevent substring false-positives
             pattern = rf"(?:\b|_){re.escape(alias.lower())}(?:\b|_)"
-            if re.search(pattern, words_boundary_text):
+            match = re.search(pattern, comb_lower)
+            if match:
                 matched_aliases.append(alias)
+                if match.start() < first_match_pos:
+                    first_match_pos = match.start()
 
         if matched_aliases:
-            detected_skills.append(canonical_name)
             evidence[canonical_name] = matched_aliases
+            if preferred_idx != -1 and first_match_pos >= preferred_idx:
+                preferred_skills.append(canonical_name)
+            else:
+                required_skills.append(canonical_name)
 
     # Sort alphabetically for consistency
-    detected_skills.sort()
+    required_skills.sort()
+    preferred_skills.sort()
 
     yoe = extract_years_of_experience(combined_text)
+    seniority = extract_seniority_level(title, combined_text, yoe)
+    func_family = classify_functional_family(title, raw_description=raw_description)
+    edu_level = extract_education_level(combined_text)
     visa_status = classify_visa_sponsorship(combined_text)
     industry_vertical = classify_industry_vertical(title, raw_description, company_name)
     domain_strictness = extract_domain_strictness(
         title, raw_description, industry_vertical
     )
 
+    all_skills = required_skills + preferred_skills
     return ParsedRequirementsDTO(
-        required_skills=detected_skills,
-        preferred_skills=[],
+        required_skills=required_skills,
+        preferred_skills=preferred_skills,
         min_experience_years=yoe,
+        seniority_level=seniority,
+        functional_family=func_family,
+        education_level=edu_level,
         visa_sponsorship=visa_status,
-        extraction_version="v1-deterministic",
-        confidence_score=0.95 if detected_skills else 0.5,
+        extraction_version="v2-deterministic",
+        confidence_score=0.95 if all_skills else 0.5,
         needs_review=False,
         industry_vertical=industry_vertical,
         domain_strictness=domain_strictness,

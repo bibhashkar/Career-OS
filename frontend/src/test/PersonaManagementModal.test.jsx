@@ -314,4 +314,41 @@ describe("PersonaManagementModal Component", () => {
     expect(screen.getByTestId("add-persona-btn")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
   });
+
+  it("renders 7-dimension profile completeness overview and missing checklist items", async () => {
+    const personasWithCompleteness = [
+      {
+        ...mockPersonas[0],
+        completeness_score: 75,
+        completeness: {
+          completeness_score: 75,
+          status: "grounded_ready",
+          missing_steps: [
+            {
+              pillar: "hackathons_competitions",
+              potential_gain_pct: 10,
+              prompt: "Add Hackathons, Awards, or LeetCode achievements to stand out.",
+            },
+          ],
+        },
+      },
+    ];
+    api.getCandidatePersonas.mockResolvedValueOnce(personasWithCompleteness);
+
+    render(
+      <PersonaManagementModal
+        isOpen={true}
+        onClose={vi.fn()}
+        activePersonaId="p-universal"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("profile-completeness-overview")).toBeInTheDocument();
+      expect(screen.getByText("75% Complete")).toBeInTheDocument();
+      expect(
+        screen.getByText(/Add Hackathons, Awards, or LeetCode achievements/i)
+      ).toBeInTheDocument();
+    });
+  });
 });

@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.agents.tools.company_intel import fetch_company_intel
 from app.agents.tools.job_search import search_jobs
@@ -61,7 +62,11 @@ from app.schemas.search import (
     WorkAuthTier,
     WorkplaceModality,
 )
-from app.services.diagnostics import JobDiagnosticReport, generate_job_diagnostic
+from app.services.diagnostics import (
+    JobDiagnosticReport,
+    calculate_persona_completeness,
+    generate_job_diagnostic,
+)
 from app.services.matching import (
     JobMatchResult,
     diagnose_zero_results,
@@ -147,13 +152,16 @@ class RefreshCompanyResponse(BaseModel):
 class JobMatchesResponse(BaseModel):
     """Paginated response containing matched jobs and active persona metadata."""
 
-    persona_id: str
+    persona_id: str | None = None
     persona_name: str
     total_count: int
     page: int
     page_size: int
     jobs: list[JobMatchResult]
     diagnostics: SearchDiagnosticsDTO | None = None
+    profile_ready: bool = True
+    profile_status_reason: str | None = None
+    completeness: dict[str, Any] | None = None
 
 
 def _format_job_dict(
@@ -1085,6 +1093,7 @@ async def get_job_matches(
     if target_persona is None:
         def_stmt = (
             select(CandidatePersona)
+            .options(selectinload(CandidatePersona.skills))
             .where(CandidatePersona.user_account_id == account.id)
             .order_by(
                 CandidatePersona.is_default.desc(),
@@ -1093,27 +1102,41 @@ async def get_job_matches(
         )
         target_persona = (await db.execute(def_stmt)).scalars().first()
 
-    if target_persona is None:
-        target_persona = CandidatePersona(
-            id=uuid.uuid4(),
-            user_account_id=account.id,
-            name="Universal Profile",
-            is_common_persona=True,
-            is_default=True,
-            headline=f"{account.full_name} — Universal Profile",
-            target_roles=["Senior Software Engineer"],
-            target_industries=["technology_software"],
-            years_experience=3,
-            seniority_level="mid",
-        )
-        db.add(target_persona)
-        await db.flush()
-
     # 3. Fetch candidate CV blocks
     blocks_stmt = select(CVBlock).where(CVBlock.user_account_id == account.id)
     blocks = list((await db.execute(blocks_stmt)).scalars().all())
 
-    # 4. Resolve geographic coordinates
+    # 4. Check profile readiness using calculate_persona_completeness (ADR-009)
+    cand_skills = (
+        [s.skill_name for s in getattr(target_persona, "skills", [])]
+        if target_persona
+        else []
+    )
+    completeness_res = calculate_persona_completeness(
+        target_roles=list(getattr(target_persona, "target_roles", []))
+        if target_persona
+        else [],
+        years_experience=getattr(target_persona, "years_experience", 0)
+        if target_persona
+        else 0,
+        seniority_level=getattr(target_persona, "seniority_level", "mid")
+        if target_persona
+        else "mid",
+        skills=cand_skills,
+        blocks=blocks,
+        career_intelligence=getattr(target_persona, "career_intelligence", {})
+        if target_persona
+        else {},
+        visa_status=account.visa_status,
+        preferred_locations=account.preferred_locations,
+        min_salary=getattr(target_persona, "min_salary", None)
+        if target_persona
+        else None,
+    )
+    profile_ready = completeness_res.is_profile_ready
+    profile_status_reason = completeness_res.status_reason
+
+    # 5. Resolve geographic coordinates
     geo_coord: GeoCoordinateDTO | None = None
     if lat is not None and lng is not None:
         geo_coord = GeoCoordinateDTO(
@@ -1130,8 +1153,11 @@ async def get_job_matches(
             state_code=state_code or "US",
         )
 
-    # 5. Resolve engine mode and work auth
-    mode = SearchMode.UNBIASED if search_mode == "unbiased" else SearchMode.CV_GROUNDED
+    # 6. Resolve engine mode (Force Explorer Mode if profile is not ready / 0% complete)
+    if not profile_ready or search_mode == "unbiased":
+        mode = SearchMode.UNBIASED
+    else:
+        mode = SearchMode.CV_GROUNDED
 
     auth_tier = WorkAuthTier.ALL
     if work_auth_tier:
@@ -1229,14 +1255,25 @@ async def get_job_matches(
     if total_count == 0:
         diagnostics = await diagnose_zero_results(db, filter_dto)
 
+    if not profile_ready:
+        for j in ranked_jobs:
+            j.match_score = None
+            j.breakdown = None
+            j.probability_band = "unranked"
+            j.matched_skills = []
+            j.missing_dealbreakers = []
+
     return JobMatchesResponse(
-        persona_id=str(target_persona.id),
-        persona_name=target_persona.name,
+        persona_id=str(target_persona.id) if target_persona else None,
+        persona_name=target_persona.name if target_persona else "Explorer Mode",
         total_count=total_count,
         page=page,
         page_size=effective_page_size,
         jobs=ranked_jobs,
         diagnostics=diagnostics,
+        profile_ready=profile_ready,
+        profile_status_reason=profile_status_reason,
+        completeness=completeness_res.model_dump(),
     )
 
 

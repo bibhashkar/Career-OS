@@ -91,6 +91,10 @@ function renderHighlightedSpans(text, matchedSkills = [], missingSkills = []) {
 export function JobDetailPanel({
   match,
   searchMode = "cv_grounded",
+  profileReady = true,
+  profileStatusReason = "",
+  completeness = null,
+  onOpenProfileModal,
   onTailorCV,
   onStartInterview,
   onOpenDiagnostics,
@@ -120,44 +124,52 @@ export function JobDetailPanel({
 
   const isGrounded =
     searchMode !== "unbiased" &&
+    profileReady &&
     match.match_score !== null &&
     match.match_score !== undefined;
   const matchPct = isGrounded ? Math.round(match.match_score * 100) : null;
   const isHigh = match.probability_band === "high";
   const isModerate = match.probability_band === "moderate";
   const breakdown = match.breakdown || null;
+  const factorStatuses = breakdown?.factor_status || {};
 
   const factorBars = breakdown
     ? [
         {
           label: "Skills Alignment",
           weight: "25%",
-          value: breakdown.skill_score ?? 0,
+          value: breakdown.skill_score ?? breakdown.s_skills ?? 0,
+          status: factorStatuses.skills,
         },
         {
           label: "Semantic Top-3",
           weight: "25%",
-          value: breakdown.semantic_score ?? 0,
+          value: breakdown.semantic_score ?? breakdown.s_semantic ?? 0,
+          status: factorStatuses.semantic,
         },
         {
           label: "Seniority Fit",
           weight: "15%",
-          value: breakdown.seniority_score ?? 0,
+          value: breakdown.seniority_score ?? breakdown.s_seniority ?? 0,
+          status: factorStatuses.seniority,
         },
         {
           label: "Domain & Context",
           weight: "15%",
-          value: breakdown.context_score ?? breakdown.archetype_score ?? 0,
+          value: breakdown.context_score ?? breakdown.archetype_score ?? breakdown.s_domain ?? 0,
+          status: factorStatuses.domain,
         },
         {
           label: "Compensation Fit",
           weight: "10%",
-          value: breakdown.comp_score ?? 1.0,
+          value: breakdown.comp_score ?? breakdown.s_comp ?? 1.0,
+          status: factorStatuses.comp,
         },
         {
           label: "Posting Freshness",
           weight: "10%",
           value: breakdown.freshness_booster ?? 0,
+          status: factorStatuses.freshness,
         },
       ]
     : [];
@@ -252,6 +264,41 @@ export function JobDetailPanel({
         data-testid="job-detail-scroll-body"
         className="flex-1 overflow-y-auto p-5 space-y-5"
       >
+        {/* Cold-Start / Profile Required Card */}
+        {!profileReady && (
+          <div
+            data-testid="profile-required-grounded-card"
+            className="p-4 rounded-xl bg-slate-900/80 border border-amber-500/30 space-y-3"
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0 mt-0.5">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                  Profile Required for Grounded Matching
+                </h4>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Because you haven't shared your skills or profile with us yet, personalized match percentages, scoring factor breakdowns, and skill gap analysis cannot be calculated.
+                </p>
+                {onOpenProfileModal && (
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={onOpenProfileModal}
+                      data-testid="detail-open-profile-btn"
+                      className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Upload CV / Add Skills (+10% to unlock)</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Grounded Mode Inline Match Intelligence */}
         {isGrounded && (
           <div className="space-y-4 bg-slate-900/70 border border-slate-700/60 rounded-xl p-4">
@@ -304,6 +351,8 @@ export function JobDetailPanel({
                   const pct = Math.round(
                     Math.min(1, Math.max(0, f.value)) * 100,
                   );
+                  const isUnstated = f.status === "unstated_in_job" || f.status === "unstated_in_profile";
+                  const isMissingBlocks = f.status === "missing_cv_blocks";
                   return (
                     <div
                       key={f.label}
@@ -313,18 +362,32 @@ export function JobDetailPanel({
                         <span className="text-slate-400 truncate">
                           {f.label}
                         </span>
-                        <span className="font-bold text-slate-200">{pct}%</span>
+                        {isUnstated ? (
+                          <span className="text-[10px] font-semibold text-slate-400 bg-slate-700/60 px-1.5 py-0.5 rounded">
+                            Unstated
+                          </span>
+                        ) : isMissingBlocks ? (
+                          <span className="text-[10px] font-semibold text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                            0% (No Blocks)
+                          </span>
+                        ) : (
+                          <span className="font-bold text-slate-200">{pct}%</span>
+                        )}
                       </div>
                       <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden">
                         <div
                           className={`h-full rounded-full ${
-                            pct >= 75
-                              ? "bg-emerald-500"
-                              : pct >= 50
-                                ? "bg-sky-500"
-                                : "bg-amber-500"
+                            isUnstated
+                              ? "bg-slate-700"
+                              : isMissingBlocks
+                                ? "bg-amber-500"
+                                : pct >= 75
+                                  ? "bg-emerald-500"
+                                  : pct >= 50
+                                    ? "bg-sky-500"
+                                    : "bg-amber-500"
                           }`}
-                          style={{ width: `${pct}%` }}
+                          style={{ width: isUnstated ? "0%" : `${pct}%` }}
                         />
                       </div>
                     </div>
@@ -520,76 +583,121 @@ export function JobDetailPanel({
                 </div>
               )}
 
-              {/* Card 3: Skill Match & Gap Analysis */}
-              <div className="bg-slate-900/70 border border-slate-700/60 rounded-xl p-4 space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                  <Target className="w-3.5 h-3.5 text-emerald-400" />
-                  Skill Match & Gap Analysis
-                </h4>
+              {/* Card 3: Skill Match & Gap Analysis OR Extracted Job Requirements */}
+              {isGrounded ? (
+                <div className="bg-slate-900/70 border border-slate-700/60 rounded-xl p-4 space-y-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-emerald-400" />
+                    Skill Match & Gap Analysis
+                  </h4>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                  {/* Confirmed Candidate Strengths */}
-                  <div className="bg-slate-800/70 border border-emerald-500/20 rounded-lg p-3 space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-300">
-                      <span className="flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                        Your Matched Skills ({match.matched_skills?.length || 0}
-                        )
-                      </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    {/* Confirmed Candidate Strengths */}
+                    <div className="bg-slate-800/70 border border-emerald-500/20 rounded-lg p-3 space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-300">
+                        <span className="flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          Your Matched Skills ({match.matched_skills?.length || 0})
+                        </span>
+                      </div>
+                      {match.matched_skills?.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {match.matched_skills.map((s, idx) => (
+                            <span
+                              key={idx}
+                              className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium"
+                            >
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 italic">
+                          No direct keyword overlap found.
+                        </p>
+                      )}
                     </div>
-                    {match.matched_skills?.length > 0 ? (
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {match.matched_skills.map((s, idx) => (
+
+                    {/* Missing Dealbreaker Skills / Prep Topics */}
+                    <div className="bg-slate-800/70 border border-amber-500/20 rounded-lg p-3 space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-amber-300">
+                        <span className="flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-amber-400" />
+                          Missing Dealbreakers ({match.missing_dealbreakers?.length || 0})
+                        </span>
+                      </div>
+                      {match.missing_dealbreakers?.length > 0 ? (
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex flex-wrap gap-1">
+                            {match.missing_dealbreakers.map((m, idx) => (
+                              <span
+                                key={idx}
+                                className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 font-medium"
+                              >
+                                {m}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-slate-400">
+                            💡 Tip: Highlight equivalent experience or project transferability during interview prep.
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-emerald-400/90 font-medium flex items-center gap-1 pt-1">
+                          <CheckCheck className="w-3.5 h-3.5" /> All critical skills verified!
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-slate-900/70 border border-slate-700/60 rounded-xl p-4 space-y-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                    <Briefcase className="w-3.5 h-3.5 text-sky-400" />
+                    Extracted Job Requirements
+                  </h4>
+                  <div className="space-y-2 text-xs">
+                    {/* Required Skills */}
+                    <div>
+                      <span className="text-[11px] font-semibold text-slate-400 block mb-1">
+                        Required Technical & Domain Skills:
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {(match.ats_requirements?.required_skills?.length > 0
+                          ? match.ats_requirements.required_skills
+                          : [...(match.matched_skills || []), ...(match.missing_dealbreakers || [])]
+                        ).map((s, idx) => (
                           <span
                             key={idx}
-                            className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium"
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-200 border border-slate-700 font-medium"
                           >
                             {s}
                           </span>
                         ))}
                       </div>
-                    ) : (
-                      <p className="text-[11px] text-slate-400 italic">
-                        No direct keyword overlap found.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Missing Dealbreaker Skills / Prep Topics */}
-                  <div className="bg-slate-800/70 border border-amber-500/20 rounded-lg p-3 space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] font-semibold text-amber-300">
-                      <span className="flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3 text-amber-400" />
-                        Missing Dealbreakers (
-                        {match.missing_dealbreakers?.length || 0})
-                      </span>
                     </div>
-                    {match.missing_dealbreakers?.length > 0 ? (
-                      <div className="space-y-1.5 pt-1">
+
+                    {/* Preferred Skills */}
+                    {match.ats_requirements?.preferred_skills?.length > 0 && (
+                      <div className="pt-2 border-t border-slate-800">
+                        <span className="text-[11px] font-semibold text-slate-400 block mb-1">
+                          Preferred / Bonus Skills:
+                        </span>
                         <div className="flex flex-wrap gap-1">
-                          {match.missing_dealbreakers.map((m, idx) => (
+                          {match.ats_requirements.preferred_skills.map((s, idx) => (
                             <span
                               key={idx}
-                              className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 font-medium"
+                              className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
                             >
-                              {m}
+                              {s}
                             </span>
                           ))}
                         </div>
-                        <p className="text-[10px] text-slate-400">
-                          💡 Tip: Highlight equivalent experience or project
-                          transferability during interview prep.
-                        </p>
                       </div>
-                    ) : (
-                      <p className="text-[11px] text-emerald-400/90 font-medium flex items-center gap-1 pt-1">
-                        <CheckCheck className="w-3.5 h-3.5" /> All critical
-                        skills verified!
-                      </p>
                     )}
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Card 4: Benefits & Perks */}
               {parsed.benefits.length > 0 && (

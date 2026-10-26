@@ -137,6 +137,9 @@ class ParsedRequirementsDTO(BaseModel):
     required_skills: list[str] = Field(default_factory=list)
     preferred_skills: list[str] = Field(default_factory=list)
     min_experience_years: int | None = None
+    seniority_level: str | None = None
+    functional_family: str = "engineering"
+    education_level: str | None = None
     visa_sponsorship: VisaSponsorshipStatus = VisaSponsorshipStatus.UNKNOWN
     extraction_version: str = "v2"
     confidence_score: float = 1.0

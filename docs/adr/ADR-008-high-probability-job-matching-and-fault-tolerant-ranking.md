@@ -150,12 +150,17 @@ $$P(\text{Match}) = (G_{\text{prob}} \times D_{\text{core}}) \times \left[ 0.25 
 - **Corpus:** 25 Candidate Personas $\times$ 500 Job Listings across 10 industry verticals (`matching_golden_benchmark.json`).
 - **Evaluation Harness (`eval_harness.py`):** Computes DCG@10, IDCG@10, NDCG@10, MRR, Precision@5, Gate Leakage, and latency metrics with zero live external API dependencies.
 - **Automated Regression Suite (`test_ranking_regression.py`):** Verified against all target SLAs:
-  - **NDCG@10:** `0.9108` (Target $\ge 0.88$ — **PASSED**)
+  - **NDCG@10:** `0.9030` (Target $\ge 0.88$ — **PASSED**)
   - **MRR:** `1.0000` (Target $\ge 0.92$ — **PASSED**)
   - **Precision@5:** `0.9840` (Target $\ge 0.80$ — **PASSED**)
   - **Gate Leakage ($L_{\text{gate}}$):** `0.0000%` (Target $0.00\%$ — **PASSED**)
   - **Stage 2 Latency (p95):** `< 35ms` for 50 pre-filtered jobs (Target $< 45\text{ms}$ — **PASSED**)
   - **Regulated Domain Separation:** `+76.45%` separation on strict postings (Target $\ge 12\%$ — **PASSED**)
+
+### 7. Zero Fake Data Policy & Progressive Grounded Gating (ADR-009 Synchronization)
+- **Elimination of Synthetic Scores:** Empty candidate skill sets yield an exact `0.0` skill score (never defaulting to synthetic `0.70`). Candidates without CV blocks evaluate semantic similarity strictly through lexical target-role title alignment without fabricated `0.50` block similarity fallbacks.
+- **Factor Status Badges:** The matching engine outputs `factor_status` metadata flags (`evaluated`, `unstated_in_profile`, `unstated_in_job`, `missing_cv_blocks`) so the UI presents clear, honest tags rather than fabricated 100% or synthetic scores.
+- **Progressive Gate Threshold:** Profiles with $< 10\%$ completeness lock Grounded mode and force Explorer mode with cold-start guidance. Profiles with $\ge 10\%$ completeness unlock Grounded mode using honest signals and live missing steps progression.
 
 ---
 

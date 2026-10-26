@@ -179,7 +179,7 @@ def test_cold_start_handling() -> None:
 
     # Empty job skills fallback
     eval_empty = compute_asymmetric_skill_score(candidate_skills, [])
-    assert eval_empty.skill_score == 0.70
+    assert eval_empty.skill_score == 0.0
     assert eval_empty.d_core == 1.0
 
 

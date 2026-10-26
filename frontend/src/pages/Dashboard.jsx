@@ -26,6 +26,8 @@ import {
   Zap,
   SlidersHorizontal,
   Home,
+  Lock,
+  Upload,
 } from "lucide-react";
 import { searchJobs, crossCheckJob, getJobMatches } from "../services/api";
 import { CompanyDossierCard } from "../components/CompanyDossierCard";
@@ -147,6 +149,7 @@ export function Dashboard({
   onStartInterview,
   activePersona,
   defaultTab = "matches",
+  onOpenProfileModal,
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -186,6 +189,11 @@ export function Dashboard({
   );
   const [selectedJob, setSelectedJob] = useState(null);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+
+  // Candidate Intelligence & Cold-Start State
+  const [profileReady, setProfileReady] = useState(true);
+  const [profileStatusReason, setProfileStatusReason] = useState("");
+  const [completenessData, setCompletenessData] = useState(null);
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState(() =>
@@ -528,6 +536,18 @@ export function Dashboard({
       setMatches(nextJobs);
       setTotalMatches(res?.total_count || 0);
       setDiagnostics(res?.diagnostics || null);
+      if (res?.profile_ready !== undefined) {
+        setProfileReady(Boolean(res.profile_ready));
+        if (!res.profile_ready) {
+          setSearchMode("unbiased");
+        }
+      }
+      if (res?.profile_status_reason !== undefined) {
+        setProfileStatusReason(res.profile_status_reason);
+      }
+      if (res?.completeness !== undefined) {
+        setCompletenessData(res.completeness);
+      }
       if (nextJobs.length === 0) {
         setSelectedMatchId(null);
         setSelectedJob(null);
@@ -1050,18 +1070,32 @@ export function Dashboard({
                   <button
                     type="button"
                     onClick={() => {
+                      if (!profileReady) {
+                        if (onOpenProfileModal) onOpenProfileModal();
+                        return;
+                      }
                       setPage(1);
                       setSearchMode("cv_grounded");
                     }}
                     className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-medium transition-all ${
-                      searchMode === "cv_grounded"
-                        ? "bg-sky-600 text-white shadow-sm"
-                        : "text-slate-400 hover:text-slate-200"
+                      !profileReady
+                        ? "text-slate-500 hover:text-amber-300 cursor-pointer"
+                        : searchMode === "cv_grounded"
+                          ? "bg-sky-600 text-white shadow-sm"
+                          : "text-slate-400 hover:text-slate-200"
                     }`}
-                    title="Personalized candidate-grounded match scoring (P(Match))"
+                    title={
+                      !profileReady
+                        ? "Grounded matching locked: upload CV or add skills to activate personalized matching (0% complete)"
+                        : "Personalized candidate-grounded match scoring (P(Match))"
+                    }
                   >
-                    <Sparkles className="w-3 h-3" />
-                    <span>Grounded</span>
+                    {!profileReady ? (
+                      <Lock className="w-3 h-3 text-amber-400" />
+                    ) : (
+                      <Sparkles className="w-3 h-3" />
+                    )}
+                    <span>Grounded{!profileReady ? " (Locked)" : ""}</span>
                   </button>
 
                   <button
@@ -1183,6 +1217,75 @@ export function Dashboard({
               <p className="text-sm text-slate-400">
                 Executing ADR-008 two-stage retrieval & Bayesian reranker...
               </p>
+            </div>
+          )}
+
+          {/* Cold-Start / 0% Profile Guidance Banner */}
+          {!profileReady && (
+            <div
+              data-testid="cold-start-banner"
+              className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-slate-900 to-sky-500/10 border border-amber-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg shrink-0"
+            >
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 mt-0.5">
+                  <AlertCircle className="w-5 h-5 shrink-0" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <span>Explorer Mode Active</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      Profile Incomplete (0% Shared)
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-1 leading-relaxed max-w-3xl">
+                    Because you haven't shared your skills or profile with us yet, we cannot calculate personalized match scores or show the best-matched jobs for your background. You are currently browsing in Explorer Mode. Upload your CV or add your skills to unlock personalized Grounded matching.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
+                <button
+                  type="button"
+                  onClick={onOpenProfileModal}
+                  data-testid="cold-start-upload-cv-btn"
+                  className="flex-1 md:flex-none px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload CV / Paste Resume</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenProfileModal}
+                  data-testid="cold-start-add-skills-btn"
+                  className="flex-1 md:flex-none px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <PlusCircle className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Add Skills</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Profile Ready with Incomplete Checklist Nudge (10% - 99%) */}
+          {profileReady && completenessData && completenessData.completeness_score < 100 && (
+            <div className="px-3.5 py-2 rounded-xl bg-sky-950/40 border border-sky-800/40 flex items-center justify-between gap-3 text-xs text-slate-300 shrink-0">
+              <div className="flex items-center gap-2 truncate">
+                <Sparkles className="w-4 h-4 text-sky-400 shrink-0" />
+                <span className="truncate">
+                  Career Profile is <strong className="text-sky-300 font-bold">{completenessData.completeness_score}% complete</strong>.
+                  {completenessData.missing_steps?.length > 0 && (
+                    <span className="text-slate-400 ml-1.5 hidden sm:inline">
+                      Next: {completenessData.missing_steps[0].prompt}
+                    </span>
+                  )}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenProfileModal}
+                className="text-sky-400 hover:text-sky-300 font-semibold text-[11px] whitespace-nowrap cursor-pointer hover:underline"
+              >
+                Boost Accuracy →
+              </button>
             </div>
           )}
 
@@ -1434,6 +1537,10 @@ export function Dashboard({
                   <JobDetailPanel
                     match={selectedMatch}
                     searchMode={searchMode}
+                    profileReady={profileReady}
+                    profileStatusReason={profileStatusReason}
+                    completeness={completenessData}
+                    onOpenProfileModal={onOpenProfileModal}
                     onTailorCV={(m) => onSelectJob(normalizeJobMatch(m))}
                     onStartInterview={(m) =>
                       onStartInterview(normalizeJobMatch(m))

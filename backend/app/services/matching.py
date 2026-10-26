@@ -29,7 +29,9 @@ from sqlalchemy.orm import selectinload
 from app.agents.tools.embeddings import generate_deterministic_embedding
 from app.ingestion.deterministic_extractor import (
     classify_industry_vertical,
+    extract_deterministic_requirements,
     extract_domain_strictness,
+    extract_seniority_level,
 )
 from app.models.cv_block import CVBlock
 from app.models.job_listing import JobListing
@@ -209,6 +211,10 @@ class MatchFactorBreakdown(BaseModel):
     )
     comp_score: float = Field(
         1.0, description="Compensation feasibility factor [0.0, 1.0]."
+    )
+    factor_status: dict[str, str] = Field(
+        default_factory=dict,
+        description="Metadata flags on whether signals were evaluated or unstated.",
     )
 
 
@@ -1100,10 +1106,10 @@ def calculate_semantic_top3_score(
         total_w = sum(weights)
         top3_sim = sum(s * w for s, w in zip(top3, weights, strict=False)) / total_w
     else:
-        top3_sim = 0.50
+        top3_sim = 0.0
 
     # 2. Role Title semantic alignment
-    role_match = 0.50
+    role_match = 0.0
     title_lower = (job.title or "").lower()
     if target_roles:
         if any(r.lower() in title_lower for r in target_roles):
@@ -1111,9 +1117,17 @@ def calculate_semantic_top3_score(
         else:
             tokens = [w for r in target_roles for w in r.lower().split() if len(w) > 2]
             overlap = sum(1 for tok in tokens if tok in title_lower)
-            role_match = min(0.90, 0.40 + 0.15 * overlap)
+            if block_sims:
+                role_match = min(0.90, 0.40 + 0.15 * overlap)
+            else:
+                role_match = min(0.90, 0.40 + 0.15 * overlap) if overlap else 0.0
 
-    s_semantic = (0.70 * top3_sim) + (0.30 * role_match)
+    if block_sims:
+        s_semantic = (0.70 * top3_sim) + (0.30 * role_match)
+    else:
+        # If no CV blocks, semantic score is strictly bounded by role title lexical alignment
+        s_semantic = 0.50 * role_match
+
     return max(0.0, min(1.0, s_semantic))
 
 
@@ -1306,15 +1320,16 @@ def calculate_probabilistic_gate(
         if not physical_locs:
             # Candidate did not specify a physical city constraint: apply soft modality discount
             if cand_pref_lower == "remote":
-                if workplace_lower == "hybrid":
-                    g_prob *= 0.85
+                if workplace_lower in ("on_site", "onsite"):
+                    g_prob = 0.0
+                    hard_pass = False
+                    notes.append(
+                        f"On-site requirement in {job_location} conflicts with Remote-only preference."
+                    )
+                elif workplace_lower == "hybrid":
+                    g_prob *= 0.60
                     notes.append(
                         f"Hybrid arrangement in {job_location}; soft preference discount applied."
-                    )
-                else:
-                    g_prob *= 0.75
-                    notes.append(
-                        f"On-site requirement in {job_location}; soft preference discount applied."
                     )
             else:
                 notes.append(f"Physical location in {job_location}.")
@@ -2245,14 +2260,12 @@ async def retrieve_and_rank_jobs(
         ):
             continue
 
-        job_skills = reqs.get("hard_skills", [])
+        job_skills = reqs.get("required_skills") or reqs.get("hard_skills") or []
         if not job_skills:
-            # Fallback to keywords in job description
-            job_skills = [
-                s
-                for s in persona_skills
-                if s.lower() in (job.raw_description or "").lower()
-            ]
+            det_res = extract_deterministic_requirements(
+                job.title or "", job.raw_description or "", job.company_name or ""
+            )
+            job_skills = det_res.required_skills
 
         # 1. Asymmetric Skill Overlap & Core Dealbreaker Multiplier (0.25 weight)
         core_skills = reqs.get("core_skills") or reqs.get("dealbreakers")
@@ -2307,8 +2320,14 @@ async def retrieve_and_rank_jobs(
         )
 
         # 3. Seniority Hierarchy Calibration (0.15 weight)
-        job_exp_years = reqs.get("years_experience_min")
+        job_exp_years = reqs.get("years_experience_min") or reqs.get(
+            "min_experience_years"
+        )
         job_sen = reqs.get("seniority_level")
+        if not job_sen:
+            job_sen = extract_seniority_level(
+                job.title or "", job.raw_description or "", job_exp_years
+            )
         s_seniority = calculate_seniority_score(
             candidate_years=persona.years_experience,
             candidate_seniority=persona.seniority_level,
@@ -2393,6 +2412,20 @@ async def retrieve_and_rank_jobs(
         else:
             band = "low"
 
+        factor_status = {
+            "semantic_score": "evaluated" if blocks else "missing_cv_blocks",
+            "skill_score": "evaluated" if job_skills else "no_job_skills_detected",
+            "seniority_score": "evaluated"
+            if (reqs.get("seniority_level") or job_exp_years)
+            else "unstated_in_job",
+            "comp_score": "evaluated"
+            if (persona.min_salary and job.salary_range)
+            else (
+                "unstated_in_profile" if not persona.min_salary else "unstated_in_job"
+            ),
+            "freshness_booster": "evaluated",
+        }
+
         breakdown = MatchFactorBreakdown(
             g_prob=round(g_prob, 2),
             skill_score=round(s_skills, 2),
@@ -2406,6 +2439,7 @@ async def retrieve_and_rank_jobs(
             domain_score=round(s_domain, 2),
             context_score=round(s_context, 2),
             comp_score=round(s_comp, 2),
+            factor_status=factor_status,
         )
 
         result_item = JobMatchResult(
