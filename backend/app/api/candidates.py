@@ -244,6 +244,25 @@ async def _get_or_create_account(
         db.add(account)
         await db.flush()
 
+    # Synchronize corresponding UserProfile to satisfy legacy foreign key constraints
+    prof_stmt = select(UserProfile).where(UserProfile.id == account.id)
+    prof_res = await db.execute(prof_stmt)
+    user_prof = prof_res.scalar_one_or_none()
+    if user_prof is None:
+        user_prof = UserProfile(
+            id=account.id,
+            user_account_id=account.id,
+            email=account.email,
+            full_name=account.full_name,
+            visa_status=account.visa_status,
+            remote_preference=account.remote_preference,
+            tone_directives={},
+            target_roles=[],
+            target_locations=[],
+        )
+        db.add(user_prof)
+        await db.flush()
+
     return account
 
 
