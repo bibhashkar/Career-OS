@@ -1082,9 +1082,13 @@ async def get_job_matches(
     if persona_id:
         try:
             p_uuid = uuid.UUID(persona_id)
-            p_stmt = select(CandidatePersona).where(
-                CandidatePersona.id == p_uuid,
-                CandidatePersona.user_account_id == account.id,
+            p_stmt = (
+                select(CandidatePersona)
+                .options(selectinload(CandidatePersona.skills))
+                .where(
+                    CandidatePersona.id == p_uuid,
+                    CandidatePersona.user_account_id == account.id,
+                )
             )
             target_persona = (await db.execute(p_stmt)).scalar_one_or_none()
         except ValueError:
