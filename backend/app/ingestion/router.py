@@ -8,7 +8,11 @@ import logging
 import re
 from typing import Any
 
-from app.schemas.candidate_dossier import ResumeTriageDecision
+from app.schemas.candidate_dossier import (
+    ExperienceDensity,
+    LayoutType,
+    ResumeTriageDecision,
+)
 
 logger = logging.getLogger("career_os.ingestion.router")
 
@@ -104,7 +108,7 @@ def triage_resume_layout(
     yoe_match = re.search(
         r"\b(\d{1,2})\+?\s*(?:years|yrs)\b", clean_text, re.IGNORECASE
     )
-    estimated_density = "mid"
+    estimated_density: ExperienceDensity = "mid"
     if yoe_match:
         yoe_num = int(yoe_match.group(1))
         if yoe_num >= 10:
@@ -138,7 +142,7 @@ def triage_resume_layout(
     ):
         estimated_density = "entry"
 
-    layout_type = (
+    layout_type: LayoutType = (
         "multi_column_creative" if is_multi_column else "standard_single_column"
     )
 

@@ -25,6 +25,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql.expression import ColumnElement
 
 from app.agents.tools.embeddings import generate_deterministic_embedding
 from app.ingestion.deterministic_extractor import (
@@ -1531,7 +1532,7 @@ def build_stage1_query(
         raw_clean = filters.raw_query.strip()
         q_term = f"%{raw_clean}%"
         tokens = [t.strip() for t in raw_clean.split() if len(t.strip()) >= 2]
-        structured_clauses = [
+        structured_clauses: list[ColumnElement[bool]] = [
             JobListing.title.ilike(q_term),
             JobListing.company_name.ilike(q_term),
             JobListing.industry.ilike(q_term),
@@ -1855,7 +1856,7 @@ async def retrieve_stage1_candidates(
             raw_clean = search_query.strip()
             q_term = f"%{raw_clean}%"
             tokens = [t.strip() for t in raw_clean.split() if len(t.strip()) >= 2]
-            structured_clauses = [
+            structured_clauses: list[ColumnElement[bool]] = [
                 JobListing.title.ilike(q_term),
                 JobListing.company_name.ilike(q_term),
                 JobListing.industry.ilike(q_term),
@@ -2523,29 +2524,29 @@ async def retrieve_and_rank_jobs(
                 await db.execute(upsert_stmt)
                 await db.commit()
             elif dialect_name == "sqlite":
-                upsert_stmt = sqlite_insert(JobMatchCache).values(cache_records)
-                upsert_stmt = upsert_stmt.on_conflict_do_update(
+                sqlite_upsert = sqlite_insert(JobMatchCache).values(cache_records)
+                sqlite_stmt = sqlite_upsert.on_conflict_do_update(
                     index_elements=["persona_id", "job_listing_id"],
                     set_={
-                        "match_score": upsert_stmt.excluded.match_score,
-                        "hard_gate_pass": upsert_stmt.excluded.hard_gate_pass,
-                        "skill_overlap_score": upsert_stmt.excluded.skill_overlap_score,
-                        "semantic_score": upsert_stmt.excluded.semantic_score,
-                        "seniority_score": upsert_stmt.excluded.seniority_score,
-                        "prestige_booster": upsert_stmt.excluded.prestige_booster,
-                        "achievement_booster": upsert_stmt.excluded.achievement_booster,
-                        "missing_skills": upsert_stmt.excluded.missing_skills,
-                        "matched_skills": upsert_stmt.excluded.matched_skills,
-                        "d_core": upsert_stmt.excluded.d_core,
-                        "archetype_score": upsert_stmt.excluded.archetype_score,
-                        "domain_score": upsert_stmt.excluded.domain_score,
-                        "context_score": upsert_stmt.excluded.context_score,
-                        "comp_score": upsert_stmt.excluded.comp_score,
-                        "freshness_score": upsert_stmt.excluded.freshness_score,
-                        "evaluated_at": upsert_stmt.excluded.evaluated_at,
+                        "match_score": sqlite_upsert.excluded.match_score,
+                        "hard_gate_pass": sqlite_upsert.excluded.hard_gate_pass,
+                        "skill_overlap_score": sqlite_upsert.excluded.skill_overlap_score,
+                        "semantic_score": sqlite_upsert.excluded.semantic_score,
+                        "seniority_score": sqlite_upsert.excluded.seniority_score,
+                        "prestige_booster": sqlite_upsert.excluded.prestige_booster,
+                        "achievement_booster": sqlite_upsert.excluded.achievement_booster,
+                        "missing_skills": sqlite_upsert.excluded.missing_skills,
+                        "matched_skills": sqlite_upsert.excluded.matched_skills,
+                        "d_core": sqlite_upsert.excluded.d_core,
+                        "archetype_score": sqlite_upsert.excluded.archetype_score,
+                        "domain_score": sqlite_upsert.excluded.domain_score,
+                        "context_score": sqlite_upsert.excluded.context_score,
+                        "comp_score": sqlite_upsert.excluded.comp_score,
+                        "freshness_score": sqlite_upsert.excluded.freshness_score,
+                        "evaluated_at": sqlite_upsert.excluded.evaluated_at,
                     },
                 )
-                await db.execute(upsert_stmt)
+                await db.execute(sqlite_stmt)
                 await db.commit()
             else:
                 await db.commit()

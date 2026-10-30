@@ -16,7 +16,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ingestion.models import DiscoveredJobDTO
+from app.ingestion.models import DiscoveredJobDTO, WorkplaceType
 from app.main import app
 
 
@@ -111,7 +111,7 @@ async def test_ingest_url_success_with_canonical_ats() -> None:
         company_name="Stripe",
         apply_url="https://boards.greenhouse.io/stripe/jobs/1234567",
         raw_location="Remote",
-        workplace_type="remote",
+        workplace_type=WorkplaceType.REMOTE,
         salary_range="$220,000 - $260,000",
         raw_description="Python, Kubernetes, and distributed consensus.",
     )

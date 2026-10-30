@@ -7,21 +7,47 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+LayoutType = Literal[
+    "standard_single_column",
+    "multi_column_creative",
+    "linkedin_pdf_export",
+    "academic_curriculum_vitae",
+    "scanned_image_pdf",
+    "plain_text",
+]
+
+RecommendedPipeline = Literal[
+    "deep_llm_structured",
+    "vision_ocr_pipeline",
+    "linkedin_specialized",
+    "deterministic_fallback",
+]
+
+ExperienceDensity = Literal["entry", "mid", "senior_staff", "executive"]
+
+SeniorityLevel = Literal[
+    "entry", "junior", "mid", "senior", "lead", "staff", "principal", "executive"
+]
+
+InstitutionTier = Literal["tier_1_ivy_top_tech", "tier_2_state_flagship", "standard"]
+
+MetricType = Literal[
+    "financial_volume",
+    "throughput_or_traffic",
+    "latency_optimization",
+    "percentage_improvement",
+    "scale_users_or_data",
+    "team_leadership",
+    "general",
+]
+
 
 class QuantifiedMetric(BaseModel):
     """
     Concrete quantified metric demonstrating measurable impact.
     """
 
-    metric_type: Literal[
-        "financial_volume",
-        "throughput_or_traffic",
-        "latency_optimization",
-        "percentage_improvement",
-        "scale_users_or_data",
-        "team_leadership",
-        "general",
-    ] = "general"
+    metric_type: MetricType = "general"
     raw_metric: str
     impact_description: str = ""
 
@@ -58,9 +84,7 @@ class WorkExperience(BaseModel):
     end_date: str = "Present"
     is_current: bool = False
     duration_years: float = 1.0
-    seniority_level: Literal[
-        "entry", "junior", "mid", "senior", "lead", "staff", "principal", "executive"
-    ] = "mid"
+    seniority_level: SeniorityLevel = "mid"
     bullets: list[CareerProofPoint] = Field(default_factory=list)
 
 
@@ -85,9 +109,7 @@ class EducationRecord(BaseModel):
     """
 
     institution: str
-    institution_tier: Literal[
-        "tier_1_ivy_top_tech", "tier_2_state_flagship", "standard"
-    ] = "standard"
+    institution_tier: InstitutionTier = "standard"
     degree: str  # e.g. "Master of Science", "Bachelor of Science"
     major: str  # e.g. "Computer Science & Engineering"
     minor: str | None = None
@@ -143,25 +165,11 @@ class ResumeTriageDecision(BaseModel):
     Decision-native triage classification determining parsing strategy.
     """
 
-    layout_type: Literal[
-        "standard_single_column",
-        "multi_column_creative",
-        "linkedin_pdf_export",
-        "academic_curriculum_vitae",
-        "scanned_image_pdf",
-        "plain_text",
-    ] = "standard_single_column"
-    recommended_pipeline: Literal[
-        "deep_llm_structured",
-        "vision_ocr_pipeline",
-        "linkedin_specialized",
-        "deterministic_fallback",
-    ] = "deep_llm_structured"
+    layout_type: LayoutType = "standard_single_column"
+    recommended_pipeline: RecommendedPipeline = "deep_llm_structured"
     has_text_layer: bool = True
     is_multi_column: bool = False
-    estimated_experience_density: Literal[
-        "entry", "mid", "senior_staff", "executive"
-    ] = "mid"
+    estimated_experience_density: ExperienceDensity = "mid"
     confidence_score: float = 1.0
     reasoning: str | None = None
 
@@ -201,9 +209,7 @@ class CandidateProfileDossier(BaseModel):
     # 2. Executive Synthesis
     headline: str = ""
     total_years_experience: int = 0
-    seniority_level: Literal[
-        "entry", "junior", "mid", "senior", "lead", "staff", "principal", "executive"
-    ] = "entry"
+    seniority_level: SeniorityLevel = "entry"
     target_roles: list[str] = Field(default_factory=list)
 
     # 3. Business & Industry Domain Depth

@@ -113,10 +113,13 @@ class TestSpanProcessorSanitization:
             span.set_attribute("agent.skill", "Python 3.12")
 
         # In Python OTel, after span closes, attributes can be inspected
+        assert isinstance(span, ReadableSpan)
         assert span.attributes is not None
-        assert "test@domain.org" not in span.attributes["input.prompt"]
-        assert "[EMAIL_REDACTED]" in span.attributes["input.prompt"]
-        assert span.attributes["agent.skill"] == "Python 3.12"
+        prompt_attr = span.attributes.get("input.prompt")
+        assert isinstance(prompt_attr, str)
+        assert "test@domain.org" not in prompt_attr
+        assert "[EMAIL_REDACTED]" in prompt_attr
+        assert span.attributes.get("agent.skill") == "Python 3.12"
 
     def test_processor_disabled_when_flag_false(
         self, monkeypatch: pytest.MonkeyPatch

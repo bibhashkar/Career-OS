@@ -10,6 +10,7 @@ from app.ingestion.models import (
     ATSProvider,
     DiscoveredJobDTO,
     ListingStatus,
+    WorkplaceType,
 )
 from app.ingestion.ports.provider import ATSAdapterPort
 from app.ingestion.service import BoardSyncService, compute_dedupe_fingerprint
@@ -80,7 +81,7 @@ async def test_board_sync_lifecycle_and_closed_job_detection(
         company_name="Stripe",
         apply_url="https://boards.greenhouse.io/stripe/jobs/102",
         raw_location="Remote",
-        workplace_type="remote",
+        workplace_type=WorkplaceType.REMOTE,
         raw_description="ML agent workflows.",
     )
 

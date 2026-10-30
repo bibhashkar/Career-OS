@@ -13,6 +13,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, text, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -508,7 +509,8 @@ async def retry_failed_tasks(
         )
     )
     res = await db.execute(stmt)
-    return {"status": "success", "retried_count": res.rowcount}
+    count = res.rowcount if isinstance(res, CursorResult) else 0
+    return {"status": "success", "retried_count": count}
 
 
 @router.delete("/tasks/failed")
@@ -523,7 +525,8 @@ async def purge_failed_tasks(
         IngestionTask.status == IngestionTaskStatus.FAILED.value
     )
     res = await db.execute(stmt)
-    return {"status": "success", "purged_count": res.rowcount}
+    count = res.rowcount if isinstance(res, CursorResult) else 0
+    return {"status": "success", "purged_count": count}
 
 
 @router.post("/circuit-breakers/{provider}/reset")
@@ -564,7 +567,8 @@ async def flush_match_cache(
     """
     stmt = delete(JobMatchCache)
     res = await db.execute(stmt)
-    return {"status": "success", "deleted_cache_entries": res.rowcount}
+    count = res.rowcount if isinstance(res, CursorResult) else 0
+    return {"status": "success", "deleted_cache_entries": count}
 
 
 @router.patch("/users/{user_id}")

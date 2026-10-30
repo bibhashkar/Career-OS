@@ -1106,6 +1106,23 @@ async def get_job_matches(
         )
         target_persona = (await db.execute(def_stmt)).scalars().first()
 
+    if target_persona is None:
+        target_persona = CandidatePersona(
+            id=uuid.uuid4(),
+            user_account_id=account.id,
+            name="Universal Profile",
+            is_common_persona=True,
+            is_default=True,
+            headline=f"{account.full_name} — Universal Profile",
+            target_roles=[],
+            target_industries=[],
+            years_experience=0,
+            seniority_level="mid",
+            career_intelligence={},
+        )
+        db.add(target_persona)
+        await db.flush()
+
     # 3. Fetch candidate CV blocks
     blocks_stmt = select(CVBlock).where(CVBlock.user_account_id == account.id)
     blocks = list((await db.execute(blocks_stmt)).scalars().all())

@@ -28,9 +28,11 @@ from app.schemas.candidate_dossier import (
     CandidateProfileDossier,
     CareerProofPoint,
     EducationRecord,
+    InstitutionTier,
     ParsedCVBlock,
     ProjectRecord,
     QuantifiedMetric,
+    SeniorityLevel,
     TechnicalSkillsMatrix,
     WorkExperience,
 )
@@ -686,7 +688,7 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
                 )
 
             # Seniority of role
-            r_sen = "mid"
+            r_sen: SeniorityLevel = "mid"
             t_low = job_title.lower()
             if any(k in t_low for k in ("principal", "director")):
                 r_sen = "principal"
@@ -723,7 +725,7 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
         deg_match = RE_DEGREE.search(clean_e)
         maj_match = RE_MAJOR.search(clean_e)
         yr_match = re.search(r"\b(19\d\d|20\d\d)\b", clean_e)
-        tier = "standard"
+        tier: InstitutionTier = "standard"
         for top_u in TOP_TECH_UNIVERSITIES:
             if top_u in clean_e.lower():
                 tier = "tier_1_ivy_top_tech"
@@ -873,6 +875,7 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
     else:
         total_yoe = 0
 
+    seniority: SeniorityLevel = "entry"
     if total_yoe >= 10:
         seniority = "staff"
     elif total_yoe >= 5:
