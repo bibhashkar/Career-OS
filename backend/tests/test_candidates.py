@@ -457,6 +457,41 @@ async def test_persona_management_and_uniqueness_flow(
             personas2 = list_res2.json()
             univ_after = next(p for p in personas2 if p["is_common_persona"])
             assert univ_after["is_default"] is True
+
+            # 13. Test CVBlock update endpoint (PUT /api/candidates/blocks/{id})
+            create_block_res = await client.post(
+                "/api/candidates/blocks",
+                json={
+                    "category": "experience",
+                    "title": "Senior Systems Engineer",
+                    "organization": "CloudScale",
+                    "content": "Architected low-latency distributed pipeline.",
+                    "metrics": {"percentage": "40%"},
+                    "skills": ["Python", "FastAPI"],
+                },
+                headers=headers,
+            )
+            assert create_block_res.status_code == 201
+            block_data = create_block_res.json()
+            block_id = block_data["id"]
+
+            update_block_res = await client.put(
+                f"/api/candidates/blocks/{block_id}",
+                json={
+                    "title": "Staff Distributed Systems Architect",
+                    "content": "Architected high-throughput payment ledgers scaling to 10k ops/sec with PostgreSQL.",
+                    "metrics": {"throughput": "10k ops/sec"},
+                    "skills": ["Python", "PostgreSQL", "FastAPI"],
+                },
+                headers=headers,
+            )
+            assert update_block_res.status_code == 200
+            updated = update_block_res.json()
+            assert updated["title"] == "Staff Distributed Systems Architect"
+            assert "10k ops/sec" in updated["content"]
+            assert updated["metrics"]["throughput"] == "10k ops/sec"
+            assert "PostgreSQL" in updated["skills"]
+            assert updated["has_embedding"] is True
     finally:
         app.dependency_overrides.pop(get_db, None)
 

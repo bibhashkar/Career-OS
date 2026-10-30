@@ -91,6 +91,9 @@ class UpdatePersonaRequest(BaseModel):
     min_salary: int | None = Field(default=None, ge=0)
     skills: list[str] = Field(default_factory=list)
     career_intelligence: dict[str, Any] = Field(default_factory=dict)
+    visa_status: str | None = None
+    preferred_locations: list[str] | None = None
+    remote_preference: str | None = None
 
 
 class OnboardingCommitRequest(BaseModel):
@@ -133,6 +136,17 @@ class CVBlockCreateRequest(BaseModel):
     persona_ids: list[str] = Field(default_factory=list)
 
 
+class CVBlockUpdateRequest(BaseModel):
+    """Payload for updating an existing master CV achievement block."""
+
+    category: str | None = None
+    title: str | None = None
+    organization: str | None = None
+    content: str | None = None
+    metrics: dict[str, Any] | None = None
+    skills: list[str] | None = None
+
+
 class CVBlockResponse(BaseModel):
     """Response representing a persisted CVBlock entity."""
 
@@ -165,6 +179,9 @@ class PersonaDetailResponse(BaseModel):
     career_intelligence: dict[str, Any] = Field(default_factory=dict)
     completeness: dict[str, Any] = Field(default_factory=dict)
     completeness_score: int = 0
+    visa_status: str | None = None
+    preferred_locations: list[str] = Field(default_factory=list)
+    remote_preference: str = "Remote"
 
 
 def _build_persona_detail_response(
@@ -176,7 +193,8 @@ def _build_persona_detail_response(
     cv_blocks = blocks or []
     career_intel = persona.career_intelligence or {}
     visa = getattr(account, "visa_status", None)
-    locs = getattr(account, "preferred_locations", None)
+    locs = list(getattr(account, "preferred_locations", []) or [])
+    remote = getattr(account, "remote_preference", "Remote") or "Remote"
 
     completeness = calculate_persona_completeness(
         target_roles=list(persona.target_roles or []),
@@ -209,6 +227,9 @@ def _build_persona_detail_response(
         career_intelligence=career_intel,
         completeness=completeness.model_dump(),
         completeness_score=completeness.score,
+        visa_status=visa,
+        preferred_locations=locs,
+        remote_preference=remote,
     )
 
 
@@ -711,6 +732,23 @@ async def update_persona(
     if req.career_intelligence:
         persona.career_intelligence = req.career_intelligence
 
+    # Update account-level logistics if provided
+    if (
+        req.visa_status is not None
+        or req.preferred_locations is not None
+        or req.remote_preference is not None
+    ):
+        acc_stmt = select(UserAccount).where(UserAccount.id == user_uuid)
+        acc_res = await db.execute(acc_stmt)
+        user_acc = acc_res.scalar_one_or_none()
+        if user_acc:
+            if req.visa_status is not None:
+                user_acc.visa_status = req.visa_status
+            if req.preferred_locations is not None:
+                user_acc.preferred_locations = req.preferred_locations
+            if req.remote_preference is not None:
+                user_acc.remote_preference = req.remote_preference
+
     # 2. Sync skills if provided
     if req.skills:
         existing_skills = {s.skill_name.lower(): s for s in (persona.skills or [])}
@@ -1009,6 +1047,70 @@ async def create_cv_block(
         metrics=dict(block.metrics or {}),
         skills=list(block.skills or []),
         has_embedding=True,
+    )
+
+
+@router.put(
+    "/blocks/{block_id}",
+    response_model=CVBlockResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def update_cv_block(
+    block_id: str,
+    req: CVBlockUpdateRequest,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> CVBlockResponse:
+    """
+    Update an existing CV block and re-compute its vector embedding if content changed.
+    """
+    user_uuid = _get_user_uuid(current_user)
+    try:
+        b_uuid = uuid.UUID(block_id)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid block_id UUID format.",
+        ) from err
+
+    stmt = select(CVBlock).where(
+        CVBlock.id == b_uuid,
+        CVBlock.user_account_id == user_uuid,
+    )
+    res = await db.execute(stmt)
+    block = res.scalar_one_or_none()
+    if block is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CV block not found or access denied.",
+        )
+
+    if req.category is not None:
+        block.category = req.category
+    if req.title is not None:
+        block.title = req.title
+    if req.organization is not None:
+        block.organization = req.organization
+    if req.metrics is not None:
+        block.metrics = req.metrics
+    if req.skills is not None:
+        block.skills = req.skills
+    if req.content is not None and req.content.strip() != block.content:
+        block.content = req.content
+        block.embedding = await embed_text(req.content)
+
+    await db.commit()
+    await db.refresh(block)
+
+    return CVBlockResponse(
+        id=str(block.id),
+        category=block.category,
+        title=block.title,
+        organization=block.organization,
+        content=block.content,
+        metrics=dict(block.metrics or {}),
+        skills=list(block.skills or []),
+        has_embedding=block.embedding is not None,
     )
 
 

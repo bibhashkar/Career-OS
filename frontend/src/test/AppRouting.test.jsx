@@ -60,4 +60,15 @@ describe("App Routing and Navigation", () => {
 
     expect(screen.getByText(/Thread Checkpoint: thread_custom_123/i)).toBeInTheDocument();
   });
+
+  it("renders CandidatePersonaPage on '/profile' route", async () => {
+    render(
+      <MemoryRouter initialEntries={["/profile"]}>
+        <App />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByTestId("candidate-persona-page")).toBeInTheDocument();
+    expect(screen.getByText(/Candidate Profile & Career Personas/i)).toBeInTheDocument();
+  });
 });

@@ -17,11 +17,13 @@ import {
   LogIn,
   LogOut,
   Shield,
+  User,
 } from "lucide-react";
 import { Dashboard } from "./pages/Dashboard";
 import { CVTailorView } from "./pages/CVTailorView";
 import { InterviewSimulator } from "./pages/InterviewSimulator";
 import { CandidateAuditView } from "./pages/CandidateAuditView";
+import { CandidatePersonaPage } from "./pages/CandidatePersonaPage";
 import { OnboardingWizard } from "./pages/OnboardingWizard";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { PersonaSwitcher } from "./components/PersonaSwitcher";
@@ -129,6 +131,19 @@ export function App() {
             </NavLink>
 
             <NavLink
+              to="/profile"
+              className={({ isActive }) =>
+                `px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  isActive
+                    ? "bg-sky-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`
+              }
+            >
+              <User className="w-3.5 h-3.5" /> Profile & Personas
+            </NavLink>
+
+            <NavLink
               to="/cv-tailor"
               className={({ isActive }) =>
                 `px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 whitespace-nowrap ${
@@ -190,7 +205,7 @@ export function App() {
               activePersonaId={activePersona?.id}
               onPersonaChange={handlePersonaChange}
               onOpenAudit={() => navigate("/audit")}
-              onManagePersonas={() => setIsPersonaModalOpen(true)}
+              onManagePersonas={() => navigate("/profile")}
             />
 
             {currentUser ? (
@@ -237,11 +252,20 @@ export function App() {
                 activePersona={activePersona}
                 onSelectJob={handleSelectJobForCV}
                 onStartInterview={handleStartInterview}
-                onOpenProfileModal={() => setIsPersonaModalOpen(true)}
+                onOpenProfileModal={() => navigate("/profile")}
               />
             }
           />
           <Route path="/jobs" element={<Navigate to="/" replace />} />
+          <Route
+            path="/profile"
+            element={
+              <CandidatePersonaPage
+                activePersona={activePersona}
+                onPersonaChange={handlePersonaChange}
+              />
+            }
+          />
           <Route
             path="/cv-tailor"
             element={

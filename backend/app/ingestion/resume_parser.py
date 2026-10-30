@@ -930,8 +930,35 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
                 "institution": e.institution,
                 "graduation_year": e.graduation_year,
                 "institution_tier": e.institution_tier,
+                "gpa": e.gpa,
+                "honors": e.honors,
+                "start_year": e.start_year,
+                "is_expected": e.is_expected,
             }
             for e in education_records
+        ],
+        "work_experience": [
+            {
+                "company_name": exp.company_name,
+                "job_title": exp.job_title,
+                "location": exp.location,
+                "is_remote": exp.is_remote,
+                "start_date": exp.start_date,
+                "end_date": exp.end_date,
+                "duration_years": exp.duration_years,
+                "seniority_level": exp.seniority_level,
+                "industry_domain": exp.industry_domain,
+                "bullets": [
+                    {
+                        "raw_text": b.raw_text,
+                        "action_verb": b.action_verb,
+                        "technologies_used": b.technologies_used,
+                        "metrics": [m.model_dump() for m in b.metrics],
+                    }
+                    for b in exp.bullets
+                ],
+            }
+            for exp in work_experiences
         ],
         "role_tenures": [
             {
@@ -956,6 +983,14 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
             "leetcode_url": leetcode_url,
         },
         "domain_expertise": [d.model_dump() for d in domain_expertise_list],
+        "skills_matrix": skills_matrix.model_dump(),
+        "source_provenance": {
+            "detected_format": "standard_resume",
+            "extracted_skills_count": len(all_skills),
+            "extracted_blocks_count": len(career_blocks),
+            "extracted_roles_count": len(work_experiences),
+            "extracted_education_count": len(education_records),
+        },
     }
 
     completeness_res = calculate_persona_completeness(
@@ -1044,7 +1079,24 @@ def parse_resume_bytes(file_bytes: bytes, filename: str) -> CandidateProfileDoss
     )
 
     if triage_decision.recommended_pipeline == "linkedin_specialized":
-        return parse_linkedin_text(raw_text)
+        dossier = parse_linkedin_text(raw_text)
+    else:
+        # Deterministic fallback parser ensures robust, hermetic, zero-drift results
+        dossier = parse_generic_resume_text(raw_text)
 
-    # Deterministic fallback parser ensures robust, hermetic, zero-drift results
-    return parse_generic_resume_text(raw_text)
+    dossier.career_intelligence.setdefault("source_provenance", {})
+    dossier.career_intelligence["source_provenance"].update(
+        {
+            "filename": filename,
+            "layout_type": triage_decision.layout_type,
+            "recommended_pipeline": triage_decision.recommended_pipeline,
+            "estimated_experience_density": triage_decision.estimated_experience_density,
+            "confidence_score": triage_decision.confidence_score,
+            "detected_format": (
+                "linkedin_pdf"
+                if triage_decision.recommended_pipeline == "linkedin_specialized"
+                else "resume_document"
+            ),
+        }
+    )
+    return dossier

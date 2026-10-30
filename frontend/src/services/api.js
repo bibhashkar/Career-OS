@@ -286,6 +286,14 @@ export async function createCVBlock(payload) {
 }
 
 /**
+ * Update an existing master CV block.
+ */
+export async function updateCVBlock(blockId, payload) {
+  const response = await apiClient.put(`/candidates/blocks/${blockId}`, payload);
+  return response.data;
+}
+
+/**
  * Delete a master CV block.
  */
 export async function deleteCVBlock(blockId) {
