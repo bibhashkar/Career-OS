@@ -70,6 +70,8 @@ export function PersonaManagementModal({
   const [showPasteText, setShowPasteText] = useState(false);
   const [pastedResumeText, setPastedResumeText] = useState("");
   const [stagedBlocks, setStagedBlocks] = useState([]);
+  const [domainExpertise, setDomainExpertise] = useState([]);
+  const [semanticProfileSummary, setSemanticProfileSummary] = useState("");
 
   // Creating new specialized persona state
   const [isCreating, setIsCreating] = useState(false);
@@ -168,18 +170,42 @@ export function PersonaManagementModal({
 
   function applyParsedDataToForm(data) {
     if (!data) return;
-    const parsedYears = data.years_experience ?? data.total_years_experience;
+    const parsedYears =
+      data.total_years_experience ??
+      data.years_experience ??
+      data.inferred_years_experience;
     const parsedSeniority = data.seniority_level || data.inferred_seniority_level;
     const parsedRoles = data.target_roles || data.inferred_target_roles;
-    const edu = data.education?.[0] || {};
-    const links = data.external_links || {};
+    const ci = data.career_intelligence || {};
+    const edu = data.education?.[0] || ci.education?.[0] || {};
+    const links = data.external_links || ci.external_links || {
+      linkedin_url: data.linkedin_url,
+      github_url: data.github_url,
+      leetcode_url: data.leetcode_url,
+    };
+
+    if (Array.isArray(data.domain_expertise) && data.domain_expertise.length > 0) {
+      setDomainExpertise(data.domain_expertise);
+    } else if (Array.isArray(ci.domain_expertise) && ci.domain_expertise.length > 0) {
+      setDomainExpertise(ci.domain_expertise);
+    }
+
+    if (data.semantic_profile_summary) {
+      setSemanticProfileSummary(data.semantic_profile_summary);
+    } else if (ci.semantic_profile_summary) {
+      setSemanticProfileSummary(ci.semantic_profile_summary);
+    }
 
     setEditForm((prev) => {
       // Merge skills without duplicates
       const existingSkillsList = prev.skills
         ? prev.skills.split(",").map((s) => s.trim()).filter(Boolean)
         : [];
-      const newSkillsList = Array.isArray(data.skills) ? data.skills : [];
+      const newSkillsList = Array.isArray(data.all_skills_flat) && data.all_skills_flat.length > 0
+        ? data.all_skills_flat
+        : Array.isArray(data.skills)
+          ? data.skills
+          : [];
       const combinedSkills = Array.from(
         new Set([...existingSkillsList, ...newSkillsList])
       ).join(", ");
@@ -192,32 +218,34 @@ export function PersonaManagementModal({
 
       // Projects
       let projectsStr = prev.projects_text;
-      if (Array.isArray(data.projects) && data.projects.length > 0) {
-        const prjLines = data.projects.map(
-          (prj) => `${prj.name}: ${prj.description || prj.name}`
-        );
-        projectsStr = prjLines.join("\n");
+      const incomingProjects = data.projects?.length > 0 ? data.projects : ci.projects || [];
+      if (Array.isArray(incomingProjects) && incomingProjects.length > 0) {
+        projectsStr = incomingProjects
+          .map((prj) => `${prj.name}: ${prj.description || prj.name}`)
+          .join("\n");
       }
 
       // Hackathons
       let hackathonsStr = prev.hackathons_text;
-      if (
-        Array.isArray(data.hackathons_competitions) &&
-        data.hackathons_competitions.length > 0
-      ) {
-        hackathonsStr = data.hackathons_competitions
-          .map((h) => `${h.name}${h.rank_or_award ? ` - ${h.rank_or_award}` : ""}`)
+      const incomingHackathons =
+        data.hackathons_competitions?.length > 0
+          ? data.hackathons_competitions
+          : ci.hackathons_competitions || data.awards_and_honors || [];
+      if (Array.isArray(incomingHackathons) && incomingHackathons.length > 0) {
+        hackathonsStr = incomingHackathons
+          .map((h) => `${h.name || h.title}${h.rank_or_award ? ` - ${h.rank_or_award}` : ""}`)
           .join("\n");
       }
 
       // Awards
       let awardsStr = prev.awards_text;
-      if (
-        Array.isArray(data.awards_recognitions) &&
-        data.awards_recognitions.length > 0
-      ) {
-        awardsStr = data.awards_recognitions
-          .map((a) => `${a.title}${a.description ? `: ${a.description}` : ""}`)
+      const incomingAwards =
+        data.awards_recognitions?.length > 0
+          ? data.awards_recognitions
+          : ci.awards_recognitions || data.awards_and_honors || [];
+      if (Array.isArray(incomingAwards) && incomingAwards.length > 0) {
+        awardsStr = incomingAwards
+          .map((a) => `${a.title}${a.description ? `: ${a.description}` : a.event_or_issuer ? `: ${a.event_or_issuer}` : ""}`)
           .join("\n");
       }
 
@@ -393,6 +421,13 @@ export function PersonaManagementModal({
             description: parts.slice(1).join(":")?.trim() || "",
           };
         });
+    }
+
+    if (domainExpertise && domainExpertise.length > 0) {
+      careerIntelligence.domain_expertise = domainExpertise;
+    }
+    if (semanticProfileSummary) {
+      careerIntelligence.semantic_profile_summary = semanticProfileSummary;
     }
 
     const payload = {
@@ -707,6 +742,21 @@ export function PersonaManagementModal({
                       <span>
                         {stagedBlocks.length} career block{stagedBlocks.length === 1 ? "" : "s"} staged from your resume will be attached when you save.
                       </span>
+                    </div>
+                  )}
+
+                  {/* Business Domain Expertise Pills */}
+                  {domainExpertise.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap pt-1" data-testid="domain-expertise-pills">
+                      <span className="text-[10px] font-semibold text-slate-400">Detected Business Domains:</span>
+                      {domainExpertise.map((de, idx) => (
+                        <span
+                          key={idx}
+                          className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 font-medium"
+                        >
+                          {de.domain} ({de.years_experience}y)
+                        </span>
+                      ))}
                     </div>
                   )}
 
