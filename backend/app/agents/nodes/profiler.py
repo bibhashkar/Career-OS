@@ -50,12 +50,14 @@ async def profiler_node(state: AgentState) -> dict[str, Any]:
         "brevity": "high",
         "technical_depth": 0.85,
     }
-    if state.get("tone_directives"):
-        tone.update(state["tone_directives"])
+    tone_directives = state.get("tone_directives")
+    if tone_directives:
+        tone.update(tone_directives)
 
-    if state.get("feedback_logs"):
+    feedback_logs = state.get("feedback_logs")
+    if feedback_logs:
         # Apply any reflected weights from previous sessions
-        for log in state["feedback_logs"]:
+        for log in feedback_logs:
             adjustments = log.get("prompt_weight_adjustments", {})
             tone.update(adjustments)
 

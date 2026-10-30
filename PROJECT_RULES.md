@@ -68,6 +68,8 @@ cd frontend && npm run dev
 
 #### A. Backend & FastAPI Standards
 - **Strict Typing:** Enforce type annotations on all functions and routes; validate with `ruff` and `mypy`.
+- **TypedDict & Optional Key Safety (PEP 589/655):** Never access optional or non-required keys of a `TypedDict` (`total=False` or `NotRequired[...]`) using bracket subscripting (`d[k]`). Always use `d.get(k)` paired with explicit type narrowing (`isinstance(val, ...)`) or fallback defaults. This eliminates runtime `KeyError` exceptions and language server `reportTypedDictNotRequiredAccess` diagnostics.
+- **Literal Type Aliases:** Always export and reuse centralized type aliases (`Literal[...]`) from schema definitions rather than repeating raw strings or allowing variables to widen to `str`.
 - **Async/Await:** Use `async`/`await` for all database, vector retrieval, and network I/O.
 - **Configuration:** Manage settings strictly via Pydantic `BaseSettings` reading from `.env`.
 - **Database Table Naming:** Use lowercase singular names (`user_profile`, `job_listing`, `company_dossier`, `cv_block`).
@@ -81,6 +83,7 @@ cd frontend && npm run dev
 
 #### B. LangGraph & Agent Orchestration Standards
 - **State Immutability:** State changes in nodes must return partial state update dictionaries adhering to `backend/app/agents/state.py`.
+- **Safe State & Config Consumption:** `AgentState` and `RunnableConfig` use `total=False`. Always extract fields with `.get()` (e.g., `state.get("tone_directives")`, `config.get("configurable")`). Never subscript optional keys with `state[...]` or `config[...]`.
 - **Loop Guards:** Cyclic graphs (e.g., `ats_node` routing back to `tailor_node` on score `< 75%`) must enforce a maximum retry counter (e.g., `max_revisions = 3`) to prevent infinite evaluation loops.
 - **Stateful Checkpointing:** Thread sessions in WebSockets must pass a unique `thread_id` to `PostgresSaver` to guarantee seamless pause and resume capability.
 

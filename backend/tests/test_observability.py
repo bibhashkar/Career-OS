@@ -175,16 +175,21 @@ class TestRunnableConfigBuilder:
             tags=["custom_tag"],
         )
 
-        assert config["configurable"]["thread_id"] == "thread_cv_test"
-        assert config["run_name"] == "cv_tailor_run"
-        assert "metadata" in config
-        metadata = config["metadata"]
-        assert metadata["correlation_id"] == "test-corr-abc-123"
-        assert metadata["subject_id"].startswith("subj_")
-        assert metadata["user_id"] == metadata["subject_id"]
-        assert metadata["graph"] == "pipeline"
-        assert metadata["job_id"] == "job_backend_engineer"
-        assert config["tags"] == ["career-os", "pipeline", "custom_tag"]
+        configurable = config.get("configurable")
+        assert isinstance(configurable, dict)
+        assert configurable.get("thread_id") == "thread_cv_test"
+        assert config.get("run_name") == "cv_tailor_run"
+
+        metadata = config.get("metadata")
+        assert isinstance(metadata, dict)
+        assert metadata.get("correlation_id") == "test-corr-abc-123"
+        subject_id = metadata.get("subject_id")
+        assert isinstance(subject_id, str)
+        assert subject_id.startswith("subj_")
+        assert metadata.get("user_id") == subject_id
+        assert metadata.get("graph") == "pipeline"
+        assert metadata.get("job_id") == "job_backend_engineer"
+        assert config.get("tags") == ["career-os", "pipeline", "custom_tag"]
 
 
 class TestMetricsAndLoopGuards:

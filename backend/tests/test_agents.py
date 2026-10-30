@@ -53,11 +53,11 @@ async def test_pipeline_graph_end_to_end() -> None:
     config = _config("thread_test_pipeline_001")
     final_state = await pipeline_app.ainvoke(initial_state, config=config)
 
-    assert final_state["status"] == "ats_evaluated"
-    assert final_state["ats_score"] >= 70.0
-    assert final_state["cv_draft"] is not None
-    assert final_state["company_dossier"] is not None
-    assert final_state["revision_count"] >= 1
+    assert final_state.get("status") == "ats_evaluated"
+    assert (final_state.get("ats_score") or 0.0) >= 70.0
+    assert final_state.get("cv_draft") is not None
+    assert final_state.get("company_dossier") is not None
+    assert (final_state.get("revision_count") or 0) >= 1
 
 
 @pytest.mark.asyncio
@@ -157,9 +157,13 @@ async def test_pipeline_preserves_target_job_end_to_end() -> None:
     final_state = await pipeline_app.ainvoke(initial_state, config=config)
 
     # Assert
-    assert final_state["current_job_id"] == "job-ai-003"
-    assert final_state["cv_draft"]["target_company"] == "CareerCloud Systems"
-    assert final_state["company_dossier"]["company_name"] == "CareerCloud Systems"
+    assert final_state.get("current_job_id") == "job-ai-003"
+    cv_draft = final_state.get("cv_draft")
+    assert isinstance(cv_draft, dict)
+    assert cv_draft.get("target_company") == "CareerCloud Systems"
+    company_dossier = final_state.get("company_dossier")
+    assert isinstance(company_dossier, dict)
+    assert company_dossier.get("company_name") == "CareerCloud Systems"
 
 
 @pytest.mark.asyncio
@@ -207,9 +211,11 @@ async def test_unmatched_job_enforces_loop_guard_and_fails_ats() -> None:
     final_state = await pipeline_app.ainvoke(initial_state, config=config)
 
     # Assert: loop guard must cap revisions at 3, score must be below 75
-    assert final_state["revision_count"] == 3
-    assert final_state["ats_score"] < 75.0
-    assert set(final_state["ats_feedback"]["missing_keywords"]) == {
+    assert final_state.get("revision_count") == 3
+    assert (final_state.get("ats_score") or 0.0) < 75.0
+    ats_feedback = final_state.get("ats_feedback")
+    assert isinstance(ats_feedback, dict)
+    assert set(ats_feedback.get("missing_keywords") or []) == {
         "COBOL",
         "JCL",
         "DB2",
@@ -286,7 +292,15 @@ async def test_pipeline_propagates_tone_and_visa_directives() -> None:
     final_state = await pipeline_app.ainvoke(initial_state, config=config)
 
     # Assert
-    assert final_state["visa_required"] is True
-    assert final_state["tone_directives"]["style"] == "executive"
-    assert final_state["cv_draft"]["tone"]["style"] == "executive"
-    assert "Focused, results-driven" in final_state["cv_draft"]["professional_summary"]
+    assert final_state.get("visa_required") is True
+    tone_directives = final_state.get("tone_directives")
+    assert isinstance(tone_directives, dict)
+    assert tone_directives.get("style") == "executive"
+    cv_draft = final_state.get("cv_draft")
+    assert isinstance(cv_draft, dict)
+    tone = cv_draft.get("tone")
+    assert isinstance(tone, dict)
+    assert tone.get("style") == "executive"
+    prof_summary = cv_draft.get("professional_summary")
+    assert isinstance(prof_summary, str)
+    assert "Focused, results-driven" in prof_summary

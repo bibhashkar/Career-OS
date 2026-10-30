@@ -12,6 +12,8 @@ All agents operating in this workspace must strictly follow the rules, architect
    - Semantic: PostgreSQL with `pgvector` for career blocks (`cv_block`).
 3. **Python & FastAPI Standards:**
    - Strict typing (`ruff`, `mypy`), `async`/`await` for I/O.
+   - Safe `TypedDict` and `RunnableConfig` access: always use `.get()` with type-narrowing; never subscript non-required keys with `d[k]`.
+   - Export and reuse `Literal` type aliases; avoid implicit string widening.
    - Module-level imports (PEP 8) — no inline imports.
    - Singular table names (`user_profile`, `cv_block`).
    - `ON DELETE RESTRICT` default for foreign keys.
