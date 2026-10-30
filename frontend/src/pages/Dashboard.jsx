@@ -1244,7 +1244,16 @@ export function Dashboard({
                             <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
                               <span className="flex items-center gap-1">
                                 <MapPin className="w-2.5 h-2.5 text-slate-500 shrink-0" />
-                                {match.location}
+                                {match.location_postings && match.location_postings.length > 1 ? (
+                                  <span className="flex items-center gap-1">
+                                    <span>{match.location_postings[0].location}</span>
+                                    <span className="px-1 py-0.2 rounded bg-sky-950 text-sky-300 border border-sky-800/60 text-[9px] font-medium">
+                                      +{match.location_postings.length - 1} locs
+                                    </span>
+                                  </span>
+                                ) : (
+                                  match.location
+                                )}
                               </span>
                               {match.workplace_type && (
                                 <span className="px-1.5 py-0.2 rounded bg-slate-900 text-slate-300 border border-slate-700 text-[9px] font-semibold">

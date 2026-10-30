@@ -55,6 +55,10 @@ class JobListing(Base, UUIDMixin, TimestampMixin):
             "source_job_id",
             name="uq_job_listing_provider_slug_jobid",
         ),
+        UniqueConstraint(
+            "fingerprint",
+            name="uq_job_listing_fingerprint",
+        ),
     )
 
     # Core metadata
@@ -158,6 +162,12 @@ class JobListing(Base, UUIDMixin, TimestampMixin):
     # Provenance & Deduplication
     fingerprint: Mapped[str | None] = mapped_column(
         String(64), index=True, nullable=True
+    )
+    canonical_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), index=True, nullable=True
+    )
+    location_postings: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), default=list, nullable=False
     )
     content_fingerprint: Mapped[str | None] = mapped_column(
         String(64), index=True, nullable=True

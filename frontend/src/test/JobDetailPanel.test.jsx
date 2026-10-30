@@ -199,4 +199,66 @@ describe("JobDetailPanel Dual-Mode Presentation", () => {
     expect(screen.getByText(/Unstated/i)).toBeInTheDocument();
     expect(screen.getByText(/0% \(No Blocks\)/i)).toBeInTheDocument();
   });
+
+  it("renders split-action Apply button, interactive pill chips, and location dropdown for multi-location postings", () => {
+    const multiLocationJob = {
+      ...mockJob,
+      job_id: "job-affirm-multi-001",
+      title: "Senior Software Engineer, Mobile (Repayment UX)",
+      company_name: "Affirm",
+      location: "Remote Poland, Remote Spain",
+      location_postings: [
+        {
+          location: "Remote Poland",
+          city: null,
+          country_code: "PL",
+          salary_range: "240k - 300k PLN",
+          apply_url: "https://affirm.com/jobs/pl-001",
+          is_primary: true,
+        },
+        {
+          location: "Remote Spain",
+          city: "Madrid",
+          country_code: "ES",
+          salary_range: "€65,000 - €85,000",
+          apply_url: "https://affirm.com/jobs/es-002",
+          is_primary: false,
+        },
+      ],
+    };
+
+    render(
+      <JobDetailPanel
+        match={multiLocationJob}
+        onTailorCV={vi.fn()}
+        onStartInterview={vi.fn()}
+      />,
+    );
+
+    // 1. Header shows 2 Locations count and pill chips
+    expect(screen.getByText(/2 Locations/i)).toBeInTheDocument();
+    expect(screen.getByTestId("location-pill-chips")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Remote Poland/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Remote Spain/i })).toBeInTheDocument();
+
+    // 2. Split-action Apply button defaults to primary (Poland)
+    const applyBtn = screen.getByTestId("apply-link-job-affirm-multi-001");
+    expect(applyBtn).toHaveAttribute("href", "https://affirm.com/jobs/pl-001");
+    expect(applyBtn).toHaveTextContent("Apply (Remote Poland)");
+
+    // 3. Clicking Spain pill chip updates active selection and Apply link
+    const spainChip = screen.getByRole("button", { name: /Remote Spain/i });
+    fireEvent.click(spainChip);
+    expect(applyBtn).toHaveAttribute("href", "https://affirm.com/jobs/es-002");
+    expect(applyBtn).toHaveTextContent("Apply (Remote Spain)");
+
+    // 4. Trigger button opens dropdown menu
+    const triggerBtn = screen.getByTestId("location-selector-trigger");
+    expect(triggerBtn).toHaveTextContent("2 Locs");
+    fireEvent.click(triggerBtn);
+
+    const dropdown = screen.getByTestId("location-dropdown-menu");
+    expect(dropdown).toBeInTheDocument();
+    expect(screen.getByText(/Available Regions \(2\)/i)).toBeInTheDocument();
+  });
 });

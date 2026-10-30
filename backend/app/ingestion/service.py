@@ -56,6 +56,32 @@ def compute_content_hash(description: str) -> str:
     return hashlib.sha256(description.encode("utf-8")).hexdigest()[:32]
 
 
+def normalize_job_title(title: str) -> str:
+    """Normalize job title by lowercasing and stripping trailing geographic markers."""
+    t = title.lower().strip()
+    t = re.sub(
+        r"\s*-\s*(nyc|new york|sf|san francisco|toronto|boston|austin|seattle|chicago|london|berlin|munich|madrid|dublin|bengaluru|singapore|sydney|remote)\b",
+        "",
+        t,
+        flags=re.IGNORECASE,
+    )
+    t = re.sub(
+        r"\s*\((remote\s+[a-z]+|remote|us|usa|emea|apac|latam|canada)\)\s*$",
+        "",
+        t,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(r"[^a-z0-9]", "", t)
+
+
+def compute_canonical_fingerprint(company: str, title: str) -> str:
+    """Compute canonical requisition fingerprint invariant to geographic variants."""
+    norm_company = re.sub(r"[^a-z0-9]", "", company.lower())
+    norm_title = normalize_job_title(title)
+    raw = f"{norm_company}:{norm_title}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+
+
 class BoardSyncService:
     """
     Synchronizes jobs from an ATS board into the local job_listing store.
@@ -181,6 +207,12 @@ class BoardSyncService:
         Upsert a discovered job listing with foreign key relational integrity.
         Returns True if newly created, False if updated.
         """
+        comp_name = board.company_name or dto.company_name
+        fingerprint = compute_dedupe_fingerprint(comp_name, dto.title, dto.raw_location)
+        canonical_fp = compute_canonical_fingerprint(comp_name, dto.title)
+        content_hash = compute_content_hash(dto.raw_description)
+
+        # 1. Exact ATS identity check
         stmt = select(JobListing).where(
             JobListing.ats_provider == dto.ats_provider,
             JobListing.ats_board_slug == dto.ats_board_slug,
@@ -188,11 +220,20 @@ class BoardSyncService:
         )
         existing = (await self.session.execute(stmt)).scalar_one_or_none()
 
+        # 2. Cross-source exact fingerprint check (same company + title + location)
+        if existing is None and fingerprint:
+            stmt_fp = select(JobListing).where(JobListing.fingerprint == fingerprint)
+            existing = (await self.session.execute(stmt_fp)).scalar_one_or_none()
+
+        # 3. Canonical requisition check (same company + normalized title for multi-location postings)
+        if existing is None and canonical_fp:
+            stmt_canon = select(JobListing).where(
+                JobListing.canonical_fingerprint == canonical_fp,
+                JobListing.status == ListingStatus.ACTIVE,
+            )
+            existing = (await self.session.execute(stmt_canon)).scalars().first()
+
         now = datetime.now(UTC)
-        fingerprint = compute_dedupe_fingerprint(
-            board.company_name or dto.company_name, dto.title, dto.raw_location
-        )
-        content_hash = compute_content_hash(dto.raw_description)
 
         modality = (
             dto.workplace_type.value
@@ -215,6 +256,18 @@ class BoardSyncService:
         ats_reqs_dict = reqs.model_dump()
 
         if existing is None:
+            initial_posting = {
+                "location": dto.raw_location,
+                "city": dto.city,
+                "state_province": dto.state_province,
+                "state_code": dto.state_province_code,
+                "country": dto.country,
+                "country_code": dto.country_code,
+                "salary_range": dto.salary_range,
+                "source_job_id": dto.source_job_id,
+                "apply_url": dto.apply_url,
+                "is_primary": True,
+            }
             new_job = JobListing(
                 ats_board_id=board.id,
                 ats_provider=dto.ats_provider,
@@ -248,6 +301,8 @@ class BoardSyncService:
                 last_seen_at=now,
                 last_fetched_at=now,
                 fingerprint=fingerprint,
+                canonical_fingerprint=canonical_fp,
+                location_postings=[initial_posting],
                 content_hash=content_hash,
                 status=ListingStatus.ACTIVE,
                 data_origin=str(dto.data_origin),
@@ -258,14 +313,51 @@ class BoardSyncService:
             self.session.add(new_job)
             return True
 
-        # Existing job: update timestamps, text if modified, and reactivate
+        # Existing job: consolidate locations, update timestamps, and reactivate
         existing.last_seen_at = now
         existing.last_fetched_at = now
-        existing.apply_url = dto.apply_url
+        existing.status = ListingStatus.ACTIVE
+        if not existing.canonical_fingerprint:
+            existing.canonical_fingerprint = canonical_fp
+
+        loc_entry = {
+            "location": dto.raw_location,
+            "city": dto.city,
+            "state_province": dto.state_province,
+            "state_code": dto.state_province_code,
+            "country": dto.country,
+            "country_code": dto.country_code,
+            "salary_range": dto.salary_range,
+            "source_job_id": dto.source_job_id,
+            "apply_url": dto.apply_url,
+            "is_primary": False,
+        }
+        postings = list(existing.location_postings or [])
+        if not any(
+            p.get("source_job_id") == dto.source_job_id
+            or (
+                p.get("location") == dto.raw_location
+                and p.get("apply_url") == dto.apply_url
+            )
+            for p in postings
+        ):
+            postings.append(loc_entry)
+            existing.location_postings = postings
+
+        # Consolidate raw_location if new location is distinct
+        if (
+            dto.raw_location
+            and dto.raw_location.lower() not in (existing.raw_location or "").lower()
+        ):
+            if existing.raw_location:
+                existing.raw_location = f"{existing.raw_location}, {dto.raw_location}"
+            else:
+                existing.raw_location = dto.raw_location
+        if not existing.apply_url:
+            existing.apply_url = dto.apply_url
         existing.status = ListingStatus.ACTIVE
         existing.workplace_type = modality
         existing.remote_scope = scope
-        existing.raw_location = dto.raw_location
         if dto.city:
             existing.city = dto.city
         if dto.state_province_code:

@@ -34,6 +34,7 @@ from app.ingestion.deterministic_extractor import (
     extract_domain_strictness,
     extract_seniority_level,
 )
+from app.ingestion.service import compute_canonical_fingerprint
 from app.models.cv_block import CVBlock
 from app.models.job_listing import JobListing
 from app.models.user_account import (
@@ -219,6 +220,42 @@ class MatchFactorBreakdown(BaseModel):
     )
 
 
+def resolve_best_apply_url(
+    default_url: str | None,
+    location_postings: list[dict[str, Any]],
+    candidate_geo_str: str | None = None,
+) -> str | None:
+    """
+    Resolve target application URL for multi-location postings.
+    Prefers posting matching candidate geographic country/state filter;
+    falls back to is_primary posting or default_url.
+    """
+    if not location_postings:
+        return default_url
+
+    if candidate_geo_str:
+        geo_low = candidate_geo_str.lower().strip()
+        for p in location_postings:
+            loc = (p.get("location") or "").lower()
+            country = (p.get("country") or "").lower()
+            code = (p.get("country_code") or "").lower()
+            state = (p.get("state_code") or "").lower()
+            if (
+                geo_low in loc
+                or (country and geo_low in country)
+                or (code and geo_low == code)
+                or (state and geo_low == state)
+            ):
+                return p.get("apply_url") or default_url
+
+    # Primary posting fallback
+    for p in location_postings:
+        if p.get("is_primary"):
+            return p.get("apply_url") or default_url
+
+    return location_postings[0].get("apply_url") or default_url
+
+
 class JobMatchResult(BaseModel):
     """Final scored job listing opportunity returned to candidate feed."""
 
@@ -247,6 +284,7 @@ class JobMatchResult(BaseModel):
     missing_dealbreakers: list[str] = Field(default_factory=list)
     phrasing_equivalents: list[dict[str, str]] = Field(default_factory=list)
     gate_notes: list[str] = Field(default_factory=list)
+    location_postings: list[dict[str, Any]] = Field(default_factory=list)
 
 
 NON_TECHNICAL_FAMILIES: set[str] = {
@@ -2154,6 +2192,17 @@ async def retrieve_and_rank_jobs(
                     continue
 
             job_reqs = job.ats_requirements or {}
+            postings = getattr(job, "location_postings", []) or []
+            resolved_apply_url = resolve_best_apply_url(
+                default_url=job.apply_url or job.url,
+                location_postings=postings,
+                candidate_geo_str=location_filter
+                or (
+                    filters.candidate_geo.state_code
+                    if filters and filters.candidate_geo
+                    else None
+                ),
+            )
             unbiased_matches.append(
                 JobMatchResult(
                     job_id=str(job.id),
@@ -2163,7 +2212,7 @@ async def retrieve_and_rank_jobs(
                     workplace_type=job.workplace_type,
                     salary_range=job.salary_range,
                     visa_sponsorship=job.visa_sponsorship,
-                    apply_url=job.apply_url or job.url,
+                    apply_url=resolved_apply_url,
                     posted_at=job.posted_at,
                     raw_description=job.raw_description,
                     department=job_reqs.get("department"),
@@ -2179,10 +2228,22 @@ async def retrieve_and_rank_jobs(
                     gate_notes=[
                         "Market Explorer Mode: Candidate vector scoring severed."
                     ],
+                    location_postings=postings,
                 )
             )
 
-        return unbiased_matches, total_count
+        seen_unbiased: set[str] = set()
+        deduped_unbiased: list[JobMatchResult] = []
+        for match_item in unbiased_matches:
+            c_fp = compute_canonical_fingerprint(
+                match_item.company_name, match_item.title
+            )
+            if c_fp in seen_unbiased:
+                continue
+            seen_unbiased.add(c_fp)
+            deduped_unbiased.append(match_item)
+
+        return deduped_unbiased, total_count
 
     # -----------------------------------------------------------------------
     # CV-GROUNDED RETRIEVAL & RERANKING
@@ -2443,6 +2504,18 @@ async def retrieve_and_rank_jobs(
             factor_status=factor_status,
         )
 
+        postings = getattr(job, "location_postings", []) or []
+        resolved_apply_url = resolve_best_apply_url(
+            default_url=job.apply_url or job.url,
+            location_postings=postings,
+            candidate_geo_str=location_filter
+            or (
+                filters.candidate_geo.state_code
+                if filters and filters.candidate_geo
+                else None
+            ),
+        )
+
         result_item = JobMatchResult(
             job_id=str(job.id),
             title=job.title,
@@ -2451,7 +2524,7 @@ async def retrieve_and_rank_jobs(
             workplace_type=job.workplace_type,
             salary_range=job.salary_range,
             visa_sponsorship=job.visa_sponsorship,
-            apply_url=job.apply_url or job.url,
+            apply_url=resolved_apply_url,
             posted_at=job.posted_at,
             raw_description=job.raw_description,
             department=job_dept,
@@ -2465,6 +2538,7 @@ async def retrieve_and_rank_jobs(
             missing_dealbreakers=missing_s[:5],
             phrasing_equivalents=equivs[:3],
             gate_notes=gate_notes,
+            location_postings=postings,
         )
         scored_results.append(result_item)
 
@@ -2553,6 +2627,17 @@ async def retrieve_and_rank_jobs(
         except Exception as exc:
             logger.warning("Non-blocking error during match cache upsert: %s", exc)
             await db.rollback()
+
+    # Deduplicate multi-location variants on canonical requisition key
+    seen_canonical_grounded: set[str] = set()
+    deduped_grounded: list[JobMatchResult] = []
+    for r in scored_results:
+        c_fp = compute_canonical_fingerprint(r.company_name, r.title)
+        if c_fp in seen_canonical_grounded:
+            continue
+        seen_canonical_grounded.add(c_fp)
+        deduped_grounded.append(r)
+    scored_results = deduped_grounded
 
     # Dynamic sorting: By date (newest first), salary (highest first),
     # or by acceptance probability score descending

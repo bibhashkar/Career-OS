@@ -131,3 +131,78 @@ async def test_board_sync_lifecycle_and_closed_job_detection(
     )
     db_job_102 = (await db_session.execute(stmt_102)).scalar_one()
     assert db_job_102.status == ListingStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_multi_location_job_consolidation_into_canonical_listing(
+    db_session: AsyncSession,
+) -> None:
+    poland_job = DiscoveredJobDTO(
+        ats_provider="greenhouse",
+        ats_board_slug="affirm",
+        source_job_id="affirm-poland-101",
+        title="Senior Software Engineer, Mobile (Repayment UX)",
+        company_name="Affirm",
+        apply_url="https://boards.greenhouse.io/affirm/jobs/101",
+        raw_location="Remote Poland",
+        city=None,
+        state_province_code=None,
+        country_code="PL",
+        salary_range="240,000 - 300,000 PLN",
+        raw_description="React Native and mobile payments architecture in Poland.",
+    )
+    spain_job = DiscoveredJobDTO(
+        ats_provider="greenhouse",
+        ats_board_slug="affirm",
+        source_job_id="affirm-spain-102",
+        title="Senior Software Engineer, Mobile (Repayment UX)",
+        company_name="Affirm",
+        apply_url="https://boards.greenhouse.io/affirm/jobs/102",
+        raw_location="Remote Spain",
+        city="Madrid",
+        state_province_code=None,
+        country_code="ES",
+        salary_range="€65,000 - €85,000",
+        raw_description="React Native and mobile payments architecture in Spain.",
+    )
+
+    fake_adapter = FakeGreenhouseAdapter([poland_job, spain_job])
+    service = BoardSyncService(db_session)
+    service.register_adapter(ATSProvider.GREENHOUSE, fake_adapter)
+
+    # Sync board containing both location variants
+    run = await service.sync_board("greenhouse", "affirm")
+    assert run.status == "success"
+    assert run.fetched_count == 2
+    # The first one is created as new, the second one is consolidated as updated
+    assert run.new_count == 1
+    assert run.updated_count == 1
+
+    # Verify only ONE row exists in JobListing table for this requisition
+    stmt = select(JobListing).where(
+        JobListing.ats_provider == "greenhouse",
+        JobListing.ats_board_slug == "affirm",
+    )
+    listings = (await db_session.execute(stmt)).scalars().all()
+    assert len(listings) == 1
+
+    job = listings[0]
+    assert "Remote Poland" in job.raw_location
+    assert "Remote Spain" in job.raw_location
+    assert job.canonical_fingerprint is not None
+
+    # Verify location_postings preserved all individual location entries & apply URLs
+    assert len(job.location_postings) == 2
+    assert job.location_postings[0]["location"] == "Remote Poland"
+    assert (
+        job.location_postings[0]["apply_url"]
+        == "https://boards.greenhouse.io/affirm/jobs/101"
+    )
+    assert job.location_postings[0]["is_primary"] is True
+
+    assert job.location_postings[1]["location"] == "Remote Spain"
+    assert (
+        job.location_postings[1]["apply_url"]
+        == "https://boards.greenhouse.io/affirm/jobs/102"
+    )
+    assert job.location_postings[1]["is_primary"] is False
