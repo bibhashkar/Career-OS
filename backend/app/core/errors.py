@@ -25,6 +25,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.core.config import settings
 from app.core.logging import get_correlation_id
 from app.core.metrics import metrics_registry
 
@@ -38,6 +39,7 @@ def create_problem_response(
     instance: str,
     type_uri: str = "about:blank",
     extra: dict[str, Any] | None = None,
+    origin: str | None = None,
 ) -> JSONResponse:
     """
     Construct an RFC 7807 compliant problem details JSONResponse.
@@ -49,6 +51,7 @@ def create_problem_response(
         instance: URI reference identifying the specific request endpoint.
         type_uri: URI reference identifying the problem type.
         extra: Optional additional diagnostic attributes (e.g. invalid_params).
+        origin: Optional HTTP Origin header to preserve CORS headers on error responses.
 
     Returns:
         JSONResponse with media_type application/problem+json.
@@ -65,10 +68,17 @@ def create_problem_response(
     if extra:
         problem.update(extra)
 
+    headers: dict[str, str] = {}
+    if origin and (origin in settings.CORS_ORIGINS or "*" in settings.CORS_ORIGINS):
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+        headers["Access-Control-Expose-Headers"] = "X-Correlation-ID"
+
     return JSONResponse(
         status_code=status_code,
         content=problem,
         media_type="application/problem+json",
+        headers=headers if headers else None,
     )
 
 
@@ -84,6 +94,7 @@ async def http_exception_handler(
         title=title,
         detail=str(exc.detail),
         instance=request.url.path,
+        origin=request.headers.get("origin"),
     )
 
 
@@ -106,6 +117,7 @@ async def validation_exception_handler(
         detail="Request body or query parameter validation failed.",
         instance=request.url.path,
         extra={"invalid_params": sanitized_errors},
+        origin=request.headers.get("origin"),
     )
 
 
@@ -139,6 +151,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
             f"referencing correlation ID: {cid}"
         ),
         instance=request.url.path,
+        origin=request.headers.get("origin"),
     )
 
 
