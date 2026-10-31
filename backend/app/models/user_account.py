@@ -70,6 +70,7 @@ class UserAccount(Base, UUIDMixin, TimestampMixin):
     )
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     visa_status: Mapped[str] = mapped_column(
         String(100), default="None", index=True, nullable=False
     )

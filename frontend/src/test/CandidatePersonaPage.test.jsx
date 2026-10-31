@@ -23,6 +23,9 @@ describe("CandidatePersonaPage Full-Screen Dossier Workspace", () => {
     {
       id: "p-universal",
       name: "Universal Profile",
+      full_name: "B Kar",
+      email: "bkar@example.com",
+      phone: "+1 (555) 234-5678",
       is_common_persona: true,
       headline: "Staff Full Stack Developer (12+ YOE) | Distributed Systems & Platform Engineering",
       seniority_level: "staff",
@@ -42,6 +45,11 @@ describe("CandidatePersonaPage Full-Screen Dossier Workspace", () => {
         missing_steps: [{ prompt: "Add LeetCode handle", potential_gain_pct: 15 }],
       },
       career_intelligence: {
+        contact_pii: {
+          full_name: "B Kar",
+          email: "bkar@example.com",
+          phone: "+1 (555) 234-5678",
+        },
         domain_expertise: [
           { domain: "HealthTech / HIPAA", years_experience: 5.0, regulatory_frameworks: ["HIPAA", "DICOM"] },
           { domain: "FinTech / Transactions", years_experience: 4.0, regulatory_frameworks: ["EDI/X12"] },
@@ -76,9 +84,9 @@ describe("CandidatePersonaPage Full-Screen Dossier Workspace", () => {
             industry_domain: "Cloud & Distributed Systems",
             bullets: [
               {
-                raw_text: "Architected high-throughput payment ledgers processing $7B volume.",
+                raw_text: "Scaled distributed payment ledger pipeline to 10k ops/sec with zero downtime.",
                 technologies_used: ["Python", "PostgreSQL"],
-                metrics: [{ metric_type: "financial_volume", raw_metric: "$7B" }],
+                metrics: [{ metric_type: "throughput", raw_metric: "10k ops/sec" }],
               },
             ],
           },
@@ -281,7 +289,38 @@ describe("CandidatePersonaPage Full-Screen Dossier Workspace", () => {
     });
   });
 
-  it("saves dossier changes via top save button", async () => {
+  it("renders verified candidate contact and PII card without data leaks", async () => {
+    render(<CandidatePersonaPage />);
+
+    expect(await screen.findByTestId("candidate-persona-page")).toBeInTheDocument();
+
+    const fullNameInput = screen.getByDisplayValue("B Kar");
+    expect(fullNameInput).toBeInTheDocument();
+
+    const emailInput = screen.getByDisplayValue("bkar@example.com");
+    expect(emailInput).toBeInTheDocument();
+
+    const phoneInput = screen.getByDisplayValue("+1 (555) 234-5678");
+    expect(phoneInput).toBeInTheDocument();
+  });
+
+  it("deduplicates proof points under work experience tenures so persisted blocks are not rendered twice", async () => {
+    render(<CandidatePersonaPage />);
+
+    expect(await screen.findByTestId("candidate-persona-page")).toBeInTheDocument();
+
+    // The text exists both in work_experience[0].bullets[0] and mockBlocks[0]
+    // With deduplication, only the persisted block renders: exactly 1 match in document
+    const matchingElements = screen.getAllByText(
+      /Scaled distributed payment ledger pipeline to 10k ops\/sec with zero downtime/i
+    );
+    expect(matchingElements).toHaveLength(1);
+
+    // Staged unpersisted bullet is not rendered because it matches persisted block
+    expect(screen.queryByTestId("staged-bullet-0")).not.toBeInTheDocument();
+  });
+
+  it("saves dossier changes via top save button with contact PII payload", async () => {
     render(<CandidatePersonaPage />);
 
     expect(await screen.findByTestId("candidate-persona-page")).toBeInTheDocument();
@@ -294,9 +333,13 @@ describe("CandidatePersonaPage Full-Screen Dossier Workspace", () => {
         "p-universal",
         expect.objectContaining({
           name: "Universal Profile",
+          full_name: "B Kar",
+          email: "bkar@example.com",
+          phone: "+1 (555) 234-5678",
           headline: expect.stringContaining("Staff Full Stack Developer"),
         })
       );
     });
   });
 });
+

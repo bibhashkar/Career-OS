@@ -14,6 +14,7 @@ from app.core.auth import create_access_token
 from app.core.database import get_db
 from app.ingestion.resume_parser import (
     detect_is_linkedin_pdf,
+    extract_candidate_name,
     extract_metrics,
     extract_skills_from_text,
     extract_text_from_docx,
@@ -492,6 +493,47 @@ async def test_persona_management_and_uniqueness_flow(
             assert updated["metrics"]["throughput"] == "10k ops/sec"
             assert "PostgreSQL" in updated["skills"]
             assert updated["has_embedding"] is True
+
+            # 14. Verify CVBlock deduplication: post identical block with same content & organization
+            dup_block_res = await client.post(
+                "/api/candidates/blocks",
+                json={
+                    "category": "experience",
+                    "title": "Senior Systems Engineer Duplicate",
+                    "organization": "CloudScale",
+                    "content": "Architected low-latency distributed pipeline.",
+                    "metrics": {"percentage": "40%"},
+                    "skills": ["Python", "FastAPI"],
+                },
+                headers=headers,
+            )
+            assert dup_block_res.status_code == 200
+            dup_data = dup_block_res.json()
+            assert dup_data["id"] == block_id
+
+            # 15. Verify update_persona with contact PII
+            update_persona_res = await client.put(
+                f"/api/candidates/personas/{univ_after['id']}",
+                json={
+                    "name": "Universal Profile",
+                    "full_name": "Bob Updated Engineer",
+                    "email": "bob.updated@example.com",
+                    "phone": "+1 555-999-8888",
+                    "headline": "Staff Systems Architect",
+                    "seniority_level": "staff",
+                    "years_experience": 10,
+                },
+                headers=headers,
+            )
+            assert update_persona_res.status_code == 200
+            up_data = update_persona_res.json()
+            assert up_data["full_name"] == "Bob Updated Engineer"
+            assert up_data["email"] == "bob.updated@example.com"
+            assert up_data["phone"] == "+1 555-999-8888"
+            assert (
+                up_data["career_intelligence"]["contact_pii"]["phone"]
+                == "+1 555-999-8888"
+            )
     finally:
         app.dependency_overrides.pop(get_db, None)
 
@@ -535,3 +577,24 @@ def test_calculate_persona_completeness_capability_gating() -> None:
     assert active_result.score >= 10
     assert active_result.is_profile_ready is True
     assert "Grounded matching is active" in active_result.status_reason
+
+
+def test_extract_candidate_name_edge_cases() -> None:
+    """Verify name extraction with explicit anchors, punctuation, and email fallbacks."""
+    # Explicit anchor
+    t1 = "Curriculum Vitae of Alice M. Walker\nSenior Engineer"
+    lines1 = [l.strip() for l in t1.split("\n") if l.strip()]
+    assert extract_candidate_name(t1, lines1) == "Alice M. Walker"
+
+    # Name with pronouns
+    t2 = "David Zhang (he/him)\nFull Stack Developer"
+    lines2 = [l.strip() for l in t2.split("\n") if l.strip()]
+    assert extract_candidate_name(t2, lines2) == "David Zhang"
+
+    # Email username fallback
+    t3 = "Software Engineer\nSummary of qualifications\njohn.doe@example.com"
+    lines3 = [l.strip() for l in t3.split("\n") if l.strip()]
+    assert (
+        extract_candidate_name(t3, lines3, emails=["john.doe@example.com"])
+        == "John Doe"
+    )

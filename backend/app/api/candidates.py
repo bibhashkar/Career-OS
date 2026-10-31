@@ -13,7 +13,16 @@ import logging
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +46,7 @@ from app.models.user_account import (
     UserAccount,
 )
 from app.models.user_profile import UserProfile
+from app.schemas.candidate_dossier import compute_bullet_fingerprint
 from app.services.diagnostics import (
     HolisticCandidateAudit,
     PersonaBenchmarkReport,
@@ -91,6 +101,9 @@ class UpdatePersonaRequest(BaseModel):
     min_salary: int | None = Field(default=None, ge=0)
     skills: list[str] = Field(default_factory=list)
     career_intelligence: dict[str, Any] = Field(default_factory=dict)
+    full_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
     visa_status: str | None = None
     preferred_locations: list[str] | None = None
     remote_preference: str | None = None
@@ -102,6 +115,8 @@ class OnboardingCommitRequest(BaseModel):
     """
 
     full_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
     visa_status: str | None = None
     citizenship_country_code: str | None = None
     preferred_locations: list[str] = Field(default_factory=list)
@@ -134,6 +149,7 @@ class CVBlockCreateRequest(BaseModel):
     metrics: dict[str, Any] = Field(default_factory=dict)
     skills: list[str] = Field(default_factory=list)
     persona_ids: list[str] = Field(default_factory=list)
+    content_fingerprint: str | None = None
 
 
 class CVBlockUpdateRequest(BaseModel):
@@ -157,6 +173,7 @@ class CVBlockResponse(BaseModel):
     content: str
     metrics: dict[str, Any]
     skills: list[str]
+    content_fingerprint: str | None = None
     has_embedding: bool
 
 
@@ -179,6 +196,9 @@ class PersonaDetailResponse(BaseModel):
     career_intelligence: dict[str, Any] = Field(default_factory=dict)
     completeness: dict[str, Any] = Field(default_factory=dict)
     completeness_score: int = 0
+    full_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
     visa_status: str | None = None
     preferred_locations: list[str] = Field(default_factory=list)
     remote_preference: str = "Remote"
@@ -195,6 +215,9 @@ def _build_persona_detail_response(
     visa = getattr(account, "visa_status", None)
     locs = list(getattr(account, "preferred_locations", []) or [])
     remote = getattr(account, "remote_preference", "Remote") or "Remote"
+    f_name = getattr(account, "full_name", None)
+    u_email = getattr(account, "email", None)
+    u_phone = getattr(account, "phone", None)
 
     completeness = calculate_persona_completeness(
         target_roles=list(persona.target_roles or []),
@@ -227,6 +250,9 @@ def _build_persona_detail_response(
         career_intelligence=career_intel,
         completeness=completeness.model_dump(),
         completeness_score=completeness.score,
+        full_name=f_name,
+        email=u_email,
+        phone=u_phone,
         visa_status=visa,
         preferred_locations=locs,
         remote_preference=remote,
@@ -356,6 +382,8 @@ async def commit_onboarding(
     # 1. Update account level fields
     if req.full_name:
         account.full_name = req.full_name
+    if req.phone:
+        account.phone = req.phone
     if req.visa_status:
         account.visa_status = req.visa_status
     if req.citizenship_country_code:
@@ -406,6 +434,7 @@ async def commit_onboarding(
             id=account.id,
             user_account_id=account.id,
             email=account.email,
+            phone=account.phone,
             full_name=account.full_name,
             visa_status=account.visa_status,
             remote_preference=account.remote_preference,
@@ -417,39 +446,65 @@ async def commit_onboarding(
         await db.flush()
     else:
         user_prof.full_name = account.full_name
+        user_prof.phone = account.phone
         user_prof.visa_status = account.visa_status
         user_prof.target_roles = req.target_roles
         user_prof.target_locations = account.preferred_locations
 
-    # 4. Ingest CV blocks with vector embeddings in batch
+    # 4. Ingest CV blocks with vector embeddings in batch (deduplicated by content_fingerprint)
     saved_blocks: list[CVBlock] = []
     block_contents = [b.content for b in req.blocks]
     block_embeddings = await embed_texts(block_contents) if block_contents else []
 
     for b, embedding in zip(req.blocks, block_embeddings, strict=False):
-        block = CVBlock(
-            id=uuid.uuid4(),
-            user_account_id=account.id,
-            user_profile_id=account.id,
-            category=b.category,
-            title=b.title,
-            organization=b.organization,
-            content=b.content,
-            metrics=b.metrics,
-            skills=b.skills,
-            embedding=embedding,
+        b_fp = b.content_fingerprint or compute_bullet_fingerprint(
+            str(account.id), b.organization, b.content
         )
-        db.add(block)
+        existing_stmt = select(CVBlock).where(
+            CVBlock.user_account_id == account.id,
+            CVBlock.content_fingerprint == b_fp,
+        )
+        existing_block = (await db.execute(existing_stmt)).scalars().first()
+        if existing_block:
+            block = existing_block
+            if b.metrics:
+                m_copy = dict(block.metrics or {})
+                m_copy.update(b.metrics)
+                block.metrics = m_copy
+            if b.skills:
+                s_copy = set(block.skills or [])
+                s_copy.update(b.skills)
+                block.skills = sorted(s_copy)
+        else:
+            block = CVBlock(
+                id=uuid.uuid4(),
+                user_account_id=account.id,
+                user_profile_id=account.id,
+                category=b.category,
+                title=b.title,
+                organization=b.organization,
+                content=b.content,
+                metrics=b.metrics,
+                skills=b.skills,
+                content_fingerprint=b_fp,
+                embedding=embedding,
+            )
+            db.add(block)
         saved_blocks.append(block)
 
-        # Link to Universal Persona
-        rel = PersonaCVBlockRel(
-            persona_id=universal_persona.id,
-            cv_block_id=block.id,
-            priority_weight=1.0,
-            is_active=True,
+        # Link to Universal Persona if not already linked
+        rel_check = select(PersonaCVBlockRel).where(
+            PersonaCVBlockRel.persona_id == universal_persona.id,
+            PersonaCVBlockRel.cv_block_id == block.id,
         )
-        db.add(rel)
+        if (await db.execute(rel_check)).scalars().first() is None:
+            rel = PersonaCVBlockRel(
+                persona_id=universal_persona.id,
+                cv_block_id=block.id,
+                priority_weight=1.0,
+                is_active=True,
+            )
+            db.add(rel)
 
     # 5. Ingest Skills into Universal Persona
     for s in req.skills:
@@ -732,22 +787,43 @@ async def update_persona(
     if req.career_intelligence:
         persona.career_intelligence = req.career_intelligence
 
-    # Update account-level logistics if provided
-    if (
-        req.visa_status is not None
-        or req.preferred_locations is not None
-        or req.remote_preference is not None
-    ):
-        acc_stmt = select(UserAccount).where(UserAccount.id == user_uuid)
-        acc_res = await db.execute(acc_stmt)
-        user_acc = acc_res.scalar_one_or_none()
-        if user_acc:
-            if req.visa_status is not None:
-                user_acc.visa_status = req.visa_status
-            if req.preferred_locations is not None:
-                user_acc.preferred_locations = req.preferred_locations
-            if req.remote_preference is not None:
-                user_acc.remote_preference = req.remote_preference
+    # Update account-level logistics and private PII if provided
+    acc_stmt = select(UserAccount).where(UserAccount.id == user_uuid)
+    acc_res = await db.execute(acc_stmt)
+    user_acc = acc_res.scalar_one_or_none()
+    if user_acc:
+        if req.full_name is not None and req.full_name.strip():
+            user_acc.full_name = req.full_name.strip()
+        if req.phone is not None:
+            user_acc.phone = req.phone.strip() if req.phone else None
+        if req.email is not None and req.email.strip():
+            user_acc.email = req.email.strip()
+        if req.visa_status is not None:
+            user_acc.visa_status = req.visa_status
+        if req.preferred_locations is not None:
+            user_acc.preferred_locations = req.preferred_locations
+        if req.remote_preference is not None:
+            user_acc.remote_preference = req.remote_preference
+
+        # Synchronize contact_pii in career_intelligence
+        ci = dict(persona.career_intelligence or {})
+        c_pii = dict(ci.get("contact_pii") or {})
+        c_pii["full_name"] = user_acc.full_name
+        c_pii["email"] = user_acc.email
+        c_pii["phone"] = user_acc.phone
+        ci["contact_pii"] = c_pii
+        persona.career_intelligence = ci
+
+        # Also synchronize UserProfile for backward-compatibility
+        u_prof = (
+            await db.execute(select(UserProfile).where(UserProfile.id == user_uuid))
+        ).scalar_one_or_none()
+        if u_prof:
+            u_prof.full_name = user_acc.full_name
+            u_prof.email = user_acc.email
+            u_prof.phone = user_acc.phone
+            u_prof.visa_status = user_acc.visa_status
+            u_prof.remote_preference = user_acc.remote_preference
 
     # 2. Sync skills if provided
     if req.skills:
@@ -973,6 +1049,7 @@ async def list_cv_blocks(
             content=b.content,
             metrics=dict(b.metrics or {}),
             skills=list(b.skills or []),
+            content_fingerprint=b.content_fingerprint,
             has_embedding=b.embedding is not None,
         )
         for b in blocks
@@ -988,30 +1065,20 @@ async def create_cv_block(
     req: CVBlockCreateRequest,
     current_user: CurrentUser,
     db: DatabaseSession,
+    response: Response,
 ) -> CVBlockResponse:
     """
     Add a new master CV block and compute its vector embedding.
+    Deduplicates against existing CVBlocks using content_fingerprint.
     """
     user_uuid = _get_user_uuid(current_user)
     account = await _get_or_create_account(db, user_uuid, current_user.email)
 
-    embedding = await embed_text(req.content)
-    block_id = uuid.uuid4()
-    block = CVBlock(
-        id=block_id,
-        user_account_id=account.id,
-        user_profile_id=account.id,
-        category=req.category,
-        title=req.title,
-        organization=req.organization,
-        content=req.content,
-        metrics=req.metrics,
-        skills=req.skills,
-        embedding=embedding,
+    comp_fp = req.content_fingerprint or compute_bullet_fingerprint(
+        str(account.id), req.organization, req.content
     )
-    db.add(block)
 
-    # Link to specified personas or Universal Persona by default
+    # 1. Target persona resolution
     target_persona_uuids: list[uuid.UUID] = []
     if req.persona_ids:
         target_persona_uuids = [uuid.UUID(pid) for pid in req.persona_ids]
@@ -1025,6 +1092,68 @@ async def create_cv_block(
         u_id = u_res.scalar_one_or_none()
         if u_id:
             target_persona_uuids.append(u_id)
+
+    # 2. Check for existing block with identical content fingerprint
+    existing_stmt = select(CVBlock).where(
+        CVBlock.user_account_id == account.id,
+        CVBlock.content_fingerprint == comp_fp,
+    )
+    existing_block = (await db.execute(existing_stmt)).scalars().first()
+    if existing_block:
+        response.status_code = status.HTTP_200_OK
+        if req.metrics:
+            m_copy = dict(existing_block.metrics or {})
+            m_copy.update(req.metrics)
+            existing_block.metrics = m_copy
+        if req.skills:
+            s_copy = set(existing_block.skills or [])
+            s_copy.update(req.skills)
+            existing_block.skills = sorted(s_copy)
+
+        for p_id in target_persona_uuids:
+            rel_stmt = select(PersonaCVBlockRel).where(
+                PersonaCVBlockRel.persona_id == p_id,
+                PersonaCVBlockRel.cv_block_id == existing_block.id,
+            )
+            if (await db.execute(rel_stmt)).scalars().first() is None:
+                db.add(
+                    PersonaCVBlockRel(
+                        persona_id=p_id,
+                        cv_block_id=existing_block.id,
+                        priority_weight=1.0,
+                        is_active=True,
+                    )
+                )
+        await db.commit()
+        return CVBlockResponse(
+            id=str(existing_block.id),
+            category=existing_block.category,
+            title=existing_block.title,
+            organization=existing_block.organization,
+            content=existing_block.content,
+            metrics=dict(existing_block.metrics or {}),
+            skills=list(existing_block.skills or []),
+            content_fingerprint=existing_block.content_fingerprint,
+            has_embedding=existing_block.embedding is not None,
+        )
+
+    # 3. New block: compute vector embedding and persist
+    embedding = await embed_text(req.content)
+    block_id = uuid.uuid4()
+    block = CVBlock(
+        id=block_id,
+        user_account_id=account.id,
+        user_profile_id=account.id,
+        category=req.category,
+        title=req.title,
+        organization=req.organization,
+        content=req.content,
+        metrics=req.metrics,
+        skills=req.skills,
+        content_fingerprint=comp_fp,
+        embedding=embedding,
+    )
+    db.add(block)
 
     for p_id in target_persona_uuids:
         db.add(
@@ -1046,6 +1175,7 @@ async def create_cv_block(
         content=block.content,
         metrics=dict(block.metrics or {}),
         skills=list(block.skills or []),
+        content_fingerprint=block.content_fingerprint,
         has_embedding=True,
     )
 

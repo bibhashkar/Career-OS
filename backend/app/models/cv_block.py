@@ -24,7 +24,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import JSON, ForeignKey, String, Text, Uuid
+from sqlalchemy import JSON, ForeignKey, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -56,6 +56,13 @@ class CVBlock(Base, UUIDMixin, TimestampMixin):
     """
 
     __tablename__ = "cv_block"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_account_id",
+            "content_fingerprint",
+            name="uq_cv_block_user_account_fingerprint",
+        ),
+    )
 
     user_profile_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
@@ -79,6 +86,9 @@ class CVBlock(Base, UUIDMixin, TimestampMixin):
     skills: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     industry_tags: Mapped[list[str]] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"), default=list, nullable=False
+    )
+    content_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), index=True, nullable=True
     )
 
     # 1536-dimensional vector embedding for pgvector semantic search

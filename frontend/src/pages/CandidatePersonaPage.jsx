@@ -96,6 +96,9 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
   // Form State for active persona
   const [dossierForm, setDossierForm] = useState({
     name: "",
+    full_name: "",
+    email: "",
+    phone: "",
     headline: "",
     seniority_level: "mid",
     years_experience: 0,
@@ -232,8 +235,13 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       ? p.skills.map((s) => (typeof s === "string" ? s : s.skill_name || s.name)).filter(Boolean)
       : [];
 
+    const pii = ci.contact_pii || {};
+
     setDossierForm({
       name: p.name || "",
+      full_name: p.full_name || pii.full_name || "",
+      email: p.email || pii.email || "",
+      phone: p.phone || pii.phone || "",
       headline: p.headline || "",
       seniority_level: p.seniority_level || "mid",
       years_experience: p.years_experience ?? 0,
@@ -322,6 +330,10 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       leetcode_url: data.leetcode_url,
     };
 
+    const extractedName = data.full_name && data.full_name !== "Candidate" ? data.full_name : null;
+    const extractedEmail = data.email || null;
+    const extractedPhone = data.phone || null;
+
     const newSkills = Array.isArray(data.all_skills_flat) && data.all_skills_flat.length > 0
       ? data.all_skills_flat
       : Array.isArray(data.skills)
@@ -331,11 +343,48 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
     const combinedSkills = Array.from(new Set([...dossierForm.skills, ...newSkills]));
     const combinedRoles = Array.from(new Set([...dossierForm.target_roles, ...(data.target_roles || data.inferred_target_roles || [])]));
 
-    const stagedWorkExp = Array.isArray(ci.work_experience) && ci.work_experience.length > 0
+    const incomingWorkExp = Array.isArray(ci.work_experience) && ci.work_experience.length > 0
       ? ci.work_experience
       : Array.isArray(data.work_experience) && data.work_experience.length > 0
         ? data.work_experience
-        : dossierForm.work_experience;
+        : [];
+
+    // Merge incoming tenures with existing tenures avoiding duplicates
+    const mergedWorkExp = [...dossierForm.work_experience];
+    for (const inExp of incomingWorkExp) {
+      const inCompNorm = (inExp.company_name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const inTitleNorm = (inExp.job_title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const existingIdx = mergedWorkExp.findIndex((ex) => {
+        const exCompNorm = (ex.company_name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const exTitleNorm = (ex.job_title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        return (
+          exCompNorm === inCompNorm &&
+          (exTitleNorm === inTitleNorm ||
+            exCompNorm.includes(inCompNorm) ||
+            inCompNorm.includes(exCompNorm))
+        );
+      });
+
+      if (existingIdx >= 0) {
+        // Merge tenure: enrich missing location, domain, and bullets
+        const exTenure = mergedWorkExp[existingIdx];
+        const existingBullets = exTenure.bullets || [];
+        const seenBulletTexts = new Set(
+          existingBullets.map((b) => (b.raw_text || "").trim().toLowerCase())
+        );
+        const newBullets = (inExp.bullets || []).filter(
+          (b) => !seenBulletTexts.has((b.raw_text || "").trim().toLowerCase())
+        );
+        mergedWorkExp[existingIdx] = {
+          ...exTenure,
+          location: exTenure.location || inExp.location,
+          industry_domain: exTenure.industry_domain || inExp.industry_domain,
+          bullets: [...existingBullets, ...newBullets],
+        };
+      } else {
+        mergedWorkExp.push(inExp);
+      }
+    }
 
     const stagedEdu = Array.isArray(ci.education) && ci.education.length > 0
       ? ci.education
@@ -351,15 +400,23 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       layoutType: ci.source_provenance?.layout_type || "standard_single_column",
       pipeline: ci.source_provenance?.recommended_pipeline || "deep_llm_structured",
       rawText: data.raw_text || "",
-      newRolesCount: stagedWorkExp.length,
+      newRolesCount: incomingWorkExp.length,
       newBlocksCount: stagedBlocks.length,
       newSkillsCount: newSkills.length,
       newEduCount: stagedEdu.length,
+      extractedContact: {
+        full_name: extractedName,
+        email: extractedEmail,
+        phone: extractedPhone,
+      },
       stagedBlocks,
     });
 
     setDossierForm((prev) => ({
       ...prev,
+      full_name: extractedName || prev.full_name,
+      email: extractedEmail || prev.email,
+      phone: extractedPhone || prev.phone,
       headline: data.headline || prev.headline,
       seniority_level: data.seniority_level || data.inferred_seniority_level || prev.seniority_level,
       years_experience: data.total_years_experience ?? data.years_experience ?? prev.years_experience,
@@ -372,7 +429,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       domain_expertise: Array.isArray(data.domain_expertise) && data.domain_expertise.length > 0
         ? data.domain_expertise
         : ci.domain_expertise || prev.domain_expertise,
-      work_experience: stagedWorkExp,
+      work_experience: mergedWorkExp,
       education: stagedEdu,
       semantic_profile_summary: data.semantic_profile_summary || ci.semantic_profile_summary || prev.semantic_profile_summary,
       source_provenance: {
@@ -417,6 +474,9 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
 
     const payload = {
       name: currentPersona.is_common_persona ? currentPersona.name : dossierForm.name.trim(),
+      full_name: dossierForm.full_name ? dossierForm.full_name.trim() : null,
+      email: dossierForm.email ? dossierForm.email.trim() : null,
+      phone: dossierForm.phone ? dossierForm.phone.trim() : null,
       headline: dossierForm.headline.trim() || null,
       seniority_level: dossierForm.seniority_level,
       years_experience: Number(dossierForm.years_experience) || 0,
@@ -433,9 +493,16 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
     try {
       const updated = await updateCandidatePersona(currentPersona.id, payload);
 
-      // If staged blocks exist, persist them into pgvector CVBlocks
+      // If staged blocks exist, persist net-new blocks into pgvector CVBlocks
       if (stagedReview?.stagedBlocks?.length > 0) {
+        const persistedContentSet = new Set(
+          persistedBlocks.map((b) => (b.content || "").trim().toLowerCase())
+        );
         for (const block of stagedReview.stagedBlocks) {
+          const bContent = (block.content || "").trim().toLowerCase();
+          if (persistedContentSet.has(bContent)) {
+            continue; // Skip duplicate proof point
+          }
           try {
             await createCVBlock({
               category: block.category || "experience",
@@ -446,6 +513,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
               skills: block.skills || [],
               persona_ids: [currentPersona.id],
             });
+            persistedContentSet.add(bContent);
           } catch (bErr) {
             console.warn("Failed to persist staged block:", bErr);
           }
@@ -1071,6 +1139,71 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
               )}
             </div>
 
+            {/* Candidate Contact & Verified PII Card */}
+            <div
+              data-testid="private-contact-pii-card"
+              className="p-3.5 rounded-xl bg-gradient-to-r from-sky-950/40 via-slate-950 to-indigo-950/30 border border-sky-800/40 space-y-3"
+            >
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-sky-400" />
+                  <span className="text-xs font-bold text-white tracking-wide">
+                    Candidate Contact & Verified PII
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-300 border border-sky-500/20 font-medium flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" /> Private to You
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-400 italic">
+                  Encrypted & isolated from vector match queries
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                    Full Legal Name
+                  </label>
+                  <input
+                    type="text"
+                    data-testid="candidate-fullname-input"
+                    value={dossierForm.full_name}
+                    onChange={(e) => setDossierForm({ ...dossierForm, full_name: e.target.value })}
+                    placeholder="e.g. John Doe"
+                    className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700/80 rounded-lg text-xs text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                    Verified Email Address
+                  </label>
+                  <input
+                    type="email"
+                    data-testid="candidate-email-input"
+                    value={dossierForm.email}
+                    onChange={(e) => setDossierForm({ ...dossierForm, email: e.target.value })}
+                    placeholder="e.g. candidate@example.com"
+                    className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700/80 rounded-lg text-xs text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                    Direct Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    data-testid="candidate-phone-input"
+                    value={dossierForm.phone}
+                    onChange={(e) => setDossierForm({ ...dossierForm, phone: e.target.value })}
+                    placeholder="e.g. +1 (555) 123-4567"
+                    className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700/80 rounded-lg text-xs text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">Track Name</label>
@@ -1494,104 +1627,127 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
 
                     {/* Bullets & Proof Points under this tenure */}
                     <div className="space-y-2 pt-2 border-t border-slate-850">
-                      {/* 1. Staged Bullets from raw parse */}
-                      {exp.bullets?.map((b, bIdx) => (
-                        <div
-                          key={`bullet-${bIdx}`}
-                          className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1.5 text-xs text-slate-200"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="leading-relaxed">{b.raw_text}</p>
-                          </div>
-                          {b.technologies_used?.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-1 pt-1">
-                              {b.technologies_used.map((tech, tIdx) => (
-                                <span
-                                  key={tIdx}
-                                  className="text-[9px] px-1.5 py-0.2 rounded bg-sky-950 text-sky-300 border border-sky-800/60 font-medium"
-                                >
-                                  {tech}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-
-                      {/* 2. Persisted pgvector CVBlocks matching this company */}
-                      {relatedBlocks.map((block) => {
-                        const hasMetrics = block.metrics && Object.keys(block.metrics).length > 0;
-                        return (
-                          <div
-                            key={block.id}
-                            data-testid={`persisted-block-${block.id}`}
-                            className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-slate-700 space-y-1.5 text-xs text-slate-200 transition-all"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="leading-relaxed">{block.content}</p>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingBlock(block);
-                                    setBlockForm({
-                                      title: block.title || "",
-                                      organization: block.organization || "",
-                                      category: block.category || "experience",
-                                      content: block.content || "",
-                                      skills: (block.skills || []).join(", "),
-                                      metrics: block.metrics || {},
-                                    });
-                                  }}
-                                  className="p-1 text-slate-400 hover:text-white"
-                                  title="Edit achievement proof point"
-                                >
-                                  <Edit2 className="w-3 h-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteBlock(block.id)}
-                                  className="p-1 text-slate-500 hover:text-rose-400"
-                                  title="Delete proof point"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Tags: Metrics & Skills */}
-                            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                              {hasMetrics ? (
-                                Object.entries(block.metrics).map(([k, v], mIdx) => (
-                                  <span
-                                    key={mIdx}
-                                    className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                                  >
-                                    {String(v)}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-[9px] font-medium px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300/80 border border-amber-500/20">
-                                  ⚠️ Unquantified impact
-                                </span>
-                              )}
-
-                              {block.skills?.map((s, sIdx) => (
-                                <span
-                                  key={sIdx}
-                                  className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700"
-                                >
-                                  {s}
-                                </span>
-                              ))}
-
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60 font-mono ml-auto">
-                                🟢 pgvector Embedded
-                              </span>
-                            </div>
-                          </div>
+                      {(() => {
+                        const persistedContentSet = new Set(
+                          relatedBlocks.map((b) => (b.content || "").trim().toLowerCase())
                         );
-                      })}
+                        const unpersistedBullets = (exp.bullets || []).filter(
+                          (b) => !persistedContentSet.has((b.raw_text || "").trim().toLowerCase())
+                        );
+
+                        if (relatedBlocks.length === 0 && unpersistedBullets.length === 0) {
+                          return (
+                            <p className="text-xs text-slate-500 italic py-1">
+                              No achievement proof points recorded for this tenure yet. Click "+ Add Proof Point" above.
+                            </p>
+                          );
+                        }
+
+                        return (
+                          <>
+                            {/* 1. Persisted pgvector CVBlocks matching this company */}
+                            {relatedBlocks.map((block) => {
+                              const hasMetrics = block.metrics && Object.keys(block.metrics).length > 0;
+                              return (
+                                <div
+                                  key={block.id}
+                                  data-testid={`persisted-block-${block.id}`}
+                                  className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-slate-700 space-y-1.5 text-xs text-slate-200 transition-all"
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className="leading-relaxed">{block.content}</p>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingBlock(block);
+                                          setBlockForm({
+                                            title: block.title || "",
+                                            organization: block.organization || "",
+                                            category: block.category || "experience",
+                                            content: block.content || "",
+                                            skills: (block.skills || []).join(", "),
+                                            metrics: block.metrics || {},
+                                          });
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-white"
+                                        title="Edit achievement proof point"
+                                      >
+                                        <Edit2 className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteBlock(block.id)}
+                                        className="p-1 text-slate-500 hover:text-rose-400"
+                                        title="Delete proof point"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Tags: Metrics & Skills */}
+                                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                    {hasMetrics ? (
+                                      Object.entries(block.metrics).map(([k, v], mIdx) => (
+                                        <span
+                                          key={mIdx}
+                                          className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                        >
+                                          {String(v)}
+                                        </span>
+                                      ))
+                                    ) : (
+                                      <span className="text-[9px] font-medium px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300/80 border border-amber-500/20">
+                                        ⚠️ Unquantified impact
+                                      </span>
+                                    )}
+
+                                    {block.skills?.map((s, sIdx) => (
+                                      <span
+                                        key={sIdx}
+                                        className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700"
+                                      >
+                                        {s}
+                                      </span>
+                                    ))}
+
+                                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60 font-mono ml-auto">
+                                      🟢 pgvector Embedded
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                            {/* 2. Unpersisted Staged Bullets from raw parse */}
+                            {unpersistedBullets.map((b, bIdx) => (
+                              <div
+                                key={`staged-bullet-${bIdx}`}
+                                data-testid={`staged-bullet-${bIdx}`}
+                                className="p-2.5 rounded-lg bg-slate-900/90 border border-amber-500/30 space-y-1.5 text-xs text-slate-200"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className="leading-relaxed">{b.raw_text}</p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1 pt-1">
+                                  {b.technologies_used?.map((tech, tIdx) => (
+                                    <span
+                                      key={tIdx}
+                                      className="text-[9px] px-1.5 py-0.2 rounded bg-sky-950 text-sky-300 border border-sky-800/60 font-medium"
+                                    >
+                                      {tech}
+                                    </span>
+                                  ))}
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono ml-auto">
+                                    Staged — Click "Save Career Dossier" to Embed
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 );
@@ -2124,3 +2280,4 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
 }
 
 export default CandidatePersonaPage;
+

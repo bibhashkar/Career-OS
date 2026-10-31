@@ -35,6 +35,8 @@ from app.schemas.candidate_dossier import (
     SeniorityLevel,
     TechnicalSkillsMatrix,
     WorkExperience,
+    compute_bullet_fingerprint,
+    compute_tenure_fingerprint,
 )
 from app.services.diagnostics import calculate_persona_completeness
 
@@ -407,6 +409,164 @@ def synthesize_grounded_semantic_summary(dossier: CandidateProfileDossier) -> st
     return f"{sec1} {sec2} {sec3} {sec4} {sec5}".strip()
 
 
+SENIORITY_PREFIXES = {
+    "senior",
+    "junior",
+    "lead",
+    "staff",
+    "principal",
+    "director",
+    "vp",
+    "chief",
+    "head",
+    "associate",
+    "intern",
+    "entry",
+}
+
+EXCLUDED_TITLE_WORDS = {
+    "software",
+    "engineer",
+    "developer",
+    "architect",
+    "lead",
+    "senior",
+    "junior",
+    "principal",
+    "manager",
+    "consultant",
+    "designer",
+    "analyst",
+    "scientist",
+    "director",
+    "vp",
+    "specialist",
+    "administrator",
+    "full",
+    "stack",
+    "backend",
+    "frontend",
+    "devops",
+    "cloud",
+    "data",
+    "platform",
+    "intern",
+    "student",
+}
+
+
+def clean_candidate_name_candidate(token: str) -> str:
+    """Strip academic suffixes, honors, degrees, and pronouns from candidate name string."""
+    t = re.sub(
+        r"\b(Ph\.?D\.?|M\.?S\.?|B\.?S\.?|B\.?Tech|M\.?Eng|MBA|PMP|CFA|CPA)\b",
+        "",
+        token,
+        flags=re.IGNORECASE,
+    )
+    t = re.sub(
+        r"\s*\((?:he\/him|she\/her|they\/them|[^\)]+)\)", "", t, flags=re.IGNORECASE
+    )
+    t = re.sub(r"[,|•–—].*$", "", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def extract_phone_numbers(text: str) -> list[str]:
+    """Extract valid phone numbers while excluding date ranges and pure numbers."""
+    candidates = re.findall(
+        r"(?:\+?\d{1,4}[-.\s]*)?(?:\(?\d{2,4}\)?[-.\s]*)?\d{3,4}[-.\s]*\d{3,4}\b",
+        text,
+    )
+    valid: list[str] = []
+    for c in candidates:
+        digits = re.sub(r"\D", "", c)
+        if len(digits) == 8 and (digits.startswith("19") or digits.startswith("20")):
+            continue
+        if 7 <= len(digits) <= 15:
+            valid.append(c.strip())
+    return valid
+
+
+def extract_candidate_name(
+    text: str, lines: list[str], emails: list[str] | None = None
+) -> str:
+    """
+    Multi-pass cascading candidate name extraction.
+    Pass 1: Explicit anchor patterns (Name:, Resume of, Curriculum Vitae of).
+    Pass 2: LinkedIn export layout structure.
+    Pass 3: Top-12 visual header inspection with exclusion masks.
+    Pass 4: Email username heuristic fallback.
+    """
+    # Pass 1: Explicit anchor pattern
+    anchor = re.search(
+        r"(?:name|curriculum vitae of|resume of)[\s:]*([A-Z][a-zA-Z'.-]+(?:[^\S\r\n]+[A-Z][a-zA-Z'.-]+){1,3})",
+        text,
+        re.IGNORECASE,
+    )
+    if anchor:
+        name = clean_candidate_name_candidate(anchor.group(1))
+        if 2 <= len(name.split()) <= 4:
+            return name
+
+    # Pass 2: LinkedIn export format
+    if "linkedin.com/in/" in text.lower() or (lines and lines[0].lower() == "contact"):
+        for l in lines[:15]:
+            clean_l = clean_candidate_name_candidate(l)
+            if not clean_l:
+                continue
+            words = clean_l.split()
+            if 2 <= len(words) <= 4:
+                lowers = [w.lower() for w in words]
+                if clean_l.lower() in EXCLUDED_NAME_WORDS or any(
+                    w in EXCLUDED_NAME_WORDS for w in lowers
+                ):
+                    continue
+                if lowers[0] in SENIORITY_PREFIXES:
+                    continue
+                if sum(1 for w in lowers if w in EXCLUDED_TITLE_WORDS) >= 2:
+                    continue
+                if "@" not in clean_l and not re.search(r"\d", clean_l):
+                    if all(w[0].isupper() for w in words if w.isalpha()):
+                        return clean_l
+
+    # Pass 3: Top-12 visual header inspection
+    for l in lines[:12]:
+        tokens = [t.strip() for t in re.split(r"[\t\n\|•\–\—]", l) if t.strip()]
+        for tok in tokens:
+            clean_tok = clean_candidate_name_candidate(tok)
+            if (
+                clean_tok
+                and "@" not in clean_tok
+                and not re.search(r"\d", clean_tok)
+                and not re.search(
+                    r"https?|www\.|\.com|\.org|\.io|\.dev", clean_tok, re.I
+                )
+            ):
+                words = clean_tok.split()
+                if 2 <= len(words) <= 4:
+                    lowers = [w.lower() for w in words]
+                    if clean_tok.lower() in EXCLUDED_NAME_WORDS or any(
+                        w in EXCLUDED_NAME_WORDS for w in lowers
+                    ):
+                        continue
+                    if lowers[0] in SENIORITY_PREFIXES:
+                        continue
+                    if sum(1 for w in lowers if w in EXCLUDED_TITLE_WORDS) >= 2:
+                        continue
+                    if all(w[0].isupper() for w in words if w.isalpha()):
+                        return clean_tok
+
+    # Pass 4: Email heuristic fallback
+    if emails:
+        user_part = emails[0].split("@")[0]
+        parts = [
+            p for p in re.split(r"[._\-]", user_part) if p.isalpha() and len(p) >= 2
+        ]
+        if 2 <= len(parts) <= 3:
+            return " ".join(p.capitalize() for p in parts)
+
+    return "Candidate"
+
+
 def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
     """
     Robust, deterministic fallback parser capable of extracting full candidate
@@ -414,49 +574,11 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
     """
     lines = [line.strip() for line in text.split("\n") if line.strip()]
 
-    # 1. Candidate Name Extraction (handling pipe, bullet, or comma delimiters)
-    full_name = "Candidate"
-    first_line = lines[0] if lines else ""
-    first_line_tokens = [
-        t.strip() for t in re.split(r"[\t\n\|•\–\—]", first_line) if t.strip()
-    ]
-    for token in first_line_tokens:
-        clean_tok = token.strip()
-        if (
-            "@" not in clean_tok
-            and not re.search(r"\d", clean_tok)
-            and not re.search(r"https?|www\.|\.com|\.org|\.io|\.dev", clean_tok, re.I)
-            and clean_tok.lower() not in EXCLUDED_NAME_WORDS
-        ):
-            words = clean_tok.split()
-            if 2 <= len(words) <= 4:
-                full_name = clean_tok
-                break
-            elif len(words) == 1 and clean_tok.isalpha() and clean_tok.istitle():
-                if full_name == "Candidate":
-                    full_name = clean_tok
-
-    if full_name in ("Candidate", ""):
-        for line in lines[:8]:
-            clean_l = line.strip()
-            if (
-                "@" not in clean_l
-                and "http" not in clean_l
-                and not any(char.isdigit() for char in clean_l)
-                and clean_l.lower() not in EXCLUDED_NAME_WORDS
-            ):
-                words = clean_l.split()
-                if 2 <= len(words) <= 4 and all(
-                    w[0].isupper() for w in words if w.isalpha()
-                ):
-                    full_name = clean_l
-                    break
-
-    # 2. Contact details
+    # 1. Contact details first to support email fallback in name extraction
     emails = RE_EMAIL.findall(text)
     email = emails[0] if emails else None
-    phones = RE_PHONE.findall(text)
-    phone = phones[0] if phones else None
+    phone_candidates = extract_phone_numbers(text)
+    phone = phone_candidates[0] if phone_candidates else None
     li = RE_LINKEDIN.findall(text)
     linkedin_url = f"https://www.linkedin.com/in/{li[0]}" if li else None
     gh = RE_GITHUB.findall(text)
@@ -464,8 +586,15 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
     lc = RE_LEETCODE.findall(text)
     leetcode_url = f"https://leetcode.com/{lc[0]}" if lc else None
 
+    # 2. Candidate Name Extraction via 4-pass cascading extractor
+    full_name = extract_candidate_name(text, lines, emails)
+
     # Location detection: check first line tokens first, then fall back to body search
     location = None
+    first_line = lines[0] if lines else ""
+    first_line_tokens = [
+        t.strip() for t in re.split(r"[\t\n\|•\–\—]", first_line) if t.strip()
+    ]
     for token in first_line_tokens:
         if re.search(
             r"^[A-Z][a-zA-Z\s]+,\s*(?:[A-Z]{2}|[A-Z][a-zA-Z]+)$", token
@@ -649,6 +778,7 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
                 b_metrics = extract_quantified_metrics(b_text)
                 first_word = b_text.split()[0].rstrip(",.:")
                 action_verb = first_word if len(first_word) > 2 else "Architected"
+                b_fp = compute_bullet_fingerprint(None, company_name, b_text)
 
                 pp = CareerProofPoint(
                     raw_text=b_text,
@@ -657,6 +787,7 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
                     technologies_used=b_skills,
                     metrics=b_metrics,
                     industry_domain=domain,
+                    content_fingerprint=b_fp,
                 )
                 proof_points.append(pp)
 
@@ -674,6 +805,7 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
                         star_breakdown=star,
                         metrics={m.metric_type: m.raw_metric for m in b_metrics},
                         skills=b_skills,
+                        content_fingerprint=b_fp,
                         is_quantified=bool(b_metrics or is_hackathon_entry),
                     )
                 )
@@ -700,6 +832,7 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
                 r_sen = "entry"
 
             if not is_hackathon_entry:
+                t_fp = compute_tenure_fingerprint(company_name, job_title, start_date)
                 work_experiences.append(
                     WorkExperience(
                         company_name=company_name,
@@ -711,6 +844,7 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
                         is_current=end_date == "Present",
                         duration_years=duration,
                         seniority_level=r_sen,
+                        tenure_fingerprint=t_fp,
                         bullets=proof_points,
                     )
                 )
@@ -792,6 +926,7 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
             )
         )
 
+        h_fp = compute_bullet_fingerprint(None, org, full_content)
         career_blocks.append(
             ParsedCVBlock(
                 category="hackathon_achievement",
@@ -804,6 +939,7 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
                 ),
                 metrics={m.metric_type: m.raw_metric for m in h_metrics},
                 skills=h_skills,
+                content_fingerprint=h_fp,
                 is_quantified=bool(
                     h_metrics
                     or "place" in clean_a.lower()
@@ -923,6 +1059,11 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
 
     # 11. Legacy compatibility dictionary for frontend persona ingestion
     career_intel = {
+        "contact_pii": {
+            "full_name": full_name,
+            "email": email,
+            "phone": phone,
+        },
         "education": [
             {
                 "degree": e.degree,
@@ -948,11 +1089,13 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
                 "duration_years": exp.duration_years,
                 "seniority_level": exp.seniority_level,
                 "industry_domain": exp.industry_domain,
+                "tenure_fingerprint": exp.tenure_fingerprint,
                 "bullets": [
                     {
                         "raw_text": b.raw_text,
                         "action_verb": b.action_verb,
                         "technologies_used": b.technologies_used,
+                        "content_fingerprint": b.content_fingerprint,
                         "metrics": [m.model_dump() for m in b.metrics],
                     }
                     for b in exp.bullets

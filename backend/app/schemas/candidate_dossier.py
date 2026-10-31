@@ -3,6 +3,8 @@ Pydantic domain models representing candidate resumes, granular proof points,
 business domain expertise, and semantic matching profiles.
 """
 
+import hashlib
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -42,6 +44,27 @@ MetricType = Literal[
 ]
 
 
+def compute_bullet_fingerprint(user_id: str | None, org: str | None, text: str) -> str:
+    """Compute deterministic unique content fingerprint for a career achievement bullet."""
+    norm_user = str(user_id or "").strip().lower()
+    norm_org = re.sub(r"[^a-z0-9]", "", str(org or "").lower())
+    clean_text = re.sub(r"^[•\-*–\d.)\s]+", "", text.strip())
+    norm_content = re.sub(r"\s+", " ", clean_text.lower()).strip()
+    raw = f"{norm_user}:{norm_org}:{norm_content}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+
+
+def compute_tenure_fingerprint(company: str, title: str, start_year: str) -> str:
+    """Compute deterministic unique fingerprint for an employment tenure."""
+    norm_company = re.sub(r"[^a-z0-9]", "", company.lower())
+    norm_company = re.sub(r"(inc|llc|ltd|corp|co|gmbh|sa)$", "", norm_company)
+    norm_title = re.sub(r"[^a-z0-9]", "", title.lower())
+    match_year = re.search(r"\b(19\d{2}|20\d{2})\b", str(start_year))
+    norm_year = match_year.group(1) if match_year else "any"
+    raw = f"{norm_company}:{norm_title}:{norm_year}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+
+
 class QuantifiedMetric(BaseModel):
     """
     Concrete quantified metric demonstrating measurable impact.
@@ -64,6 +87,7 @@ class CareerProofPoint(BaseModel):
     technologies_used: list[str] = Field(default_factory=list)
     metrics: list[QuantifiedMetric] = Field(default_factory=list)
     industry_domain: str | None = None
+    content_fingerprint: str | None = None
     star_situation: str | None = None
     star_task: str | None = None
     star_action: str | None = None
@@ -85,6 +109,7 @@ class WorkExperience(BaseModel):
     is_current: bool = False
     duration_years: float = 1.0
     seniority_level: SeniorityLevel = "mid"
+    tenure_fingerprint: str | None = None
     bullets: list[CareerProofPoint] = Field(default_factory=list)
 
 
@@ -187,6 +212,7 @@ class ParsedCVBlock(BaseModel):
     star_breakdown: dict[str, str] = Field(default_factory=dict)
     metrics: dict[str, Any] = Field(default_factory=dict)
     skills: list[str] = Field(default_factory=list)
+    content_fingerprint: str | None = None
     is_quantified: bool = False
 
 
