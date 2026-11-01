@@ -24,7 +24,7 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -211,13 +211,36 @@ def _build_persona_detail_response(
 ) -> PersonaDetailResponse:
     skill_names = [s.skill_name for s in (persona.skills or [])]
     cv_blocks = blocks or []
-    career_intel = persona.career_intelligence or {}
+    career_intel = dict(persona.career_intelligence or {})
     visa = getattr(account, "visa_status", None)
     locs = list(getattr(account, "preferred_locations", []) or [])
     remote = getattr(account, "remote_preference", "Remote") or "Remote"
-    f_name = getattr(account, "full_name", None)
-    u_email = getattr(account, "email", None)
-    u_phone = getattr(account, "phone", None)
+    acc_name = getattr(account, "full_name", None)
+    acc_email = getattr(account, "email", None)
+    acc_phone = getattr(account, "phone", None)
+
+    pii = dict(career_intel.get("contact_pii") or {})
+
+    # Prioritize candidate-verified contact PII over generic default account strings
+    f_name = (
+        pii.get("full_name")
+        if pii.get("full_name") and pii.get("full_name") != "Candidate"
+        else None
+    ) or (
+        acc_name
+        if acc_name and acc_name != "Candidate"
+        else (pii.get("full_name") or acc_name)
+    )
+
+    u_email = pii.get("email") or acc_email
+    u_phone = pii.get("phone") or acc_phone
+
+    # Ensure career_intel['contact_pii'] reflects the unified contact info
+    career_intel["contact_pii"] = {
+        "full_name": f_name,
+        "email": u_email,
+        "phone": u_phone,
+    }
 
     completeness = calculate_persona_completeness(
         target_roles=list(persona.target_roles or []),
@@ -380,10 +403,21 @@ async def commit_onboarding(
     account = await _get_or_create_account(db, user_uuid, current_user.email)
 
     # 1. Update account level fields
-    if req.full_name:
-        account.full_name = req.full_name
-    if req.phone:
-        account.phone = req.phone
+    if req.full_name and req.full_name.strip():
+        account.full_name = req.full_name.strip()
+    if req.phone and req.phone.strip():
+        account.phone = req.phone.strip()
+    if (
+        req.email
+        and req.email.strip()
+        and req.email.strip().lower() != account.email.lower()
+    ):
+        dup_acc_stmt = select(UserAccount.id).where(
+            func.lower(UserAccount.email) == req.email.strip().lower(),
+            UserAccount.id != user_uuid,
+        )
+        if not (await db.execute(dup_acc_stmt)).scalar_one_or_none():
+            account.email = req.email.strip()
     if req.visa_status:
         account.visa_status = req.visa_status
     if req.citizenship_country_code:
@@ -392,6 +426,12 @@ async def commit_onboarding(
         account.preferred_locations = req.preferred_locations
     if req.remote_preference:
         account.remote_preference = req.remote_preference
+
+    resolved_pii = {
+        "full_name": account.full_name,
+        "email": req.email or account.email,
+        "phone": account.phone,
+    }
 
     # 2. Find or create Universal Persona
     stmt = select(CandidatePersona).where(
@@ -402,6 +442,8 @@ async def commit_onboarding(
     universal_persona = result.scalar_one_or_none()
 
     if universal_persona is None:
+        init_ci = dict(req.career_intelligence or {})
+        init_ci["contact_pii"] = resolved_pii
         universal_persona = CandidatePersona(
             id=uuid.uuid4(),
             user_account_id=account.id,
@@ -413,7 +455,7 @@ async def commit_onboarding(
             target_industries=req.target_industries,
             years_experience=req.years_experience,
             seniority_level=req.seniority_level,
-            career_intelligence=req.career_intelligence or {},
+            career_intelligence=init_ci,
         )
         db.add(universal_persona)
         await db.flush()
@@ -422,13 +464,21 @@ async def commit_onboarding(
         universal_persona.target_industries = req.target_industries
         universal_persona.years_experience = req.years_experience
         universal_persona.seniority_level = req.seniority_level
-        if req.career_intelligence:
-            universal_persona.career_intelligence = req.career_intelligence
+        ci = dict(
+            req.career_intelligence or universal_persona.career_intelligence or {}
+        )
+        ci["contact_pii"] = resolved_pii
+        universal_persona.career_intelligence = ci
 
     # 3. Also synchronize UserProfile for backward-compatibility
-    prof_stmt = select(UserProfile).where(UserProfile.id == account.id)
+    prof_stmt = select(UserProfile).where(
+        or_(
+            UserProfile.user_account_id == account.id,
+            UserProfile.id == account.id,
+        )
+    )
     prof_res = await db.execute(prof_stmt)
-    user_prof = prof_res.scalar_one_or_none()
+    user_prof = prof_res.scalars().first()
     if user_prof is None:
         user_prof = UserProfile(
             id=account.id,
@@ -784,20 +834,41 @@ async def update_persona(
     persona.seniority_level = req.seniority_level
     persona.years_experience = req.years_experience
     persona.min_salary = req.min_salary
-    if req.career_intelligence:
-        persona.career_intelligence = req.career_intelligence
+    # Merge contact PII cleanly into career_intelligence
+    ci = dict(req.career_intelligence or persona.career_intelligence or {})
+    c_pii = dict(ci.get("contact_pii") or {})
+
+    target_full_name = (
+        req.full_name.strip() if req.full_name and req.full_name.strip() else None
+    ) or c_pii.get("full_name")
+    target_email = (
+        req.email.strip() if req.email and req.email.strip() else None
+    ) or c_pii.get("email")
+    target_phone = (
+        req.phone.strip() if req.phone and req.phone.strip() else None
+    ) or c_pii.get("phone")
+
+    if target_full_name:
+        c_pii["full_name"] = target_full_name
+    if target_email:
+        c_pii["email"] = target_email
+    if target_phone:
+        c_pii["phone"] = target_phone
+    ci["contact_pii"] = c_pii
+    persona.career_intelligence = ci
 
     # Update account-level logistics and private PII if provided
     acc_stmt = select(UserAccount).where(UserAccount.id == user_uuid)
     acc_res = await db.execute(acc_stmt)
     user_acc = acc_res.scalar_one_or_none()
+    if not user_acc:
+        user_acc = await _get_or_create_account(db, user_uuid, current_user.email)
+
     if user_acc:
-        if req.full_name is not None and req.full_name.strip():
-            user_acc.full_name = req.full_name.strip()
-        if req.phone is not None:
-            user_acc.phone = req.phone.strip() if req.phone else None
-        if req.email is not None and req.email.strip():
-            user_acc.email = req.email.strip()
+        if target_full_name:
+            user_acc.full_name = target_full_name
+        if target_phone is not None:
+            user_acc.phone = target_phone
         if req.visa_status is not None:
             user_acc.visa_status = req.visa_status
         if req.preferred_locations is not None:
@@ -805,25 +876,53 @@ async def update_persona(
         if req.remote_preference is not None:
             user_acc.remote_preference = req.remote_preference
 
-        # Synchronize contact_pii in career_intelligence
-        ci = dict(persona.career_intelligence or {})
-        c_pii = dict(ci.get("contact_pii") or {})
-        c_pii["full_name"] = user_acc.full_name
-        c_pii["email"] = user_acc.email
-        c_pii["phone"] = user_acc.phone
-        ci["contact_pii"] = c_pii
-        persona.career_intelligence = ci
+        # Safely update user_acc.email: check for duplicates across other accounts first
+        if target_email and target_email.lower() != user_acc.email.lower():
+            dup_acc_stmt = select(UserAccount.id).where(
+                func.lower(UserAccount.email) == target_email.lower(),
+                UserAccount.id != user_uuid,
+            )
+            has_dup = (await db.execute(dup_acc_stmt)).scalar_one_or_none()
+            if not has_dup:
+                user_acc.email = target_email
+            else:
+                logger.info(
+                    "Contact email '%s' is registered to another account; stored in contact_pii only",
+                    target_email,
+                )
 
         # Also synchronize UserProfile for backward-compatibility
         u_prof = (
-            await db.execute(select(UserProfile).where(UserProfile.id == user_uuid))
-        ).scalar_one_or_none()
+            (
+                await db.execute(
+                    select(UserProfile).where(
+                        or_(
+                            UserProfile.user_account_id == user_uuid,
+                            UserProfile.id == user_uuid,
+                        )
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
         if u_prof:
-            u_prof.full_name = user_acc.full_name
-            u_prof.email = user_acc.email
-            u_prof.phone = user_acc.phone
-            u_prof.visa_status = user_acc.visa_status
-            u_prof.remote_preference = user_acc.remote_preference
+            if target_full_name:
+                u_prof.full_name = target_full_name
+            if target_phone is not None:
+                u_prof.phone = target_phone
+            if target_email and target_email.lower() != u_prof.email.lower():
+                dup_prof_stmt = select(UserProfile.id).where(
+                    func.lower(UserProfile.email) == target_email.lower(),
+                    UserProfile.id != u_prof.id,
+                )
+                has_dup_prof = (await db.execute(dup_prof_stmt)).scalar_one_or_none()
+                if not has_dup_prof:
+                    u_prof.email = target_email
+            if req.visa_status is not None:
+                u_prof.visa_status = req.visa_status
+            if req.remote_preference is not None:
+                u_prof.remote_preference = req.remote_preference
 
     # 2. Sync skills if provided
     if req.skills:

@@ -237,11 +237,21 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
 
     const pii = ci.contact_pii || {};
 
+    const resolvedFullName =
+      (pii.full_name && pii.full_name.trim() !== "Candidate" ? pii.full_name.trim() : null) ||
+      (p.full_name && p.full_name.trim() !== "Candidate" ? p.full_name.trim() : null) ||
+      p.full_name ||
+      pii.full_name ||
+      "";
+
+    const resolvedEmail = pii.email || p.email || "";
+    const resolvedPhone = pii.phone || p.phone || "";
+
     setDossierForm({
       name: p.name || "",
-      full_name: p.full_name || pii.full_name || "",
-      email: p.email || pii.email || "",
-      phone: p.phone || pii.phone || "",
+      full_name: resolvedFullName,
+      email: resolvedEmail,
+      phone: resolvedPhone,
       headline: p.headline || "",
       seniority_level: p.seniority_level || "mid",
       years_experience: p.years_experience ?? 0,
@@ -330,9 +340,13 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       leetcode_url: data.leetcode_url,
     };
 
-    const extractedName = data.full_name && data.full_name !== "Candidate" ? data.full_name : null;
-    const extractedEmail = data.email || null;
-    const extractedPhone = data.phone || null;
+    const extractedName =
+      (data.full_name && data.full_name.trim() !== "Candidate" ? data.full_name.trim() : null) ||
+      (ci.contact_pii?.full_name && ci.contact_pii.full_name.trim() !== "Candidate"
+        ? ci.contact_pii.full_name.trim()
+        : null);
+    const extractedEmail = data.email || ci.contact_pii?.email || null;
+    const extractedPhone = data.phone || ci.contact_pii?.phone || null;
 
     const newSkills = Array.isArray(data.all_skills_flat) && data.all_skills_flat.length > 0
       ? data.all_skills_flat
@@ -452,6 +466,11 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
 
     const careerIntelligence = {
       ...(currentPersona.career_intelligence || {}),
+      contact_pii: {
+        full_name: dossierForm.full_name ? dossierForm.full_name.trim() : null,
+        email: dossierForm.email ? dossierForm.email.trim() : null,
+        phone: dossierForm.phone ? dossierForm.phone.trim() : null,
+      },
       education: dossierForm.education,
       work_experience: dossierForm.work_experience,
       domain_expertise: dossierForm.domain_expertise,

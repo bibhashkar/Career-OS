@@ -17,10 +17,8 @@ from typing import Any
 
 import docx
 import pdfplumber
-from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.agents.llm import get_llm
-from app.ingestion.router import detect_is_linkedin_pdf, triage_resume_layout
+from app.ingestion.router import triage_resume_layout
 from app.ingestion.taxonomy import SKILL_TAXONOMY
 from app.schemas.candidate_dossier import (
     AwardAndHonor,
@@ -30,7 +28,6 @@ from app.schemas.candidate_dossier import (
     EducationRecord,
     InstitutionTier,
     ParsedCVBlock,
-    ProjectRecord,
     QuantifiedMetric,
     SeniorityLevel,
     TechnicalSkillsMatrix,
@@ -509,8 +506,8 @@ def extract_candidate_name(
 
     # Pass 2: LinkedIn export format
     if "linkedin.com/in/" in text.lower() or (lines and lines[0].lower() == "contact"):
-        for l in lines[:15]:
-            clean_l = clean_candidate_name_candidate(l)
+        for line_item in lines[:15]:
+            clean_l = clean_candidate_name_candidate(line_item)
             if not clean_l:
                 continue
             words = clean_l.split()
@@ -529,8 +526,8 @@ def extract_candidate_name(
                         return clean_l
 
     # Pass 3: Top-12 visual header inspection
-    for l in lines[:12]:
-        tokens = [t.strip() for t in re.split(r"[\t\n\|•\–\—]", l) if t.strip()]
+    for line_item in lines[:12]:
+        tokens = [t.strip() for t in re.split(r"[\t\n\|•\–\—]", line_item) if t.strip()]
         for tok in tokens:
             clean_tok = clean_candidate_name_candidate(tok)
             if (
@@ -676,7 +673,11 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
             ]
 
         for chunk in role_chunks:
-            c_lines = [l.strip() for l in chunk.strip().split("\n") if l.strip()]
+            c_lines = [
+                line_str.strip()
+                for line_str in chunk.strip().split("\n")
+                if line_str.strip()
+            ]
             if not c_lines:
                 continue
             header = c_lines[0].strip()
@@ -1196,6 +1197,9 @@ def parse_linkedin_text(text: str) -> CandidateProfileDossier:
         extracted = li_name_match.group(1).strip()
         if extracted.lower() not in EXCLUDED_NAME_WORDS:
             dossier.full_name = extracted
+            if "contact_pii" not in dossier.career_intelligence:
+                dossier.career_intelligence["contact_pii"] = {}
+            dossier.career_intelligence["contact_pii"]["full_name"] = extracted
     return dossier
 
 

@@ -64,6 +64,7 @@ export function OnboardingWizard() {
   // Form State
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [visaStatus, setVisaStatus] = useState("Citizen");
   const [locations, setLocations] = useState(["Remote"]);
   const [remotePref, setRemotePref] = useState("Remote");
@@ -138,6 +139,7 @@ export function OnboardingWizard() {
       setFullName(data.full_name);
     }
     if (data.email) setEmail(data.email);
+    if (data.phone) setPhone(data.phone);
     if (data.skills && data.skills.length > 0) {
       setSkills(Array.from(new Set([...skills, ...data.skills])));
     }
@@ -251,8 +253,16 @@ export function OnboardingWizard() {
         });
       }
 
+      const resolvedPii = {
+        full_name: fullName || "Candidate",
+        email: email || null,
+        phone: phone || null,
+      };
+
       const payload = {
         full_name: fullName || "Candidate",
+        email: email || null,
+        phone: phone || null,
         visa_status: visaStatus,
         citizenship_country_code: "US",
         preferred_locations: locations,
@@ -263,7 +273,10 @@ export function OnboardingWizard() {
         seniority_level: seniorityLevel,
         skills,
         blocks,
-        career_intelligence: careerIntelligence,
+        career_intelligence: {
+          ...careerIntelligence,
+          contact_pii: resolvedPii,
+        },
         specialized_personas: specializedPersonas,
       };
 
@@ -460,6 +473,33 @@ export function OnboardingWizard() {
                   placeholder="e.g. Alex Chen"
                   className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-sm text-white"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="e.g. alex@example.com"
+                    className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-sm text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="e.g. +1 (555) 123-4567"
+                    className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-sm text-white"
+                  />
+                </div>
               </div>
 
               <div>
@@ -786,7 +826,7 @@ export function OnboardingWizard() {
           </div>
 
           {/* Basic Info Verification */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="text-xs font-bold text-slate-400 block mb-1">
                 Candidate Name
@@ -795,6 +835,30 @@ export function OnboardingWizard() {
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
+                className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-400 block mb-1">
+                Verified Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="candidate@example.com"
+                className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-400 block mb-1">
+                Direct Phone
+              </label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+1 (555) 123-4567"
                 className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white"
               />
             </div>

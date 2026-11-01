@@ -3,6 +3,7 @@ Unit tests for resume parser and candidate onboarding CRUD APIs.
 """
 
 import io
+import uuid
 from collections.abc import AsyncGenerator
 
 import docx
@@ -22,6 +23,7 @@ from app.ingestion.resume_parser import (
     parse_resume_bytes,
 )
 from app.main import app
+from app.models.user_account import UserAccount
 from app.services.diagnostics import calculate_persona_completeness
 
 
@@ -534,6 +536,91 @@ async def test_persona_management_and_uniqueness_flow(
                 up_data["career_intelligence"]["contact_pii"]["phone"]
                 == "+1 555-999-8888"
             )
+
+            # 16. Verify GET /api/candidates/personas returns the persisted contact PII
+            get_personas_res = await client.get(
+                "/api/candidates/personas", headers=headers
+            )
+            assert get_personas_res.status_code == 200
+            p_list = get_personas_res.json()
+            univ_p = next(p for p in p_list if p["id"] == univ_after["id"])
+            assert univ_p["full_name"] == "Bob Updated Engineer"
+            assert univ_p["email"] == "bob.updated@example.com"
+            assert univ_p["phone"] == "+1 555-999-8888"
+            assert (
+                univ_p["career_intelligence"]["contact_pii"]["email"]
+                == "bob.updated@example.com"
+            )
+
+            # 17. Verify update_persona with career_intelligence payload and duplicate email resilience
+            update_with_ci_res = await client.put(
+                f"/api/candidates/personas/{univ_after['id']}",
+                json={
+                    "name": "Universal Profile",
+                    "full_name": "Bob Senior Lead",
+                    "email": "lead.candidate@example.com",
+                    "phone": "+1 555-000-1111",
+                    "headline": "Lead Systems Architect",
+                    "seniority_level": "lead",
+                    "years_experience": 12,
+                    "career_intelligence": {
+                        "education": [],
+                        "work_experience": [],
+                    },
+                },
+                headers=headers,
+            )
+            assert update_with_ci_res.status_code == 200
+            ci_data = update_with_ci_res.json()
+            assert ci_data["full_name"] == "Bob Senior Lead"
+            assert ci_data["email"] == "lead.candidate@example.com"
+            assert ci_data["phone"] == "+1 555-000-1111"
+            assert (
+                ci_data["career_intelligence"]["contact_pii"]["full_name"]
+                == "Bob Senior Lead"
+            )
+            assert (
+                ci_data["career_intelligence"]["contact_pii"]["email"]
+                == "lead.candidate@example.com"
+            )
+            assert (
+                ci_data["career_intelligence"]["contact_pii"]["phone"]
+                == "+1 555-000-1111"
+            )
+
+            # 18. Verify duplicate email on another account does not trigger 500 UniqueViolation
+            other_uid = uuid.uuid4()
+            other_acc = UserAccount(
+                id=other_uid,
+                email="registered.conflict@example.com",
+                full_name="Other User",
+                role="candidate",
+            )
+            db_session.add(other_acc)
+            await db_session.commit()
+
+            conflict_email_res = await client.put(
+                f"/api/candidates/personas/{univ_after['id']}",
+                json={
+                    "name": "Universal Profile",
+                    "full_name": "Bob Conflict Test",
+                    "email": "registered.conflict@example.com",
+                    "phone": "+1 555-222-3333",
+                    "headline": "Lead Systems Architect",
+                    "seniority_level": "lead",
+                    "years_experience": 12,
+                },
+                headers=headers,
+            )
+            assert conflict_email_res.status_code == 200
+            conf_data = conflict_email_res.json()
+            assert conf_data["full_name"] == "Bob Conflict Test"
+            assert conf_data["email"] == "registered.conflict@example.com"
+            assert conf_data["phone"] == "+1 555-222-3333"
+            assert (
+                conf_data["career_intelligence"]["contact_pii"]["email"]
+                == "registered.conflict@example.com"
+            )
     finally:
         app.dependency_overrides.pop(get_db, None)
 
@@ -583,17 +670,17 @@ def test_extract_candidate_name_edge_cases() -> None:
     """Verify name extraction with explicit anchors, punctuation, and email fallbacks."""
     # Explicit anchor
     t1 = "Curriculum Vitae of Alice M. Walker\nSenior Engineer"
-    lines1 = [l.strip() for l in t1.split("\n") if l.strip()]
+    lines1 = [line_item.strip() for line_item in t1.split("\n") if line_item.strip()]
     assert extract_candidate_name(t1, lines1) == "Alice M. Walker"
 
     # Name with pronouns
     t2 = "David Zhang (he/him)\nFull Stack Developer"
-    lines2 = [l.strip() for l in t2.split("\n") if l.strip()]
+    lines2 = [line_item.strip() for line_item in t2.split("\n") if line_item.strip()]
     assert extract_candidate_name(t2, lines2) == "David Zhang"
 
     # Email username fallback
     t3 = "Software Engineer\nSummary of qualifications\njohn.doe@example.com"
-    lines3 = [l.strip() for l in t3.split("\n") if l.strip()]
+    lines3 = [line_item.strip() for line_item in t3.split("\n") if line_item.strip()]
     assert (
         extract_candidate_name(t3, lines3, emails=["john.doe@example.com"])
         == "John Doe"

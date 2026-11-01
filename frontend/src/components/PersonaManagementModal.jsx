@@ -141,8 +141,13 @@ export function PersonaManagementModal({
           .join(", ")
       : "";
 
+    const pii = ci.contact_pii || {};
+
     setEditForm({
       name: p.name || "",
+      full_name: (pii.full_name && pii.full_name !== "Candidate" ? pii.full_name : null) || (p.full_name && p.full_name !== "Candidate" ? p.full_name : null) || p.full_name || pii.full_name || "",
+      email: pii.email || p.email || "",
+      phone: pii.phone || p.phone || "",
       headline: p.headline || "",
       target_roles: Array.isArray(p.target_roles) ? p.target_roles.join(", ") : "",
       target_industries: Array.isArray(p.target_industries)
@@ -249,8 +254,19 @@ export function PersonaManagementModal({
           .join("\n");
       }
 
+      const extractedName =
+        (data.full_name && data.full_name.trim() !== "Candidate" ? data.full_name.trim() : null) ||
+        (ci.contact_pii?.full_name && ci.contact_pii.full_name.trim() !== "Candidate"
+          ? ci.contact_pii.full_name.trim()
+          : null);
+      const extractedEmail = data.email || ci.contact_pii?.email || null;
+      const extractedPhone = data.phone || ci.contact_pii?.phone || null;
+
       return {
         ...prev,
+        full_name: extractedName || (prev.full_name !== "Candidate" ? prev.full_name : ""),
+        email: extractedEmail || prev.email,
+        phone: extractedPhone || prev.phone,
         headline:
           data.headline ||
           (parsedRoles?.[0] ? `${parsedRoles[0]} Professional` : prev.headline),
@@ -430,10 +446,19 @@ export function PersonaManagementModal({
       careerIntelligence.semantic_profile_summary = semanticProfileSummary;
     }
 
+    careerIntelligence.contact_pii = {
+      full_name: editForm.full_name ? editForm.full_name.trim() : null,
+      email: editForm.email ? editForm.email.trim() : null,
+      phone: editForm.phone ? editForm.phone.trim() : null,
+    };
+
     const payload = {
       name: editingPersona.is_common_persona
         ? editingPersona.name
         : editForm.name.trim(),
+      full_name: editForm.full_name ? editForm.full_name.trim() : null,
+      email: editForm.email ? editForm.email.trim() : null,
+      phone: editForm.phone ? editForm.phone.trim() : null,
       headline: editForm.headline.trim() || null,
       target_roles: rolesList,
       target_industries: industriesList,
