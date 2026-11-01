@@ -1195,6 +1195,7 @@ async def update_cv_block(
     Update an existing CV block and re-compute its vector embedding if content changed.
     """
     user_uuid = _get_user_uuid(current_user)
+    account = await _get_or_create_account(db, user_uuid, current_user.email)
     try:
         b_uuid = uuid.UUID(block_id)
     except ValueError as err:
@@ -1205,7 +1206,7 @@ async def update_cv_block(
 
     stmt = select(CVBlock).where(
         CVBlock.id == b_uuid,
-        CVBlock.user_account_id == user_uuid,
+        CVBlock.user_account_id == account.id,
     )
     res = await db.execute(stmt)
     block = res.scalar_one_or_none()
@@ -1228,6 +1229,10 @@ async def update_cv_block(
     if req.content is not None and req.content.strip() != block.content:
         block.content = req.content
         block.embedding = await embed_text(req.content)
+
+    block.content_fingerprint = compute_bullet_fingerprint(
+        str(account.id), block.organization, block.content
+    )
 
     await db.commit()
     await db.refresh(block)

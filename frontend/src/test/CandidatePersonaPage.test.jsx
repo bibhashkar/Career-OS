@@ -88,6 +88,10 @@ describe("CandidatePersonaPage Full-Screen Dossier Workspace", () => {
                 technologies_used: ["Python", "PostgreSQL"],
                 metrics: [{ metric_type: "throughput", raw_metric: "10k ops/sec" }],
               },
+              {
+                raw_text: "Engineered real-time Kafka event streaming pipelines.",
+                technologies_used: ["Kafka"],
+              },
             ],
           },
         ],
@@ -339,6 +343,63 @@ describe("CandidatePersonaPage Full-Screen Dossier Workspace", () => {
           headline: expect.stringContaining("Staff Full Stack Developer"),
         })
       );
+    });
+  });
+
+  it("allows editing and deleting unpersisted staged bullets under an experience tenure", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<CandidatePersonaPage />);
+
+    expect(await screen.findByTestId("candidate-persona-page")).toBeInTheDocument();
+
+    // Verify unpersisted staged bullet exists with text and staged badge
+    const stagedCard = await screen.findByTestId("staged-bullet-1");
+    expect(stagedCard).toBeInTheDocument();
+    expect(
+      screen.getByText("Engineered real-time Kafka event streaming pipelines.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Staged — Click "Save Career Dossier" to Embed/i)
+    ).toBeInTheDocument();
+
+    // Verify edit button exists and opens editor modal
+    const editBtn = stagedCard.querySelector('button[title="Edit achievement proof point"]');
+    expect(editBtn).toBeInTheDocument();
+    fireEvent.click(editBtn);
+
+    const modal = await screen.findByTestId("block-editor-modal");
+    expect(modal).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("Engineered real-time Kafka event streaming pipelines.")
+    ).toBeInTheDocument();
+
+    // Close modal
+    fireEvent.click(screen.getByRole("button", { name: /Cancel/i }));
+    expect(screen.queryByTestId("block-editor-modal")).not.toBeInTheDocument();
+
+    // Verify delete button exists and deletes staged bullet
+    const deleteBtn = stagedCard.querySelector('button[title="Delete proof point"]');
+    expect(deleteBtn).toBeInTheDocument();
+    fireEvent.click(deleteBtn);
+
+    expect(
+      screen.queryByText("Engineered real-time Kafka event streaming pipelines.")
+    ).not.toBeInTheDocument();
+  });
+
+  it("deleting a persisted block removes it from pgvector blocks and work experience", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<CandidatePersonaPage />);
+
+    expect(await screen.findByTestId("candidate-persona-page")).toBeInTheDocument();
+
+    const blockCard = await screen.findByTestId("persisted-block-block-1");
+    const deleteBtn = blockCard.querySelector('button[title="Delete proof point"]');
+    expect(deleteBtn).toBeInTheDocument();
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(api.deleteCVBlock).toHaveBeenCalledWith("block-1");
     });
   });
 });

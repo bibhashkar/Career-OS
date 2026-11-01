@@ -501,7 +501,7 @@ async def test_persona_management_and_uniqueness_flow(
                     "category": "experience",
                     "title": "Senior Systems Engineer Duplicate",
                     "organization": "CloudScale",
-                    "content": "Architected low-latency distributed pipeline.",
+                    "content": "Architected high-throughput payment ledgers scaling to 10k ops/sec with PostgreSQL.",
                     "metrics": {"percentage": "40%"},
                     "skills": ["Python", "FastAPI"],
                 },

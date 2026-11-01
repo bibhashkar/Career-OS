@@ -357,11 +357,12 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       const existingIdx = mergedWorkExp.findIndex((ex) => {
         const exCompNorm = (ex.company_name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
         const exTitleNorm = (ex.job_title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const exStart = String(ex.start_date || "").slice(0, 4);
+        const inStart = String(inExp.start_date || "").slice(0, 4);
         return (
           exCompNorm === inCompNorm &&
-          (exTitleNorm === inTitleNorm ||
-            exCompNorm.includes(inCompNorm) ||
-            inCompNorm.includes(exCompNorm))
+          exTitleNorm === inTitleNorm &&
+          (!exStart || !inStart || exStart === inStart)
         );
       });
 
@@ -493,11 +494,13 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
     try {
       const updated = await updateCandidatePersona(currentPersona.id, payload);
 
-      // If staged blocks exist, persist net-new blocks into pgvector CVBlocks
+      // Persist any unpersisted blocks and bullets into pgvector CVBlocks
+      const persistedContentSet = new Set(
+        persistedBlocks.map((b) => (b.content || "").trim().toLowerCase())
+      );
+
+      // 1. Process staged review blocks if present
       if (stagedReview?.stagedBlocks?.length > 0) {
-        const persistedContentSet = new Set(
-          persistedBlocks.map((b) => (b.content || "").trim().toLowerCase())
-        );
         for (const block of stagedReview.stagedBlocks) {
           const bContent = (block.content || "").trim().toLowerCase();
           if (persistedContentSet.has(bContent)) {
@@ -516,6 +519,32 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
             persistedContentSet.add(bContent);
           } catch (bErr) {
             console.warn("Failed to persist staged block:", bErr);
+          }
+        }
+      }
+
+      // 2. Process any remaining unpersisted bullets from work_experience
+      for (const exp of (dossierForm.work_experience || [])) {
+        for (const bullet of (exp.bullets || [])) {
+          const rawText = (bullet.raw_text || "").trim();
+          if (!rawText || persistedContentSet.has(rawText.toLowerCase())) {
+            continue;
+          }
+          try {
+            await createCVBlock({
+              category: "experience",
+              title: `${exp.job_title || "Role"} Achievement`,
+              organization: exp.company_name || "",
+              content: rawText,
+              metrics: bullet.metrics?.[0]
+                ? { [bullet.metrics[0].metric_type || "impact"]: bullet.metrics[0].raw_metric }
+                : {},
+              skills: bullet.technologies_used || [],
+              persona_ids: [currentPersona.id],
+            });
+            persistedContentSet.add(rawText.toLowerCase());
+          } catch (bErr) {
+            console.warn("Failed to persist tenure bullet:", bErr);
           }
         }
       }
@@ -584,8 +613,39 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       : [];
 
     try {
-      if (editingBlock?.id) {
+      if (editingBlock?.isStaged) {
+        // If editing a staged bullet: persist it to CVBlock immediately and update work_experience
+        const created = await createCVBlock({
+          title: blockForm.title.trim() || "Achievement",
+          organization: blockForm.organization.trim() || null,
+          category: blockForm.category,
+          content: blockForm.content.trim(),
+          skills: skillsArray,
+          metrics: blockForm.metrics || {},
+          persona_ids: currentPersona ? [currentPersona.id] : [],
+        });
+        setPersistedBlocks((prev) => [created, ...prev]);
+
+        // Update the bullet in work_experience
+        setDossierForm((prev) => {
+          const updatedExp = [...(prev.work_experience || [])];
+          if (updatedExp[editingBlock.expIdx]) {
+            const bullets = [...(updatedExp[editingBlock.expIdx].bullets || [])];
+            bullets[editingBlock.bulletIdx] = {
+              raw_text: blockForm.content.trim(),
+              technologies_used: skillsArray,
+              metrics: Object.entries(blockForm.metrics || {}).map(([k, v]) => ({
+                metric_type: k,
+                raw_metric: String(v),
+              })),
+            };
+            updatedExp[editingBlock.expIdx] = { ...updatedExp[editingBlock.expIdx], bullets };
+          }
+          return { ...prev, work_experience: updatedExp };
+        });
+      } else if (editingBlock?.id) {
         // Update existing block
+        const oldContent = (editingBlock.content || "").trim().toLowerCase();
         const updated = await updateCVBlock(editingBlock.id, {
           title: blockForm.title.trim() || "Achievement",
           organization: blockForm.organization.trim() || null,
@@ -595,6 +655,23 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
           metrics: blockForm.metrics || {},
         });
         setPersistedBlocks((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
+
+        // Also sync updated content in work_experience
+        setDossierForm((prev) => ({
+          ...prev,
+          work_experience: (prev.work_experience || []).map((exp) => ({
+            ...exp,
+            bullets: (exp.bullets || []).map((b) =>
+              (b.raw_text || "").trim().toLowerCase() === oldContent
+                ? {
+                    ...b,
+                    raw_text: blockForm.content.trim(),
+                    technologies_used: skillsArray,
+                  }
+                : b
+            ),
+          })),
+        }));
       } else {
         // Create new block
         const created = await createCVBlock({
@@ -607,6 +684,22 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
           persona_ids: currentPersona ? [currentPersona.id] : [],
         });
         setPersistedBlocks((prev) => [created, ...prev]);
+
+        // If target tenure specified, add bullet to it
+        if (editingBlock?.expIdx !== undefined && editingBlock?.expIdx >= 0) {
+          setDossierForm((prev) => {
+            const updatedExp = [...(prev.work_experience || [])];
+            if (updatedExp[editingBlock.expIdx]) {
+              const bullets = [...(updatedExp[editingBlock.expIdx].bullets || [])];
+              bullets.push({
+                raw_text: blockForm.content.trim(),
+                technologies_used: skillsArray,
+              });
+              updatedExp[editingBlock.expIdx] = { ...updatedExp[editingBlock.expIdx], bullets };
+            }
+            return { ...prev, work_experience: updatedExp };
+          });
+        }
       }
       setEditingBlock(null);
     } catch (err) {
@@ -618,11 +711,60 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
   async function handleDeleteBlock(blockId) {
     if (!window.confirm("Delete this achievement proof point from pgvector memory?")) return;
     try {
+      const blockToDelete = persistedBlocks.find((b) => b.id === blockId);
       await deleteCVBlock(blockId);
       setPersistedBlocks((prev) => prev.filter((b) => b.id !== blockId));
+      if (blockToDelete) {
+        const bContentNorm = (blockToDelete.content || "").trim().toLowerCase();
+        setDossierForm((prev) => ({
+          ...prev,
+          work_experience: (prev.work_experience || []).map((exp) => ({
+            ...exp,
+            bullets: (exp.bullets || []).filter(
+              (b) => (b.raw_text || "").trim().toLowerCase() !== bContentNorm
+            ),
+          })),
+        }));
+      }
     } catch (err) {
       alert("Failed to delete block.");
     }
+  }
+
+  function handleDeleteStagedBullet(expIdx, bulletIdx) {
+    if (!window.confirm("Delete this achievement proof point?")) return;
+    setDossierForm((prev) => {
+      const updatedExp = [...(prev.work_experience || [])];
+      if (updatedExp[expIdx]) {
+        const bullets = [...(updatedExp[expIdx].bullets || [])];
+        if (bulletIdx >= 0) {
+          bullets.splice(bulletIdx, 1);
+        }
+        updatedExp[expIdx] = { ...updatedExp[expIdx], bullets };
+      }
+      return { ...prev, work_experience: updatedExp };
+    });
+  }
+
+  function handleEditStagedBullet(exp, bullet, expIdx, bulletIdx) {
+    setEditingBlock({
+      isStaged: true,
+      expIdx,
+      bulletIdx,
+      organization: exp.company_name || "",
+      title: `${exp.job_title || "Role"} Achievement`,
+      category: "experience",
+    });
+    setBlockForm({
+      title: `${exp.job_title || "Role"} Achievement`,
+      organization: exp.company_name || "",
+      category: "experience",
+      content: bullet.raw_text || "",
+      skills: (bullet.technologies_used || []).join(", "),
+      metrics: bullet.metrics?.[0]
+        ? { [bullet.metrics[0].metric_type || "impact"]: bullet.metrics[0].raw_metric }
+        : {},
+    });
   }
 
   // Tag Pill Handlers
@@ -697,10 +839,10 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
         seniority_level: roleForm.seniority_level,
         industry_domain: roleForm.industry_domain,
         duration_years: 1.0,
-        bullets: editingRoleIndex !== null ? expList[editingRoleIndex]?.bullets || [] : [],
+        bullets: editingRoleIndex !== null && editingRoleIndex >= 0 ? expList[editingRoleIndex]?.bullets || [] : [],
       };
 
-      if (editingRoleIndex !== null) {
+      if (editingRoleIndex !== null && editingRoleIndex >= 0) {
         expList[editingRoleIndex] = entry;
       } else {
         expList.unshift(entry);
@@ -1542,12 +1684,22 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
             {/* Work Experience Timeline */}
             <div className="space-y-4">
               {dossierForm.work_experience.map((exp, expIdx) => {
-                // Find matching persisted CV blocks for this organization
+                // Find matching persisted CV blocks for this tenure:
+                // 1) Blocks whose content matches any bullet in this tenure, OR
+                // 2) Blocks whose title matches this tenure's title and company matches
+                const tenureBulletsTextSet = new Set(
+                  (exp.bullets || []).map((b) => (b.raw_text || "").trim().toLowerCase())
+                );
                 const relatedBlocks = persistedBlocks.filter(
                   (b) =>
-                    b.organization &&
-                    exp.company_name &&
-                    b.organization.toLowerCase().includes(exp.company_name.toLowerCase())
+                    tenureBulletsTextSet.has((b.content || "").trim().toLowerCase()) ||
+                    (b.organization &&
+                      exp.company_name &&
+                      b.organization.toLowerCase().includes(exp.company_name.toLowerCase()) &&
+                      b.title &&
+                      exp.job_title &&
+                      (b.title.toLowerCase().includes(exp.job_title.toLowerCase()) ||
+                        exp.job_title.toLowerCase().includes(b.title.toLowerCase())))
                 );
 
                 return (
@@ -1586,6 +1738,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
                           type="button"
                           onClick={() => {
                             setEditingBlock({
+                              expIdx,
                               organization: exp.company_name,
                               title: `${exp.job_title} Achievement`,
                               category: "experience",
@@ -1721,30 +1874,59 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
                             })}
 
                             {/* 2. Unpersisted Staged Bullets from raw parse */}
-                            {unpersistedBullets.map((b, bIdx) => (
-                              <div
-                                key={`staged-bullet-${bIdx}`}
-                                data-testid={`staged-bullet-${bIdx}`}
-                                className="p-2.5 rounded-lg bg-slate-900/90 border border-amber-500/30 space-y-1.5 text-xs text-slate-200"
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <p className="leading-relaxed">{b.raw_text}</p>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-1 pt-1">
-                                  {b.technologies_used?.map((tech, tIdx) => (
-                                    <span
-                                      key={tIdx}
-                                      className="text-[9px] px-1.5 py-0.2 rounded bg-sky-950 text-sky-300 border border-sky-800/60 font-medium"
-                                    >
-                                      {tech}
+                            {unpersistedBullets.map((b) => {
+                              const origBulletIdx = (exp.bullets || []).findIndex(
+                                (orig) =>
+                                  (orig.raw_text || "").trim().toLowerCase() ===
+                                  (b.raw_text || "").trim().toLowerCase()
+                              );
+                              return (
+                                <div
+                                  key={`staged-bullet-${origBulletIdx >= 0 ? origBulletIdx : b.raw_text}`}
+                                  data-testid={`staged-bullet-${origBulletIdx >= 0 ? origBulletIdx : 0}`}
+                                  className="p-2.5 rounded-lg bg-slate-900/90 border border-amber-500/30 space-y-1.5 text-xs text-slate-200"
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className="leading-relaxed">{b.raw_text}</p>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleEditStagedBullet(exp, b, expIdx, origBulletIdx)
+                                        }
+                                        className="p-1 text-slate-400 hover:text-white"
+                                        title="Edit achievement proof point"
+                                      >
+                                        <Edit2 className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleDeleteStagedBullet(expIdx, origBulletIdx)
+                                        }
+                                        className="p-1 text-slate-500 hover:text-rose-400"
+                                        title="Delete proof point"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-1 pt-1">
+                                    {b.technologies_used?.map((tech, tIdx) => (
+                                      <span
+                                        key={tIdx}
+                                        className="text-[9px] px-1.5 py-0.2 rounded bg-sky-950 text-sky-300 border border-sky-800/60 font-medium"
+                                      >
+                                        {tech}
+                                      </span>
+                                    ))}
+                                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono ml-auto">
+                                      Staged — Click "Save Career Dossier" to Embed
                                     </span>
-                                  ))}
-                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono ml-auto">
-                                    Staged — Click "Save Career Dossier" to Embed
-                                  </span>
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </>
                         );
                       })()}
@@ -2210,7 +2392,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
             <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-sky-400" />
-                {editingBlock.id ? "Edit Achievement Proof Point" : "New Achievement Proof Point"}
+                {editingBlock.id || editingBlock.isStaged ? "Edit Achievement Proof Point" : "New Achievement Proof Point"}
               </h3>
               <button
                 type="button"
