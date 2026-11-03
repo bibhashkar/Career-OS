@@ -5,8 +5,6 @@ Tests diverse resume formats: Senior Full-Stack, AI/ML Infrastructure,
 Entry-Level New Grad, Executive VP of Engineering, and LinkedIn PDF export.
 """
 
-import pytest
-
 from app.ingestion.resume_parser import (
     parse_generic_resume_text,
     synthesize_grounded_semantic_summary,

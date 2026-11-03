@@ -7,7 +7,7 @@ import hashlib
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 LayoutType = Literal[
     "standard_single_column",
@@ -33,6 +33,16 @@ SeniorityLevel = Literal[
 
 InstitutionTier = Literal["tier_1_ivy_top_tech", "tier_2_state_flagship", "standard"]
 
+CareerArchetype = Literal[
+    "technology_engineering",
+    "executive_leadership",
+    "marketing_growth",
+    "product_strategy",
+    "finance_fintech",
+    "healthcare_lifesciences",
+    "custom_hybrid",
+]
+
 MetricType = Literal[
     "financial_volume",
     "throughput_or_traffic",
@@ -42,6 +52,62 @@ MetricType = Literal[
     "team_leadership",
     "general",
 ]
+
+
+def normalize_institution_tier(raw_tier: str | None) -> InstitutionTier:
+    """Normalize legacy or shorthand institution tier identifiers to canonical literals."""
+    if not raw_tier:
+        return "standard"
+    cleaned = str(raw_tier).strip().lower()
+    if cleaned in ("tier_1", "tier_1_ivy_top_tech", "tier1", "ivy", "top_tech"):
+        return "tier_1_ivy_top_tech"
+    if cleaned in (
+        "tier_2",
+        "tier_2_state_flagship",
+        "tier_2_strong_public_private",
+        "tier2",
+        "flagship",
+    ):
+        return "tier_2_state_flagship"
+    return "standard"
+
+
+def normalize_award_record(raw: dict[str, Any]) -> dict[str, Any]:
+    """
+    Normalize legacy award/hackathon dicts so title, event_or_issuer, date_str,
+    category, description, and url are consistently populated.
+    """
+    title = str(raw.get("title") or raw.get("name") or "").strip()
+    issuer = (
+        str(
+            raw.get("event_or_issuer")
+            or raw.get("issuer")
+            or raw.get("organization")
+            or ""
+        ).strip()
+        or None
+    )
+    desc = str(raw.get("description") or "").strip() or None
+    date_str = (
+        str(raw.get("date_str") or raw.get("date") or raw.get("year") or "").strip()
+        or None
+    )
+    category = str(raw.get("category") or "award").strip().lower() or "award"
+    url = str(raw.get("url") or "").strip() or None
+
+    # Legacy parser placed event_or_issuer into description when description was empty
+    if not issuer and desc and len(desc) <= 65 and not desc.endswith("."):
+        issuer = desc
+        desc = None
+
+    return {
+        "title": title,
+        "event_or_issuer": issuer,
+        "date_str": date_str,
+        "category": category,
+        "description": desc,
+        "url": url,
+    }
 
 
 def compute_bullet_fingerprint(user_id: str | None, org: str | None, text: str) -> str:
@@ -135,8 +201,8 @@ class EducationRecord(BaseModel):
 
     institution: str
     institution_tier: InstitutionTier = "standard"
-    degree: str  # e.g. "Master of Science", "Bachelor of Science"
-    major: str  # e.g. "Computer Science & Engineering"
+    degree: str  # e.g. "Master of Science", "Bachelor of Science", "MBA"
+    major: str  # e.g. "Computer Science & Engineering", "Business Administration"
     minor: str | None = None
     start_year: int | None = None
     graduation_year: int | None = None
@@ -144,6 +210,11 @@ class EducationRecord(BaseModel):
     gpa: str | None = None
     honors: str | None = None
     relevant_coursework: list[str] = Field(default_factory=list)
+
+    @field_validator("institution_tier", mode="before")
+    @classmethod
+    def _validate_tier(cls, v: Any) -> InstitutionTier:
+        return normalize_institution_tier(str(v) if v is not None else None)
 
 
 class TechnicalSkillsMatrix(BaseModel):
@@ -163,26 +234,31 @@ class TechnicalSkillsMatrix(BaseModel):
 
 class ProjectRecord(BaseModel):
     """
-    Independent technical project or open-source initiative.
+    Independent technical project, strategic initiative, campaign, or open-source work.
     """
 
     name: str
+    role: str | None = None
+    category: str = "project"
     description: str
     technologies: list[str] = Field(default_factory=list)
     repository_url: str | None = None
     live_url: str | None = None
     metrics: dict[str, Any] = Field(default_factory=dict)
+    content_fingerprint: str | None = None
 
 
 class AwardAndHonor(BaseModel):
     """
-    Competitive award, hackathon placement, or industry honor.
+    Competitive award, hackathon placement, publication, patent, board seat, or industry honor.
     """
 
     title: str
     event_or_issuer: str | None = None
     date_str: str | None = None
+    category: str = "award"
     description: str | None = None
+    url: str | None = None
 
 
 class ResumeTriageDecision(BaseModel):

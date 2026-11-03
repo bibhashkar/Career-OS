@@ -493,22 +493,44 @@ def derive_candidate_functional_families(
     return families
 
 
-def calculate_prestige_score(organizations: list[str]) -> float:
+def calculate_prestige_score(
+    organizations: list[str],
+    education_records: list[dict[str, Any]] | None = None,
+) -> float:
     """
     Score candidate pedigree based on prior employers and academic institutions.
 
     Returns:
-        1.0 for Tier-1 (FAANG, Top Quant, Top CS schools).
+        1.0 for Tier-1 (FAANG, Top Quant, Top CS/Business schools).
         0.8 for Tier-2 (Established public tech, top research universities).
         0.5 for Tier-3 (Mid-market technology enterprises).
         0.3 baseline for unlisted organizations.
     """
-    if not organizations:
-        return 0.3
-
     score = 0.3
+    for edu in education_records or []:
+        if not isinstance(edu, dict):
+            continue
+        tier = str(edu.get("institution_tier") or "").strip().lower()
+        if tier in ("tier_1_ivy_top_tech", "tier_1"):
+            return 1.0
+        if tier in ("tier_2_state_flagship", "tier_2", "tier_2_strong_public_private"):
+            score = max(score, 0.8)
+        inst = str(edu.get("institution") or "").strip().lower()
+        if inst:
+            if any(t1 in inst for t1 in TIER_1_ORGANIZATIONS):
+                return 1.0
+            if any(t2 in inst for t2 in TIER_2_ORGANIZATIONS):
+                score = max(score, 0.8)
+
+    if not organizations:
+        return score
+
     for org in organizations:
         clean = org.strip().lower()
+        if clean in ("tier_1_ivy_top_tech", "tier_1"):
+            return 1.0
+        if clean in ("tier_2_state_flagship", "tier_2"):
+            score = max(score, 0.8)
         if any(t1 in clean for t1 in TIER_1_ORGANIZATIONS):
             return 1.0
         if any(t2 in clean for t2 in TIER_2_ORGANIZATIONS):
@@ -997,7 +1019,11 @@ def calculate_match_upgraded(
 
     # 4. Archetype & Domain alignment
     organizations = [b.organization for b in active_blocks if b.organization]
-    prestige_score = calculate_prestige_score(organizations)
+    edu_records = (persona.career_intelligence or {}).get("education")
+    prestige_score = calculate_prestige_score(
+        organizations,
+        education_records=edu_records if isinstance(edu_records, list) else None,
+    )
     achievement_score = calculate_achievement_score(active_blocks)
     s_archetype = calculate_archetype_score(
         job=job,
@@ -2291,7 +2317,11 @@ async def retrieve_and_rank_jobs(
 
     # Pre-calculate candidate-level constants
     organizations = [b.organization for b in blocks if b.organization]
-    prestige_score = calculate_prestige_score(organizations)
+    edu_records = (persona.career_intelligence or {}).get("education")
+    prestige_score = calculate_prestige_score(
+        organizations,
+        education_records=edu_records if isinstance(edu_records, list) else None,
+    )
     achievement_score = calculate_achievement_score(blocks)
     candidate_domain_profile = derive_candidate_domain_profile(persona, blocks)
     candidate_func_families = derive_candidate_functional_families(persona, blocks)

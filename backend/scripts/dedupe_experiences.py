@@ -46,7 +46,7 @@ async def migrate_and_dedupe_experiences() -> None:
         res = await session.execute(
             text(
                 """
-                SELECT id, user_account_id, user_profile_id, organization, title, content, 
+                SELECT id, user_account_id, user_profile_id, organization, title, content,
                        metrics, skills, content_fingerprint, embedding IS NOT NULL as has_embedding,
                        created_at
                 FROM cv_block
@@ -123,7 +123,6 @@ async def migrate_and_dedupe_experiences() -> None:
             canonical = sorted_blocks[0]
             redundant = sorted_blocks[1:]
 
-            c_id = str(canonical["id"])
             for red in redundant:
                 r_id = str(red["id"])
                 blocks_to_delete.append(r_id)
@@ -131,12 +130,12 @@ async def migrate_and_dedupe_experiences() -> None:
                 await session.execute(
                     text(
                         """
-                        UPDATE persona_cv_block_rel 
-                        SET cv_block_id = :canonical_id 
+                        UPDATE persona_cv_block_rel
+                        SET cv_block_id = :canonical_id
                         WHERE cv_block_id = :redundant_id
                         AND NOT EXISTS (
-                            SELECT 1 FROM persona_cv_block_rel p2 
-                            WHERE p2.persona_id = persona_cv_block_rel.persona_id 
+                            SELECT 1 FROM persona_cv_block_rel p2
+                            WHERE p2.persona_id = persona_cv_block_rel.persona_id
                             AND p2.cv_block_id = :canonical_id
                         );
                         DELETE FROM persona_cv_block_rel WHERE cv_block_id = :redundant_id;
@@ -164,8 +163,8 @@ async def migrate_and_dedupe_experiences() -> None:
         await session.execute(
             text(
                 """
-                CREATE UNIQUE INDEX IF NOT EXISTS uq_cv_block_user_fingerprint 
-                ON cv_block(user_account_id, content_fingerprint) 
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_cv_block_user_fingerprint
+                ON cv_block(user_account_id, content_fingerprint)
                 WHERE user_account_id IS NOT NULL;
                 """
             )

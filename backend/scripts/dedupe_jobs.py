@@ -17,7 +17,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session_maker
 from app.ingestion.service import (
@@ -35,10 +34,10 @@ async def migrate_and_dedupe() -> None:
         await session.execute(
             text(
                 """
-                ALTER TABLE job_listing 
+                ALTER TABLE job_listing
                 ADD COLUMN IF NOT EXISTS canonical_fingerprint VARCHAR(64);
-                
-                ALTER TABLE job_listing 
+
+                ALTER TABLE job_listing
                 ADD COLUMN IF NOT EXISTS location_postings JSONB DEFAULT '[]'::jsonb NOT NULL;
                 """
             )
@@ -50,8 +49,8 @@ async def migrate_and_dedupe() -> None:
             text(
                 """
                 SELECT id, company_name, title, raw_location, country_code, state_province_code,
-                       city, salary_range, salary_min, salary_max, source_job_id, apply_url, 
-                       fingerprint, canonical_fingerprint, location_postings, ats_requirements, 
+                       city, salary_range, salary_min, salary_max, source_job_id, apply_url,
+                       fingerprint, canonical_fingerprint, location_postings, ats_requirements,
                        remote_scope, posted_at, created_at, first_seen_at
                 FROM job_listing
                 ORDER BY created_at ASC;
@@ -226,7 +225,7 @@ async def migrate_and_dedupe() -> None:
                 await session.execute(
                     text(
                         """
-                        UPDATE job_listing 
+                        UPDATE job_listing
                         SET fingerprint = :fp,
                             canonical_fingerprint = :c_fp,
                             raw_location = :loc,
@@ -250,11 +249,11 @@ async def migrate_and_dedupe() -> None:
         await session.execute(
             text(
                 """
-                CREATE UNIQUE INDEX IF NOT EXISTS uq_job_listing_fingerprint 
-                ON job_listing(fingerprint) 
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_job_listing_fingerprint
+                ON job_listing(fingerprint)
                 WHERE fingerprint IS NOT NULL;
 
-                CREATE INDEX IF NOT EXISTS idx_job_listing_canonical_fingerprint 
+                CREATE INDEX IF NOT EXISTS idx_job_listing_canonical_fingerprint
                 ON job_listing(canonical_fingerprint);
                 """
             )
@@ -270,9 +269,9 @@ async def migrate_and_dedupe() -> None:
                 text(
                     """
                     SELECT count(*) FROM (
-                        SELECT canonical_fingerprint, count(*) 
-                        FROM job_listing 
-                        GROUP BY canonical_fingerprint 
+                        SELECT canonical_fingerprint, count(*)
+                        FROM job_listing
+                        GROUP BY canonical_fingerprint
                         HAVING count(*) > 1
                     ) s;
                     """

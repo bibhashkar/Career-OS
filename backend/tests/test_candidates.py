@@ -685,3 +685,69 @@ def test_extract_candidate_name_edge_cases() -> None:
         extract_candidate_name(t3, lines3, emails=["john.doe@example.com"])
         == "John Doe"
     )
+
+
+def test_multi_disciplinary_metrics_and_projects() -> None:
+    """Verify regex improvements for business, leadership, scale, and project extraction."""
+    from app.ingestion.resume_parser import (
+        _extract_deterministic_projects,
+        extract_quantified_metrics,
+    )
+    from app.schemas.candidate_dossier import (
+        normalize_award_record,
+        normalize_institution_tier,
+    )
+    from app.services.matching import calculate_prestige_score
+
+    # 1. Metric extraction tests
+    b1 = "Optimized transaction file generation by 42%, reducing request processing to <2 seconds for 1,000+ concurrent dataset"
+    m1 = extract_quantified_metrics(b1)
+    types1 = {m.metric_type for m in m1}
+    assert "percentage_improvement" in types1
+    assert "latency_optimization" in types1
+    assert "scale_users_or_data" in types1
+
+    b2 = "Mentored 8+ developers on system architecture and code review"
+    m2 = extract_quantified_metrics(b2)
+    assert any(m.metric_type == "team_leadership" for m in m2)
+
+    b3 = "Managing 10,000+ daily requests with high-concurrency tracking"
+    m3 = extract_quantified_metrics(b3)
+    assert any(m.metric_type == "scale_users_or_data" for m in m3)
+
+    b4 = "Architected EDI system handling $7B+ in annual volume"
+    m4 = extract_quantified_metrics(b4)
+    assert any(m.metric_type == "financial_volume" for m in m4)
+
+    # 2. Project extraction
+    proj_lines = [
+        "Distributed Ledger: Built low-latency payment engine in Rust processing 10k ops/sec. https://github.com/example/ledger",
+        "AI Workflow Automation | Architected multi-agent graph with LangGraph cutting manual review time by 65%.",
+    ]
+    projects, blocks = _extract_deterministic_projects(proj_lines)
+    assert len(projects) == 2
+    assert projects[0].name == "Distributed Ledger"
+    assert projects[0].repository_url == "https://github.com/example/ledger"
+    assert len(blocks) == 2
+    assert blocks[0].category == "project"
+
+    # 3. Normalization helpers
+    assert normalize_institution_tier("tier_1") == "tier_1_ivy_top_tech"
+    assert normalize_institution_tier("tier_2") == "tier_2_state_flagship"
+    assert normalize_institution_tier("standard") == "standard"
+
+    raw_aw = {"title": "1st Place Winner", "description": "MIT Hackathon"}
+    norm_aw = normalize_award_record(raw_aw)
+    assert norm_aw["title"] == "1st Place Winner"
+    assert norm_aw["event_or_issuer"] == "MIT Hackathon"
+
+    # 4. Prestige score with education records
+    score_tier1 = calculate_prestige_score(
+        [], education_records=[{"institution_tier": "tier_1_ivy_top_tech"}]
+    )
+    assert score_tier1 == 1.0
+
+    score_tier2 = calculate_prestige_score(
+        [], education_records=[{"institution_tier": "tier_2_state_flagship"}]
+    )
+    assert score_tier2 == 0.8

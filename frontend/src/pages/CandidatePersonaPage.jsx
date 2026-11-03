@@ -36,7 +36,13 @@ import {
   Tag,
   ArrowRight,
   RefreshCw,
+  Star,
 } from "lucide-react";
+import { ArchetypeCustomizationBar } from "../components/dossier/ArchetypeCustomizationBar";
+import { ProjectsInitiativesSection } from "../components/dossier/ProjectsInitiativesSection";
+import { AwardsDistinctionsSection } from "../components/dossier/AwardsDistinctionsSection";
+import { DomainExpertiseSection } from "../components/dossier/DomainExpertiseSection";
+import { CompetencyMatrixSection } from "../components/dossier/CompetencyMatrixSection";
 import {
   getCandidatePersonas,
   updateCandidatePersona,
@@ -105,6 +111,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
     min_salary: "",
     target_roles: [],
     target_industries: [],
+    career_archetype: "technology_engineering",
     skills: [],
     skills_matrix: {},
     visa_status: "Citizen",
@@ -193,7 +200,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
   const currentPersona = personas.find((p) => p.id === selectedPersonaId) || personas[0] || null;
 
   // 1. Fetch Personas and CVBlocks
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (overrideSelectId = null) => {
     try {
       setLoading(true);
       setError(null);
@@ -204,8 +211,9 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       setPersonas(pData || []);
       setPersistedBlocks(bData || []);
 
+      const targetId = overrideSelectId || selectedPersonaId;
       const active =
-        pData.find((p) => p.id === selectedPersonaId) ||
+        pData.find((p) => p.id === targetId) ||
         pData.find((p) => p.is_default) ||
         pData[0];
       if (active) {
@@ -258,6 +266,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       min_salary: p.min_salary || "",
       target_roles: Array.isArray(p.target_roles) ? p.target_roles : [],
       target_industries: Array.isArray(p.target_industries) ? p.target_industries : [],
+      career_archetype: ci.profile_config?.career_archetype || "technology_engineering",
       skills: rawSkillsList,
       skills_matrix: ci.skills_matrix || {},
       visa_status: p.visa_status || "Citizen",
@@ -444,6 +453,16 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       domain_expertise: Array.isArray(data.domain_expertise) && data.domain_expertise.length > 0
         ? data.domain_expertise
         : ci.domain_expertise || prev.domain_expertise,
+      projects: Array.isArray(data.projects) && data.projects.length > 0
+        ? data.projects
+        : Array.isArray(ci.projects) && ci.projects.length > 0
+          ? ci.projects
+          : prev.projects,
+      awards_recognitions: Array.isArray(data.awards_and_honors) && data.awards_and_honors.length > 0
+        ? data.awards_and_honors
+        : Array.isArray(ci.awards_recognitions) && ci.awards_recognitions.length > 0
+          ? ci.awards_recognitions
+          : prev.awards_recognitions,
       work_experience: mergedWorkExp,
       education: stagedEdu,
       semantic_profile_summary: data.semantic_profile_summary || ci.semantic_profile_summary || prev.semantic_profile_summary,
@@ -470,6 +489,10 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
         full_name: dossierForm.full_name ? dossierForm.full_name.trim() : null,
         email: dossierForm.email ? dossierForm.email.trim() : null,
         phone: dossierForm.phone ? dossierForm.phone.trim() : null,
+      },
+      profile_config: {
+        ...(currentPersona.career_intelligence?.profile_config || {}),
+        career_archetype: dossierForm.career_archetype || "technology_engineering",
       },
       education: dossierForm.education,
       work_experience: dossierForm.work_experience,
@@ -514,15 +537,16 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       const updated = await updateCandidatePersona(currentPersona.id, payload);
 
       // Persist any unpersisted blocks and bullets into pgvector CVBlocks
-      const persistedContentSet = new Set(
-        persistedBlocks.map((b) => (b.content || "").trim().toLowerCase())
+      const normalizeText = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const persistedContentNormSet = new Set(
+        persistedBlocks.map((b) => normalizeText(b.content))
       );
 
       // 1. Process staged review blocks if present
       if (stagedReview?.stagedBlocks?.length > 0) {
         for (const block of stagedReview.stagedBlocks) {
-          const bContent = (block.content || "").trim().toLowerCase();
-          if (persistedContentSet.has(bContent)) {
+          const bContentNorm = normalizeText(block.content);
+          if (persistedContentNormSet.has(bContentNorm)) {
             continue; // Skip duplicate proof point
           }
           try {
@@ -535,7 +559,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
               skills: block.skills || [],
               persona_ids: [currentPersona.id],
             });
-            persistedContentSet.add(bContent);
+            persistedContentNormSet.add(bContentNorm);
           } catch (bErr) {
             console.warn("Failed to persist staged block:", bErr);
           }
@@ -546,7 +570,8 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       for (const exp of (dossierForm.work_experience || [])) {
         for (const bullet of (exp.bullets || [])) {
           const rawText = (bullet.raw_text || "").trim();
-          if (!rawText || persistedContentSet.has(rawText.toLowerCase())) {
+          const rawTextNorm = normalizeText(rawText);
+          if (!rawText || persistedContentNormSet.has(rawTextNorm)) {
             continue;
           }
           try {
@@ -561,7 +586,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
               skills: bullet.technologies_used || [],
               persona_ids: [currentPersona.id],
             });
-            persistedContentSet.add(rawText.toLowerCase());
+            persistedContentNormSet.add(rawTextNorm);
           } catch (bErr) {
             console.warn("Failed to persist tenure bullet:", bErr);
           }
@@ -619,6 +644,37 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       await loadData();
     } catch (err) {
       alert("Failed to delete persona track.");
+    }
+  }
+
+  // 6b. Set Default Persona Track
+  async function handleSetDefaultTrack(personaId) {
+    try {
+      await setDefaultPersona(personaId);
+      await loadData(personaId);
+    } catch (err) {
+      console.error("Failed to set default track:", err);
+      alert("Failed to set default track.");
+    }
+  }
+
+  // 6c. Clone Persona Track
+  async function handleCloneTrack(sourcePersona) {
+    try {
+      setLoading(true);
+      const cloneName = `${sourcePersona.name || "Track"} (Specialized)`;
+      const created = await createCandidatePersona({
+        name: cloneName,
+        headline: sourcePersona.headline || "",
+        clone_from_persona_id: sourcePersona.id,
+        career_intelligence: sourcePersona.career_intelligence || {},
+      });
+      await loadData(created.id);
+    } catch (err) {
+      console.error("Failed to clone persona track:", err);
+      alert(err.response?.data?.detail || "Failed to clone persona track.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -805,32 +861,39 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
     }));
   }
 
-  function addSkillTag(categoryKey = null) {
-    if (!newSkillTag.trim()) return;
-    const tag = newSkillTag.trim();
-    if (!dossierForm.skills.includes(tag)) {
-      setDossierForm((prev) => {
-        const nextMatrix = { ...(prev.skills_matrix || {}) };
-        if (categoryKey) {
-          nextMatrix[categoryKey] = [...(nextMatrix[categoryKey] || []), tag];
+  function addSkillTag(tagOrInput = null, categoryKey = null) {
+    const rawTag = (typeof tagOrInput === "string" ? tagOrInput : newSkillTag) || "";
+    if (!rawTag.trim()) return;
+    const tag = rawTag.trim();
+    setDossierForm((prev) => {
+      const skillsList = [...(prev.skills || [])];
+      const exists = skillsList.some((s) => s.toLowerCase() === tag.toLowerCase());
+      const nextSkills = exists ? skillsList : [...skillsList, tag];
+
+      const nextMatrix = { ...(prev.skills_matrix || {}) };
+      if (categoryKey) {
+        const catList = nextMatrix[categoryKey] || [];
+        if (!catList.some((s) => s.toLowerCase() === tag.toLowerCase())) {
+          nextMatrix[categoryKey] = [...catList, tag];
         }
-        return {
-          ...prev,
-          skills: [...prev.skills, tag],
-          skills_matrix: nextMatrix,
-        };
-      });
-    }
+      }
+      return {
+        ...prev,
+        skills: nextSkills,
+        skills_matrix: nextMatrix,
+      };
+    });
     setNewSkillTag("");
   }
 
   function removeSkillTag(tagToRemove) {
+    const norm = (tagToRemove || "").toLowerCase();
     setDossierForm((prev) => {
-      const nextSkills = prev.skills.filter((s) => s !== tagToRemove);
+      const nextSkills = (prev.skills || []).filter((s) => (s || "").toLowerCase() !== norm);
       const nextMatrix = { ...(prev.skills_matrix || {}) };
       Object.keys(nextMatrix).forEach((k) => {
         if (Array.isArray(nextMatrix[k])) {
-          nextMatrix[k] = nextMatrix[k].filter((s) => s !== tagToRemove);
+          nextMatrix[k] = nextMatrix[k].filter((s) => (s || "").toLowerCase() !== norm);
         }
       });
       return {
@@ -841,10 +904,81 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
     });
   }
 
+  function handleSaveDomain(domainObj, index) {
+    setDossierForm((prev) => {
+      const list = [...(prev.domain_expertise || [])];
+      if (index !== null && index >= 0 && index < list.length) {
+        list[index] = domainObj;
+      } else {
+        list.push(domainObj);
+      }
+      return { ...prev, domain_expertise: list };
+    });
+  }
+
+  function handleDeleteDomain(index) {
+    setDossierForm((prev) => {
+      const list = [...(prev.domain_expertise || [])];
+      list.splice(index, 1);
+      return { ...prev, domain_expertise: list };
+    });
+  }
+
+  function handleUpdateSummary(newSummary) {
+    setDossierForm((prev) => ({ ...prev, semantic_profile_summary: newSummary }));
+  }
+
+  function handleSaveProject(projectObj, index) {
+    setDossierForm((prev) => {
+      const list = [...(prev.projects || [])];
+      if (index !== null && index >= 0 && index < list.length) {
+        list[index] = projectObj;
+      } else {
+        list.push(projectObj);
+      }
+      return { ...prev, projects: list };
+    });
+  }
+
+  function handleDeleteProject(index) {
+    setDossierForm((prev) => {
+      const list = [...(prev.projects || [])];
+      list.splice(index, 1);
+      return { ...prev, projects: list };
+    });
+  }
+
+  function handleSaveAward(awardObj, index) {
+    setDossierForm((prev) => {
+      const list = [...(prev.awards_recognitions || [])];
+      if (index !== null && index >= 0 && index < list.length) {
+        list[index] = awardObj;
+      } else {
+        list.push(awardObj);
+      }
+      return { ...prev, awards_recognitions: list };
+    });
+  }
+
+  function handleDeleteAward(index) {
+    setDossierForm((prev) => {
+      const list = [...(prev.awards_recognitions || [])];
+      list.splice(index, 1);
+      return { ...prev, awards_recognitions: list };
+    });
+  }
+
   // Work Experience tenure helpers
   function handleSaveRoleTenure(e) {
     e.preventDefault();
     if (!roleForm.company_name.trim() || !roleForm.job_title.trim()) return;
+
+    const sMatch = roleForm.start_date.match(/\b(19\d\d|20\d\d)\b/);
+    const eMatch = roleForm.end_date.match(/\b(19\d\d|20\d\d)\b/);
+    const isPresent = /present|current/i.test(roleForm.end_date);
+    const sYr = sMatch ? parseInt(sMatch[1], 10) : new Date().getFullYear();
+    const eYr = isPresent ? new Date().getFullYear() : (eMatch ? parseInt(eMatch[1], 10) : sYr);
+    const computedDuration = Math.max(0.5, eYr - sYr);
 
     setDossierForm((prev) => {
       const expList = [...(prev.work_experience || [])];
@@ -857,7 +991,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
         end_date: roleForm.end_date.trim(),
         seniority_level: roleForm.seniority_level,
         industry_domain: roleForm.industry_domain,
-        duration_years: 1.0,
+        duration_years: computedDuration,
         bullets: editingRoleIndex !== null && editingRoleIndex >= 0 ? expList[editingRoleIndex]?.bullets || [] : [],
       };
 
@@ -1099,19 +1233,45 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
                         </p>
                       </div>
 
-                      {!p.is_common_persona && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        {!p.is_default && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSetDefaultTrack(p.id);
+                            }}
+                            className="p-1 text-slate-500 hover:text-amber-400 transition-colors"
+                            title="Set as Default Track"
+                          >
+                            <Star className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDeleteTrack(p);
+                            handleCloneTrack(p);
                           }}
-                          className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
-                          title="Delete track"
+                          className="p-1 text-slate-500 hover:text-sky-400 transition-colors"
+                          title="Clone Specialized Track"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Copy className="w-3.5 h-3.5" />
                         </button>
-                      )}
+                        {!p.is_common_persona && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteTrack(p);
+                            }}
+                            className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
+                            title="Delete track"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -1262,15 +1422,39 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
               <div className="space-y-1.5 pt-1">
                 <span className="text-[11px] font-semibold text-slate-400">Actionable Precision Boosts:</span>
                 <div className="space-y-1">
-                  {missingSteps.slice(0, 3).map((st, idx) => (
-                    <div
-                      key={idx}
-                      className="p-2 rounded-lg bg-slate-950/60 border border-slate-800 text-[11px] text-slate-300 flex items-start gap-1.5"
-                    >
-                      <span className="text-sky-400 font-bold shrink-0">+{st.potential_gain_pct}%</span>
-                      <span>{st.prompt}</span>
-                    </div>
-                  ))}
+                  {missingSteps.slice(0, 4).map((st, idx) => {
+                    const gainPct = st.weight || st.potential_gain_pct || 10;
+                    const promptText = st.action_prompt || st.prompt || st.title || "";
+                    const targetSectionId =
+                      st.pillar === "role_trajectory" || st.pillar === "external_logistics"
+                        ? "section-executive-identity"
+                        : st.pillar === "skills_inventory"
+                          ? "section-skills-matrix"
+                          : st.pillar === "work_experience"
+                            ? "section-work-experience"
+                            : st.pillar === "education"
+                              ? "section-education"
+                              : st.pillar === "projects"
+                                ? "section-projects"
+                                : st.pillar === "achievements"
+                                  ? "section-awards"
+                                  : "section-executive-identity";
+
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          const elem = document.getElementById(targetSectionId);
+                          if (elem) elem.scrollIntoView({ behavior: "smooth" });
+                        }}
+                        className="w-full text-left p-2 rounded-lg bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800 hover:border-sky-500/40 text-[11px] text-slate-300 flex items-start gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <span className="text-sky-400 font-bold shrink-0">+{gainPct}%</span>
+                        <span className="leading-snug">{promptText}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1281,9 +1465,41 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
         {/* RIGHT CANVAS (Col 8 of 12): 6 Structured Dossier Sections                */}
         {/* ========================================================================= */}
         <div className="lg:col-span-8 space-y-6">
+          {/* Multi-Disciplinary Career Archetype Selector */}
+          <ArchetypeCustomizationBar
+            currentArchetype={dossierForm.career_archetype || "technology_engineering"}
+            onSelectArchetype={(archId) => {
+              setDossierForm((prev) => ({
+                ...prev,
+                career_archetype: archId,
+              }));
+            }}
+            currentDomains={(dossierForm.domain_expertise || []).map((d) => d.domain)}
+            onToggleDomainPreset={(presetDomain) => {
+              setDossierForm((prev) => {
+                const currentList = [...(prev.domain_expertise || [])];
+                const existingIdx = currentList.findIndex(
+                  (d) => (d.domain || "").toLowerCase() === presetDomain.toLowerCase()
+                );
+                if (existingIdx >= 0) {
+                  currentList.splice(existingIdx, 1);
+                } else {
+                  currentList.push({
+                    domain: presetDomain,
+                    years_experience: 2.0,
+                    regulatory_frameworks: [],
+                    core_competencies: [],
+                  });
+                }
+                return { ...prev, domain_expertise: currentList };
+              });
+            }}
+          />
+
           {/* Section 1: Executive Identity, Target Roles & Logistics */}
           <section
             data-testid="section-executive-identity"
+            id="section-executive-identity"
             className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-4"
           >
             <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
@@ -1455,7 +1671,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
               </div>
             </div>
 
-            {/* Experience, Min Salary, Visa & Locations */}
+            {/* Experience, Min Salary & Visa */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">Years Experience</label>
@@ -1496,17 +1712,103 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
               </div>
             </div>
 
+            {/* Work Arrangement & Preferred Locations */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">Work Arrangement</label>
+                <select
+                  value={dossierForm.remote_preference || "Remote"}
+                  onChange={(e) => setDossierForm({ ...dossierForm, remote_preference: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-sky-500"
+                >
+                  <option value="Remote">Remote Only</option>
+                  <option value="Hybrid">Hybrid</option>
+                  <option value="On-site">On-site</option>
+                  <option value="Flexible">Flexible / Any</option>
+                </select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-slate-300 mb-1">Target Geographies & Preferred Locations</label>
+                <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-950 border border-slate-800 rounded-xl min-h-[42px]">
+                  {(dossierForm.preferred_locations || []).map((loc, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-950/80 text-teal-200 border border-teal-800/60 text-xs font-medium"
+                    >
+                      <span>{loc}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDossierForm((prev) => ({
+                            ...prev,
+                            preferred_locations: (prev.preferred_locations || []).filter((_, i) => i !== idx),
+                          }));
+                        }}
+                        className="text-teal-400 hover:text-white"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      placeholder="+ Add Location (e.g. New York, NY)"
+                      value={newLocationTag}
+                      onChange={(e) => setNewLocationTag(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (newLocationTag.trim()) {
+                            setDossierForm((prev) => ({
+                              ...prev,
+                              preferred_locations: [...(prev.preferred_locations || []), newLocationTag.trim()],
+                            }));
+                            setNewLocationTag("");
+                          }
+                        }
+                      }}
+                      className="px-2 py-0.5 bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none"
+                    />
+                    {newLocationTag && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDossierForm((prev) => ({
+                            ...prev,
+                            preferred_locations: [...(prev.preferred_locations || []), newLocationTag.trim()],
+                          }));
+                          setNewLocationTag("");
+                        }}
+                        className="px-2 py-0.5 rounded bg-teal-600 text-white text-[11px]"
+                      >
+                        Add
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* External Profile Links */}
             <div className="pt-2 border-t border-slate-800 space-y-2">
               <span className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
                 <LinkIcon className="w-3.5 h-3.5 text-emerald-400" /> Verified Channel Links
               </span>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                 <input
                   type="url"
                   placeholder="LinkedIn URL (https://linkedin.com/in/...)"
                   value={dossierForm.linkedin_url}
                   onChange={(e) => setDossierForm({ ...dossierForm, linkedin_url: e.target.value })}
+                  className="px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                />
+                <input
+                  type="url"
+                  placeholder="Portfolio / Bio / Personal Site"
+                  value={dossierForm.portfolio_url}
+                  onChange={(e) => setDossierForm({ ...dossierForm, portfolio_url: e.target.value })}
                   className="px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
                 />
                 <input
@@ -1530,6 +1832,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
           {/* Section 2: Business Domain Expertise & Semantic AI Summary */}
           <section
             data-testid="section-domain-and-semantic"
+            id="section-domain-expertise"
             className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-4"
           >
             <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
@@ -1541,65 +1844,17 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
               </div>
             </div>
 
-            {/* Business Domain Cards */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-300">
-                  Extracted Industry Domain Verticals ({dossierForm.domain_expertise.length})
-                </span>
-              </div>
-
-              {dossierForm.domain_expertise.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {dossierForm.domain_expertise.map((de, idx) => (
-                    <div
-                      key={idx}
-                      className="p-3 rounded-xl bg-slate-950 border border-indigo-500/30 space-y-1.5"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-white">{de.domain}</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-semibold border border-indigo-500/30">
-                          {de.years_experience}y Experience
-                        </span>
-                      </div>
-                      {de.regulatory_frameworks?.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                          {de.regulatory_frameworks.map((rf, rIdx) => (
-                            <span
-                              key={rIdx}
-                              className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700"
-                            >
-                              {rf}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-500 italic">
-                  No specialized business domains detected yet. Upload a resume to automatically identify verticals (FinTech, HealthTech, etc.).
-                </p>
-              )}
-            </div>
-
-            {/* Semantic Profile Summary */}
-            <div className="pt-2 border-t border-slate-800 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Database className="w-3.5 h-3.5 text-sky-400" /> Grounded Semantic Matching Vector Summary
-                </span>
-                <span className="text-[10px] text-slate-400 font-mono">Anti-Drift Synthesis</span>
-              </div>
-              <textarea
-                rows={3}
-                value={dossierForm.semantic_profile_summary}
-                onChange={(e) => setDossierForm({ ...dossierForm, semantic_profile_summary: e.target.value })}
-                placeholder="Dense candidate synthesis vector summary used by pgvector two-stage ranking..."
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200 font-mono focus:outline-none focus:border-sky-500"
-              />
-            </div>
+            <DomainExpertiseSection
+              domainExpertise={dossierForm.domain_expertise || []}
+              headline={dossierForm.headline}
+              yearsExperience={dossierForm.years_experience}
+              targetRoles={dossierForm.target_roles}
+              workExperience={dossierForm.work_experience}
+              semanticSummary={dossierForm.semantic_profile_summary}
+              onSaveDomain={handleSaveDomain}
+              onDeleteDomain={handleDeleteDomain}
+              onUpdateSummary={handleUpdateSummary}
+            />
           </section>
 
           {/* Section 3: Chronological Work Experience Timeline & Nested pgvector Proof Points */}
@@ -1706,19 +1961,20 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
                 // Find matching persisted CV blocks for this tenure:
                 // 1) Blocks whose content matches any bullet in this tenure, OR
                 // 2) Blocks whose title matches this tenure's title and company matches
-                const tenureBulletsTextSet = new Set(
-                  (exp.bullets || []).map((b) => (b.raw_text || "").trim().toLowerCase())
+                const normalizeText = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                const tenureBulletsNormSet = new Set(
+                  (exp.bullets || []).map((b) => normalizeText(b.raw_text))
                 );
                 const relatedBlocks = persistedBlocks.filter(
                   (b) =>
-                    tenureBulletsTextSet.has((b.content || "").trim().toLowerCase()) ||
+                    tenureBulletsNormSet.has(normalizeText(b.content)) ||
                     (b.organization &&
                       exp.company_name &&
-                      b.organization.toLowerCase().includes(exp.company_name.toLowerCase()) &&
+                      normalizeText(b.organization).includes(normalizeText(exp.company_name)) &&
                       b.title &&
                       exp.job_title &&
-                      (b.title.toLowerCase().includes(exp.job_title.toLowerCase()) ||
-                        exp.job_title.toLowerCase().includes(b.title.toLowerCase())))
+                      (normalizeText(b.title).includes(normalizeText(exp.job_title)) ||
+                        normalizeText(exp.job_title).includes(normalizeText(b.title))))
                 );
 
                 return (
@@ -1800,11 +2056,11 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
                     {/* Bullets & Proof Points under this tenure */}
                     <div className="space-y-2 pt-2 border-t border-slate-850">
                       {(() => {
-                        const persistedContentSet = new Set(
-                          relatedBlocks.map((b) => (b.content || "").trim().toLowerCase())
+                        const persistedContentNormSet = new Set(
+                          relatedBlocks.map((b) => normalizeText(b.content))
                         );
                         const unpersistedBullets = (exp.bullets || []).filter(
-                          (b) => !persistedContentSet.has((b.raw_text || "").trim().toLowerCase())
+                          (b) => !persistedContentNormSet.has(normalizeText(b.raw_text))
                         );
 
                         if (relatedBlocks.length === 0 && unpersistedBullets.length === 0) {
@@ -2040,8 +2296,8 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
                     className="px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none"
                   >
                     <option value="standard">Standard University</option>
-                    <option value="tier_2">Tier 2 Top 50 University</option>
-                    <option value="tier_1">Tier 1 Target School (MIT, Stanford, CMU...)</option>
+                    <option value="tier_2_state_flagship">Tier 2 Top 50 / State Flagship</option>
+                    <option value="tier_1_ivy_top_tech">Tier 1 Target School (MIT, Stanford, Ivy League, Top Tech)</option>
                   </select>
                   <input
                     type="text"
@@ -2106,7 +2362,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
                   <div className="flex items-center gap-2 pt-1 text-[10px] text-slate-400">
                     <span>Class of {edu.graduation_year || "N/A"}</span>
                     <span>•</span>
-                    <span className="capitalize">{edu.institution_tier?.replace("_", " ") || "Standard"}</span>
+                    <span className="capitalize">{edu.institution_tier?.replace(/_/g, " ") || "Standard"}</span>
                     {edu.gpa && (
                       <>
                         <span>•</span>
@@ -2125,158 +2381,37 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
             </div>
           </section>
 
-          {/* Section 5: Categorized Technical Skills Matrix */}
-          <section
-            data-testid="section-skills-matrix"
-            className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-4"
-          >
-            <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Tag className="w-4 h-4 text-sky-400" />
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                  5. Technical Skills Matrix ({dossierForm.skills.length})
-                </h3>
-              </div>
-            </div>
+          {/* Section 5: Competency & Skills Matrix */}
+          <div data-testid="section-skills-matrix" id="section-skills-matrix">
+            <CompetencyMatrixSection
+              skills={dossierForm.skills}
+              skillsMatrix={dossierForm.skills_matrix}
+              archetype={dossierForm.career_archetype || "technology_engineering"}
+              onAddSkill={(tag, categoryKey) => addSkillTag(tag, categoryKey)}
+              onRemoveSkill={(sk) => removeSkillTag(sk)}
+            />
+          </div>
 
-            {/* Quick Add Skill Pill */}
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="+ Add Skill Tag (e.g. LangGraph, pgvector, PyTorch)"
-                value={newSkillTag}
-                onChange={(e) => setNewSkillTag(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addSkillTag();
-                  }
-                }}
-                className="flex-1 px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
-              />
-              <button
-                type="button"
-                onClick={() => addSkillTag()}
-                className="px-3.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold cursor-pointer"
-              >
-                Add Skill
-              </button>
-            </div>
-
-            {/* Categorized Matrix Pills */}
-            <div className="space-y-3">
-              {SKILL_CATEGORIES.map((cat) => {
-                const catSkills = dossierForm.skills_matrix?.[cat.key] || [];
-                return (
-                  <div key={cat.key} className="space-y-1.5">
-                    <span className="text-[11px] font-semibold text-slate-400">{cat.label}</span>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {catSkills.length > 0 ? (
-                        catSkills.map((sk, sIdx) => (
-                          <span
-                            key={sIdx}
-                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-slate-950 text-slate-200 border border-slate-800 text-xs font-medium"
-                          >
-                            <span>{sk}</span>
-                            <button
-                              type="button"
-                              onClick={() => removeSkillTag(sk)}
-                              className="text-slate-500 hover:text-white"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-[10px] text-slate-600 italic">None specified</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* All Other Uncategorized Skills */}
-              {(() => {
-                const categorizedSet = new Set(
-                  Object.values(dossierForm.skills_matrix || {}).flat()
-                );
-                const uncategorized = dossierForm.skills.filter((s) => !categorizedSet.has(s));
-                if (uncategorized.length === 0) return null;
-
-                return (
-                  <div className="space-y-1.5 pt-2 border-t border-slate-800">
-                    <span className="text-[11px] font-semibold text-slate-400">All Other Domain Tools & Technologies</span>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {uncategorized.map((sk, sIdx) => (
-                        <span
-                          key={sIdx}
-                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-sky-950/60 text-sky-200 border border-sky-800/60 text-xs font-medium"
-                        >
-                          <span>{sk}</span>
-                          <button
-                            type="button"
-                            onClick={() => removeSkillTag(sk)}
-                            className="text-sky-400 hover:text-white"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          </section>
-
-          {/* Section 6: Projects, Hackathons & Awards */}
+          {/* Section 6: Key Projects, Initiatives, Honors & Distinctions */}
           <section
             data-testid="section-projects-awards"
-            className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-4"
+            id="section-projects"
+            className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-6"
           >
-            <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Award className="w-4 h-4 text-amber-400" />
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                  6. Technical Projects, Hackathons & Honors
-                </h3>
-              </div>
-            </div>
+            <ProjectsInitiativesSection
+              projects={dossierForm.projects}
+              archetype={dossierForm.career_archetype || "technology_engineering"}
+              onSaveProject={handleSaveProject}
+              onDeleteProject={handleDeleteProject}
+            />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Projects List */}
-              <div className="space-y-2">
-                <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <FolderGit2 className="w-3.5 h-3.5 text-indigo-400" /> Open Source & Projects
-                </span>
-                {dossierForm.projects.length > 0 ? (
-                  dossierForm.projects.map((prj, pIdx) => (
-                    <div key={pIdx} className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1 text-xs">
-                      <span className="font-bold text-white">{prj.name}</span>
-                      <p className="text-[11px] text-slate-400">{prj.description}</p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-[11px] text-slate-500 italic">No independent projects logged.</p>
-                )}
-              </div>
-
-              {/* Hackathons & Awards */}
-              <div className="space-y-2">
-                <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Award className="w-3.5 h-3.5 text-amber-400" /> Competitions & Honors
-                </span>
-                {dossierForm.awards_recognitions.length > 0 ? (
-                  dossierForm.awards_recognitions.map((aw, aIdx) => (
-                    <div key={aIdx} className="p-3 rounded-xl bg-slate-950 border border-amber-500/20 space-y-1 text-xs">
-                      <span className="font-bold text-amber-300">{aw.title}</span>
-                      {aw.description && <p className="text-[11px] text-slate-400">{aw.description}</p>}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-[11px] text-slate-500 italic">No awards or hackathons logged.</p>
-                )}
-              </div>
+            <div className="border-t border-slate-800 pt-5" id="section-awards">
+              <AwardsDistinctionsSection
+                awards={dossierForm.awards_recognitions}
+                archetype={dossierForm.career_archetype || "technology_engineering"}
+                onSaveAward={handleSaveAward}
+                onDeleteAward={handleDeleteAward}
+              />
             </div>
           </section>
         </div>

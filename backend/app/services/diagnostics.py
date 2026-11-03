@@ -111,11 +111,16 @@ def calculate_persona_completeness(
     blocks = blocks or []
     career_intel = career_intelligence or {}
     role_tenures = career_intel.get("role_tenures") or []
+    work_experience = career_intel.get("work_experience") or []
     education = career_intel.get("education") or []
     projects = career_intel.get("projects") or []
     hackathons = career_intel.get("hackathons_competitions") or []
     awards = career_intel.get("awards_recognitions") or []
     ext_links = career_intel.get("external_links") or {}
+    profile_cfg = career_intel.get("profile_config") or {}
+    archetype = str(
+        profile_cfg.get("career_archetype") or "technology_engineering"
+    ).lower()
 
     missing_steps: list[CompletenessMissingStep] = []
 
@@ -127,7 +132,7 @@ def calculate_persona_completeness(
         seniority_level and seniority_level != "mid"
     ):
         role_score += 4
-    if role_tenures:
+    if role_tenures or work_experience:
         role_score += 3
 
     if role_score < 15:
@@ -151,8 +156,8 @@ def calculate_persona_completeness(
             CompletenessMissingStep(
                 pillar="skills_inventory",
                 weight=20 - skill_score,
-                title="Core & Domain Skills",
-                action_prompt=f"+{20 - skill_score}%: Add {needed} more core, cloud, or domain skills.",
+                title="Core & Domain Competencies",
+                action_prompt=f"+{20 - skill_score}%: Add {needed} more core, leadership, or domain skills.",
                 why_it_matters="Powers exact and directional skill-graph matching against non-negotiable job dealbreakers.",
                 action_key="add_skills",
             )
@@ -166,30 +171,79 @@ def calculate_persona_completeness(
         if getattr(b, "category", "") == "experience"
         or (isinstance(b, dict) and b.get("category") == "experience")
     ]
-    total_exp_items = max(len(exp_blocks), len(role_tenures))
+    total_exp_items = max(len(exp_blocks), len(role_tenures), len(work_experience))
     if total_exp_items >= 2:
         exp_score += 12
     elif total_exp_items == 1:
         exp_score += 6
 
-    # Quantified metric detection
+    # Quantified metric detection across CVBlocks, work_experience bullets, and role_tenures
     has_quantified = False
     for b in blocks:
-        metrics = getattr(b, "metrics", {}) or {}
-        is_quant = getattr(b, "is_quantified", False)
+        metrics = (
+            b.get("metrics") if isinstance(b, dict) else getattr(b, "metrics", {})
+        ) or {}
+        is_quant = (
+            b.get("is_quantified")
+            if isinstance(b, dict)
+            else getattr(b, "is_quantified", False)
+        )
         if metrics or is_quant:
             has_quantified = True
             break
-        content = getattr(b, "content", "") or ""
+        content = (
+            b.get("content") if isinstance(b, dict) else getattr(b, "content", "")
+        ) or ""
         if any(char in content for char in ("%", "$")) or any(
             unit in content.lower()
-            for unit in ("ms", "users", "dau", "mau", "reduced", "increased")
+            for unit in (
+                "ms",
+                "users",
+                "dau",
+                "mau",
+                "reduced",
+                "increased",
+                "requests",
+                "mentored",
+                "roas",
+                "arr",
+                "ebitda",
+                "patients",
+            )
         ):
             has_quantified = True
             break
     if not has_quantified:
+        for w in work_experience:
+            if not isinstance(w, dict):
+                continue
+            for bul in w.get("bullets") or []:
+                if not isinstance(bul, dict):
+                    continue
+                if bul.get("metrics"):
+                    has_quantified = True
+                    break
+                raw_t = str(bul.get("raw_text") or "")
+                if any(char in raw_t for char in ("%", "$")) or any(
+                    unit in raw_t.lower()
+                    for unit in (
+                        "ms",
+                        "users",
+                        "requests",
+                        "mentored",
+                        "roas",
+                        "arr",
+                        "ebitda",
+                        "patients",
+                    )
+                ):
+                    has_quantified = True
+                    break
+            if has_quantified:
+                break
+    if not has_quantified:
         for r in role_tenures:
-            desc = r.get("description", "")
+            desc = r.get("description", "") if isinstance(r, dict) else ""
             if any(char in desc for char in ("%", "$")):
                 has_quantified = True
                 break
@@ -218,7 +272,7 @@ def calculate_persona_completeness(
         or (isinstance(b, dict) and b.get("category") == "education")
     ]
     if education or edu_blocks:
-        first_edu = education[0] if education else {}
+        first_edu = education[0] if education and isinstance(education[0], dict) else {}
         if first_edu.get("degree") or edu_blocks:
             edu_score += 6
         if first_edu.get("major"):
@@ -242,52 +296,89 @@ def calculate_persona_completeness(
             )
         )
 
-    # 5. Projects & Open Source (Max 10%)
+    # 5. Projects, Key Initiatives, Case Studies & Open Source (Max 10%)
     proj_score = 0
     proj_blocks = [
         b
         for b in blocks
-        if getattr(b, "category", "") in ("project", "open_source")
-        or (isinstance(b, dict) and b.get("category") in ("project", "open_source"))
+        if getattr(b, "category", "")
+        in ("project", "open_source", "initiative", "case_study")
+        or (
+            isinstance(b, dict)
+            and b.get("category")
+            in ("project", "open_source", "initiative", "case_study")
+        )
     ]
     if projects or proj_blocks:
         proj_score = 10
     else:
+        proj_title = "Technical Projects & Open Source"
+        proj_prompt = (
+            "+10%: Showcase 1+ key technical Projects or Open-Source contributions."
+        )
+        if archetype in ("executive_leadership", "finance_fintech", "product_strategy"):
+            proj_title = "Strategic Mandates, Deals & Key Initiatives"
+            proj_prompt = "+10%: Showcase 1+ flagship Strategic Initiatives, Deals, or Transformations."
+        elif archetype == "marketing_growth":
+            proj_title = "Flagship Campaigns, Launches & Case Studies"
+            proj_prompt = "+10%: Showcase 1+ flagship GTM Campaigns, Brand Launches, or Case Studies."
+        elif archetype == "healthcare_lifesciences":
+            proj_title = "Clinical Programs, Trials & Initiatives"
+            proj_prompt = "+10%: Showcase 1+ Clinical Programs, Quality Initiatives, or Research Trials."
+
         missing_steps.append(
             CompletenessMissingStep(
                 pillar="projects",
                 weight=10,
-                title="Technical Projects & Open Source",
-                action_prompt="+10%: Showcase 1+ key technical Projects or Open-Source contributions.",
-                why_it_matters="Demonstrates builder competency for skills not reflected in formal employer titles.",
+                title=proj_title,
+                action_prompt=proj_prompt,
+                why_it_matters="Demonstrates execution ownership for initiatives beyond standard role titles.",
                 action_key="add_projects",
             )
         )
 
-    # 6. Hackathons, LeetCode & Awards (Max 10%)
+    # 6. Distinctions, Honors, Publications, Board Seats & Competitions (Max 10%)
     achieve_score = 0
     achieve_blocks = [
         b
         for b in blocks
-        if getattr(b, "category", "") in ("hackathon_achievement", "award")
+        if getattr(b, "category", "")
+        in ("hackathon_achievement", "award", "publication", "patent")
         or (
             isinstance(b, dict)
-            and b.get("category") in ("hackathon_achievement", "award")
+            and b.get("category")
+            in ("hackathon_achievement", "award", "publication", "patent")
         )
     ]
     has_leetcode = bool(
-        ext_links.get("leetcode_url") or ext_links.get("leetcode_stats")
+        ext_links.get("leetcode_url")
+        or ext_links.get("leetcode_stats")
+        or ext_links.get("leetcode_solved")
     )
     if hackathons or awards or achieve_blocks or has_leetcode:
         achieve_score = 10
     else:
+        ach_title = "Hackathons, LeetCode & Distinctions"
+        ach_prompt = (
+            "+10%: Add Hackathon wins, Awards, Patents, or Competition rankings."
+        )
+        if archetype in ("executive_leadership", "finance_fintech"):
+            ach_title = "Board Seats, Keynotes & Executive Honors"
+            ach_prompt = "+10%: Add Board Seats, Keynote Speaking, Advisory Roles, or Industry Awards."
+        elif archetype == "marketing_growth":
+            ach_title = "Industry Awards, Speaking & Publications"
+            ach_prompt = "+10%: Add Marketing/Industry Awards, Keynotes, or Published Thought Leadership."
+        elif archetype == "healthcare_lifesciences":
+            ach_title = "Publications, Fellowships, Grants & Honors"
+            ach_prompt = "+10%: Add Peer-Reviewed Publications, Grants, Certifications, or Clinical Honors."
+
         missing_steps.append(
             CompletenessMissingStep(
                 pillar="achievements",
                 weight=10,
-                title="Hackathons, LeetCode & Distinctions",
-                action_prompt="+10%: Add Hackathon wins, Awards, or LeetCode/Competition rankings.",
-                why_it_matters="Highlights your competitive edge to boost match probability on high-bar engineering teams.",
+                title=ach_title,
+                action_prompt=ach_prompt,
+                why_it_matters="Highlights your competitive distinction to boost match probability on high-bar teams.",
                 action_key="add_achievements",
             )
         )
@@ -299,6 +390,9 @@ def calculate_persona_completeness(
         or github_url
         or ext_links.get("linkedin_url")
         or ext_links.get("github_url")
+        or ext_links.get("portfolio_url")
+        or ext_links.get("executive_bio_url")
+        or ext_links.get("orcid_url")
     )
     if has_ext:
         logistics_score += 4
@@ -313,7 +407,7 @@ def calculate_persona_completeness(
                 pillar="external_logistics",
                 weight=10 - logistics_score,
                 title="External Links & Search Constraints",
-                action_prompt=f"+{10 - logistics_score}%: Add LinkedIn/GitHub links, work authorization, and salary floor.",
+                action_prompt=f"+{10 - logistics_score}%: Add LinkedIn/Portfolio/GitHub links, work authorization, and salary floor.",
                 why_it_matters="Prevents wasted applications by hard-filtering out roles incompatible with your visa, location, or salary.",
                 action_key="add_logistics",
             )
@@ -324,6 +418,7 @@ def calculate_persona_completeness(
         or bool(blocks)
         or bool(education)
         or bool(role_tenures)
+        or bool(work_experience)
         or bool(projects)
         or bool(hackathons)
         or bool(awards)

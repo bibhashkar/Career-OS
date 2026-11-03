@@ -402,5 +402,128 @@ describe("CandidatePersonaPage Full-Screen Dossier Workspace", () => {
       expect(api.deleteCVBlock).toHaveBeenCalledWith("block-1");
     });
   });
+
+  it("renders archetype customization bar and switches archetype lenses", async () => {
+    render(<CandidatePersonaPage />);
+    expect(await screen.findByTestId("candidate-persona-page")).toBeInTheDocument();
+
+    expect(screen.getByTestId("archetype-customization-bar")).toBeInTheDocument();
+    expect(screen.getByText("Technology & Engineering")).toBeInTheDocument();
+    expect(screen.getByText("Executive & C-Suite")).toBeInTheDocument();
+
+    // Click on Executive & C-Suite
+    fireEvent.click(screen.getByText("Executive & C-Suite"));
+
+    // Verify preset domain vertical chips appear
+    expect(screen.getByText(/Executive Leadership & Corporate Strategy/i)).toBeInTheDocument();
+    expect(screen.getByText(/P&L Ownership & Turnaround/i)).toBeInTheDocument();
+  });
+
+  it("supports adding and deleting projects & initiatives", async () => {
+    render(<CandidatePersonaPage />);
+    expect(await screen.findByTestId("candidate-persona-page")).toBeInTheDocument();
+
+    // Find and click Add Initiative / Project
+    const addProjBtn = screen.getByRole("button", { name: /Add Initiative \/ Project/i });
+    expect(addProjBtn).toBeInTheDocument();
+    fireEvent.click(addProjBtn);
+
+    // Fill form
+    const nameInput = screen.getByPlaceholderText(/e.g. Distributed Ledger Engine/i);
+    fireEvent.change(nameInput, { target: { value: "Distributed Raft Consensus Engine" } });
+
+    const descInput = screen.getByPlaceholderText(/Describe the problem, architectural or strategic solution/i);
+    fireEvent.change(descInput, { target: { value: "Engineered Byzantine fault-tolerant state machine processing 50k ops/sec." } });
+
+    // Submit project
+    fireEvent.click(screen.getByRole("button", { name: /Save Initiative/i }));
+
+    expect(await screen.findByText("Distributed Raft Consensus Engine")).toBeInTheDocument();
+    expect(screen.getByText(/Byzantine fault-tolerant/i)).toBeInTheDocument();
+  });
+
+  it("supports adding and deleting awards and distinctions", async () => {
+    render(<CandidatePersonaPage />);
+    expect(await screen.findByTestId("candidate-persona-page")).toBeInTheDocument();
+
+    // Find and click Add Honor / Distinction
+    const addAwardBtn = screen.getByRole("button", { name: /Add Honor \/ Distinction/i });
+    expect(addAwardBtn).toBeInTheDocument();
+    fireEvent.click(addAwardBtn);
+
+    // Fill form
+    const titleInput = screen.getByPlaceholderText(/e.g. 1st Place Winner/i);
+    fireEvent.change(titleInput, { target: { value: "FinTech Innovation Award 2025" } });
+
+    const issuerInput = screen.getByPlaceholderText(/e.g. IEEE, MIT, Forbes/i);
+    fireEvent.change(issuerInput, { target: { value: "Global FinTech Council" } });
+
+    // Submit award
+    fireEvent.click(screen.getByRole("button", { name: /Save Honor/i }));
+
+    expect(await screen.findByText("FinTech Innovation Award 2025")).toBeInTheDocument();
+  });
+
+  it("supports preferred locations tag manager, work arrangement, and portfolio URL", async () => {
+    render(<CandidatePersonaPage />);
+    expect(await screen.findByTestId("candidate-persona-page")).toBeInTheDocument();
+
+    // Preferred Locations: check initial tags
+    expect(screen.getByText("San Francisco, CA")).toBeInTheDocument();
+
+    // Add a new preferred location
+    const locInput = screen.getByPlaceholderText(/\+ Add Location/i);
+    fireEvent.change(locInput, { target: { value: "London, UK" } });
+    fireEvent.keyDown(locInput, { key: "Enter", code: "Enter" });
+
+    expect(screen.getByText("London, UK")).toBeInTheDocument();
+
+    // Portfolio URL input
+    const portfolioInput = screen.getByPlaceholderText(/Portfolio \/ Bio \/ Personal Site/i);
+    expect(portfolioInput).toBeInTheDocument();
+    fireEvent.change(portfolioInput, { target: { value: "https://bkar.dev" } });
+    expect(portfolioInput.value).toBe("https://bkar.dev");
+  });
+
+  it("allows setting default persona track and cloning a persona track", async () => {
+    const nonDefaultPersona = {
+      ...mockPersonas[0],
+      id: "p-specialized-1",
+      name: "Distributed Systems Lead",
+      is_default: false,
+      is_common_persona: false,
+    };
+    api.getCandidatePersonas.mockResolvedValue([mockPersonas[0], nonDefaultPersona]);
+    api.createCandidatePersona.mockResolvedValue({
+      ...nonDefaultPersona,
+      id: "p-clone-123",
+      name: "Distributed Systems Lead (Specialized)",
+    });
+
+    render(<CandidatePersonaPage />);
+    expect(await screen.findByTestId("candidate-persona-page")).toBeInTheDocument();
+
+    // Check Set as Default button for nonDefaultPersona
+    const setDefaultBtn = screen.getByTitle("Set as Default Track");
+    expect(setDefaultBtn).toBeInTheDocument();
+    fireEvent.click(setDefaultBtn);
+
+    await waitFor(() => {
+      expect(api.setDefaultPersona).toHaveBeenCalledWith("p-specialized-1");
+    });
+
+    // Check Clone button
+    const cloneBtns = screen.getAllByTitle("Clone Specialized Track");
+    expect(cloneBtns.length).toBeGreaterThan(0);
+    fireEvent.click(cloneBtns[0]);
+
+    await waitFor(() => {
+      expect(api.createCandidatePersona).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clone_from_persona_id: expect.any(String),
+        })
+      );
+    });
+  });
 });
 

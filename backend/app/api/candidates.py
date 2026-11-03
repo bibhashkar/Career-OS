@@ -34,6 +34,8 @@ from app.core.database import get_db
 from app.ingestion.resume_parser import (
     ParsedCandidateData,
     ParsedCVBlock,
+    extract_quantified_metrics,
+    extract_skills_from_text,
     parse_generic_resume_text,
     parse_resume_bytes,
 )
@@ -46,7 +48,11 @@ from app.models.user_account import (
     UserAccount,
 )
 from app.models.user_profile import UserProfile
-from app.schemas.candidate_dossier import compute_bullet_fingerprint
+from app.schemas.candidate_dossier import (
+    compute_bullet_fingerprint,
+    normalize_award_record,
+    normalize_institution_tier,
+)
 from app.services.diagnostics import (
     HolisticCandidateAudit,
     PersonaBenchmarkReport,
@@ -78,6 +84,8 @@ class CreateSpecializedPersonaRequest(BaseModel):
     seniority_level: str = Field(default="entry")
     years_experience: int = Field(default=0, ge=0)
     skills: list[str] = Field(default_factory=list)
+    clone_from_persona_id: str | None = None
+    career_intelligence: dict[str, Any] = Field(default_factory=dict)
 
 
 class UpdatePersonaRequest(BaseModel):
@@ -241,6 +249,52 @@ def _build_persona_detail_response(
         "email": u_email,
         "phone": u_phone,
     }
+
+    # Normalize education institution_tier values on read
+    raw_edu = career_intel.get("education")
+    if isinstance(raw_edu, list):
+        norm_edu: list[dict[str, Any]] = []
+        for ed in raw_edu:
+            if isinstance(ed, dict):
+                ed_copy = dict(ed)
+                ed_copy["institution_tier"] = normalize_institution_tier(
+                    ed_copy.get("institution_tier")
+                )
+                norm_edu.append(ed_copy)
+        career_intel["education"] = norm_edu
+
+    # Normalize awards_recognitions records on read
+    raw_awards = career_intel.get("awards_recognitions")
+    if isinstance(raw_awards, list):
+        career_intel["awards_recognitions"] = [
+            normalize_award_record(aw) for aw in raw_awards if isinstance(aw, dict)
+        ]
+
+    # Backfill quantified metrics on work_experience bullets if empty
+    raw_work = career_intel.get("work_experience")
+    if isinstance(raw_work, list):
+        norm_work: list[dict[str, Any]] = []
+        for w in raw_work:
+            if not isinstance(w, dict):
+                continue
+            w_copy = dict(w)
+            raw_bullets = w_copy.get("bullets")
+            if isinstance(raw_bullets, list):
+                norm_bullets: list[dict[str, Any]] = []
+                for b in raw_bullets:
+                    if not isinstance(b, dict):
+                        continue
+                    b_copy = dict(b)
+                    if not b_copy.get("metrics") and b_copy.get("raw_text"):
+                        extracted_m = extract_quantified_metrics(
+                            str(b_copy.get("raw_text") or "")
+                        )
+                        if extracted_m:
+                            b_copy["metrics"] = [m.model_dump() for m in extracted_m]
+                    norm_bullets.append(b_copy)
+                w_copy["bullets"] = norm_bullets
+            norm_work.append(w_copy)
+        career_intel["work_experience"] = norm_work
 
     completeness = calculate_persona_completeness(
         target_roles=list(persona.target_roles or []),
@@ -712,23 +766,56 @@ async def create_persona(
         )
 
     persona_id = uuid.uuid4()
+    cloned_ci: dict[str, Any] = dict(req.career_intelligence or {})
+    source_persona = None
+    if req.clone_from_persona_id:
+        try:
+            s_uuid = uuid.UUID(req.clone_from_persona_id)
+            source_stmt = (
+                select(CandidatePersona)
+                .options(
+                    selectinload(CandidatePersona.skills),
+                    selectinload(CandidatePersona.cv_block_rels),
+                )
+                .where(
+                    CandidatePersona.id == s_uuid,
+                    CandidatePersona.user_account_id == account.id,
+                )
+            )
+            source_persona = (await db.execute(source_stmt)).scalar_one_or_none()
+            if source_persona:
+                cloned_ci = dict(source_persona.career_intelligence or {})
+                if req.career_intelligence:
+                    cloned_ci.update(req.career_intelligence)
+        except ValueError:
+            pass
+
     persona = CandidatePersona(
         id=persona_id,
         user_account_id=account.id,
         name=clean_name,
         is_common_persona=False,
         is_default=False,
-        headline=req.headline,
-        target_roles=req.target_roles,
-        target_industries=req.target_industries,
-        seniority_level=req.seniority_level,
-        years_experience=req.years_experience,
-        career_intelligence={},
+        headline=req.headline or (source_persona.headline if source_persona else None),
+        target_roles=req.target_roles
+        or (list(source_persona.target_roles) if source_persona else []),
+        target_industries=req.target_industries
+        or (list(source_persona.target_industries) if source_persona else []),
+        seniority_level=req.seniority_level
+        if req.seniority_level != "entry"
+        else (source_persona.seniority_level if source_persona else "entry"),
+        years_experience=req.years_experience
+        or (source_persona.years_experience if source_persona else 0),
+        career_intelligence=cloned_ci,
     )
     db.add(persona)
 
-    # Attach declared skills
-    for s in req.skills:
+    # Attach declared skills (or clone from source)
+    target_skills = list(req.skills)
+    if not target_skills and source_persona and source_persona.skills:
+        target_skills = [s.skill_name for s in source_persona.skills]
+
+    for s in target_skills:
         db.add(
             PersonaSkill(
                 id=uuid.uuid4(),
@@ -740,6 +827,19 @@ async def create_persona(
                 is_core=True,
             )
         )
+
+    # Clone active CV block relations if cloning
+    if source_persona and source_persona.cv_block_rels:
+        for rel in source_persona.cv_block_rels:
+            if rel.is_active:
+                db.add(
+                    PersonaCVBlockRel(
+                        persona_id=persona_id,
+                        cv_block_id=rel.cv_block_id,
+                        priority_weight=rel.priority_weight,
+                        is_active=True,
+                    )
+                )
 
     await db.commit()
     await db.refresh(persona, attribute_names=["skills", "cv_block_rels"])
@@ -834,8 +934,20 @@ async def update_persona(
     persona.seniority_level = req.seniority_level
     persona.years_experience = req.years_experience
     persona.min_salary = req.min_salary
-    # Merge contact PII cleanly into career_intelligence
-    ci = dict(req.career_intelligence or persona.career_intelligence or {})
+    # Merge career_intelligence cleanly per top-level key to prevent accidental key wiping
+    existing_ci = dict(persona.career_intelligence or {})
+    incoming_ci = dict(req.career_intelligence or {})
+
+    for k, v in incoming_ci.items():
+        if k in ("contact_pii", "external_links", "profile_config") and isinstance(
+            v, dict
+        ):
+            sub = dict(existing_ci.get(k) or {})
+            sub.update(v)
+            existing_ci[k] = sub
+        else:
+            existing_ci[k] = v
+    ci = existing_ci
     c_pii = dict(ci.get("contact_pii") or {})
 
     target_full_name = (
@@ -856,6 +968,88 @@ async def update_persona(
         c_pii["phone"] = target_phone
     ci["contact_pii"] = c_pii
     persona.career_intelligence = ci
+
+    # Synchronize project records into CVBlock (category="project")
+    if "projects" in incoming_ci:
+        current_project_fps: set[str] = set()
+        for prj in ci.get("projects") or []:
+            if not isinstance(prj, dict):
+                continue
+            p_name = str(prj.get("name") or "").strip()
+            p_desc = str(prj.get("description") or "").strip()
+            if not p_name or not p_desc:
+                continue
+            p_skills = list(prj.get("technologies") or [])
+            if not p_skills:
+                p_skills = extract_skills_from_text(f"{p_name} {p_desc}")
+            p_metrics_list = extract_quantified_metrics(p_desc)
+            p_metrics: dict[str, Any] = {
+                str(m.metric_type): m.raw_metric for m in p_metrics_list
+            }
+            p_fp = prj.get("content_fingerprint") or compute_bullet_fingerprint(
+                str(user_uuid), f"project:{p_name}", p_desc
+            )
+            current_project_fps.add(p_fp)
+
+            b_stmt = select(CVBlock).where(
+                CVBlock.user_account_id == user_uuid,
+                CVBlock.content_fingerprint == p_fp,
+            )
+            existing_b = (await db.execute(b_stmt)).scalars().first()
+            if existing_b:
+                existing_b.title = p_name
+                existing_b.content = p_desc
+                existing_b.skills = p_skills
+                existing_b.metrics = p_metrics
+                block_to_link = existing_b
+            else:
+                embedding = await embed_text(p_desc)
+                new_b = CVBlock(
+                    id=uuid.uuid4(),
+                    user_account_id=user_uuid,
+                    user_profile_id=user_uuid,
+                    category="project",
+                    title=p_name,
+                    organization="Independent / Open Source",
+                    content=p_desc,
+                    metrics=p_metrics,
+                    skills=p_skills,
+                    content_fingerprint=p_fp,
+                    embedding=embedding,
+                )
+                db.add(new_b)
+                block_to_link = new_b
+
+            rel_stmt = select(PersonaCVBlockRel).where(
+                PersonaCVBlockRel.persona_id == persona.id,
+                PersonaCVBlockRel.cv_block_id == block_to_link.id,
+            )
+            if (await db.execute(rel_stmt)).scalars().first() is None:
+                db.add(
+                    PersonaCVBlockRel(
+                        persona_id=persona.id,
+                        cv_block_id=block_to_link.id,
+                        priority_weight=1.0,
+                        is_active=True,
+                    )
+                )
+
+        del_b_stmt = select(CVBlock).where(
+            CVBlock.user_account_id == user_uuid,
+            CVBlock.category == "project",
+        )
+        user_proj_blocks = (await db.execute(del_b_stmt)).scalars().all()
+        for upb in user_proj_blocks:
+            if (
+                upb.content_fingerprint
+                and upb.content_fingerprint not in current_project_fps
+            ):
+                await db.execute(
+                    delete(PersonaCVBlockRel).where(
+                        PersonaCVBlockRel.cv_block_id == upb.id
+                    )
+                )
+                await db.delete(upb)
 
     # Update account-level logistics and private PII if provided
     acc_stmt = select(UserAccount).where(UserAccount.id == user_uuid)
