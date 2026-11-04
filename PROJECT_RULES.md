@@ -3,7 +3,7 @@
 ## 1. Project Specifications & Architectural Context
 
 - **Source of Truth:** All development must strictly align with the [Master Project Specification](file:///home/bkar/dev/projects/career-os/MASTER_SPEC.md).
-- **Architecture Decisions:** Architectural shifts or major design choices must be captured in Architecture Decision Records (ADRs) under `doc/adr/` (e.g., `ADR-001-pgvector-schema.md`).
+- **Architecture Decisions:** Architectural shifts or major design choices must be captured in Architecture Decision Records (ADRs) under `docs/adr/` (e.g., `ADR-001-pgvector-schema.md`).
 - **Naming Conventions:** Never refer to agent configuration or internal scratch files by raw filenames in user-facing documentation. Refer to specifications by topic or title (e.g., "Master Project Specification §2", "ADR-001").
 
 ---

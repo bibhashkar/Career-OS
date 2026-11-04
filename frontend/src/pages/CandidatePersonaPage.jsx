@@ -11,31 +11,18 @@ import {
   AlertCircle,
   Loader2,
   Briefcase,
-  Calendar,
   GraduationCap,
-  Award,
   Link as LinkIcon,
-  FolderGit2,
   CheckCircle2,
-  TrendingUp,
   Upload,
   FileText,
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
   Shield,
   MapPin,
-  Clock,
-  DollarSign,
   Copy,
   CheckCheck,
   X,
   FileSearch,
   Eye,
-  Database,
-  Tag,
-  ArrowRight,
-  RefreshCw,
   Star,
 } from "lucide-react";
 import { ArchetypeCustomizationBar } from "../components/dossier/ArchetypeCustomizationBar";
@@ -81,23 +68,12 @@ const SENIORITY_LEVELS = [
   { value: "executive", label: "Executive / VP" },
 ];
 
-const SKILL_CATEGORIES = [
-  { key: "system_architecture", label: "System Architecture & Patterns" },
-  { key: "backend_and_frameworks", label: "Backend & Distributed Frameworks" },
-  { key: "ai_and_infrastructure", label: "AI, RAG & Vector Infrastructure" },
-  { key: "databases_and_caching", label: "Databases, Storage & Caching" },
-  { key: "cloud_and_devops", label: "Cloud, DevOps & CI/CD" },
-  { key: "frontend_and_ui", label: "Frontend & Web Architecture" },
-  { key: "security_and_compliance", label: "Security, Governance & Compliance" },
-  { key: "testing_and_qa", label: "Testing, Observability & QA" },
-];
-
 export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
   // Personas State
   const [personas, setPersonas] = useState([]);
   const [selectedPersonaId, setSelectedPersonaId] = useState(activePersona?.id || null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [_error, setError] = useState(null);
 
   // Form State for active persona
   const [dossierForm, setDossierForm] = useState({
@@ -133,7 +109,6 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
 
   // CVBlocks persisted in DB for candidate
   const [persistedBlocks, setPersistedBlocks] = useState([]);
-  const [loadingBlocks, setLoadingBlocks] = useState(false);
 
   // Editing CVBlock modal/inline state
   const [editingBlock, setEditingBlock] = useState(null);
@@ -173,7 +148,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
   // Ingestion & Parsing State
   const fileInputRef = useRef(null);
   const [parsingResume, setParsingResume] = useState(false);
-  const [parseError, setParseError] = useState(null);
+  const [_parseError, setParseError] = useState(null);
   const [stagedReview, setStagedReview] = useState(null); // When document parsed but not yet saved
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [pastedText, setPastedText] = useState("");
@@ -199,41 +174,8 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
 
   const currentPersona = personas.find((p) => p.id === selectedPersonaId) || personas[0] || null;
 
-  // 1. Fetch Personas and CVBlocks
-  const loadData = useCallback(async (overrideSelectId = null) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [pData, bData] = await Promise.all([
-        getCandidatePersonas(),
-        getCVBlocks().catch(() => []),
-      ]);
-      setPersonas(pData || []);
-      setPersistedBlocks(bData || []);
-
-      const targetId = overrideSelectId || selectedPersonaId;
-      const active =
-        pData.find((p) => p.id === targetId) ||
-        pData.find((p) => p.is_default) ||
-        pData[0];
-      if (active) {
-        setSelectedPersonaId(active.id);
-        populateFormFromPersona(active, bData || []);
-      }
-    } catch (err) {
-      console.error("Failed to load candidate personas:", err);
-      setError("Unable to load candidate dossier data. Please retry.");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedPersonaId]);
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
   // When selected persona changes, populate form
-  function populateFormFromPersona(p, blocks = persistedBlocks) {
+  const populateFormFromPersona = useCallback((p) => {
     if (!p) return;
     const ci = p.career_intelligence || {};
     const links = ci.external_links || {};
@@ -287,7 +229,40 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       semantic_profile_summary: ci.semantic_profile_summary || "",
       source_provenance: prov,
     });
-  }
+  }, []);
+
+  // 1. Fetch Personas and CVBlocks
+  const loadData = useCallback(async (overrideSelectId = null) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [pData, bData] = await Promise.all([
+        getCandidatePersonas(),
+        getCVBlocks().catch(() => []),
+      ]);
+      setPersonas(pData || []);
+      setPersistedBlocks(bData || []);
+
+      const targetId = overrideSelectId || selectedPersonaId;
+      const active =
+        pData.find((p) => p.id === targetId) ||
+        pData.find((p) => p.is_default) ||
+        pData[0];
+      if (active) {
+        setSelectedPersonaId(active.id);
+        populateFormFromPersona(active);
+      }
+    } catch (err) {
+      console.error("Failed to load candidate personas:", err);
+      setError("Unable to load candidate dossier data. Please retry.");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedPersonaId, populateFormFromPersona]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   function handleSelectPersona(p) {
     setSelectedPersonaId(p.id);
@@ -2127,7 +2102,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
                                   {/* Tags: Metrics & Skills */}
                                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
                                     {hasMetrics ? (
-                                      Object.entries(block.metrics).map(([k, v], mIdx) => (
+                                      Object.entries(block.metrics).map(([_k, v], mIdx) => (
                                         <span
                                           key={mIdx}
                                           className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"

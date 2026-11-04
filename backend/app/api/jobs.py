@@ -47,7 +47,12 @@ from app.ingestion.security import (
     sanitize_text,
     validate_and_guard_url,
 )
-from app.ingestion.service import compute_content_hash, compute_dedupe_fingerprint
+from app.ingestion.service import (
+    BoardSyncService,
+    compute_content_hash,
+    compute_dedupe_fingerprint,
+)
+from app.ingestion.taxonomy import LocationNormalizer, VisaSponsorshipParser
 from app.ingestion.verification import JobVerificationService
 from app.models.company_dossier import CompanyDossier
 from app.models.cv_block import CVBlock
@@ -787,8 +792,6 @@ async def paste_job_text(
     fingerprint = compute_dedupe_fingerprint(clean_company, clean_title, clean_location)
     content_hash = compute_content_hash(clean_desc)
 
-    from app.ingestion.taxonomy import LocationNormalizer, VisaSponsorshipParser
-
     loc_norm = LocationNormalizer()
     loc_info = loc_norm.normalize(clean_location)
 
@@ -797,8 +800,6 @@ async def paste_job_text(
 
     async with get_session_context() as session:
         # Link to custom/manual ATSBoard
-        from app.ingestion.service import BoardSyncService
-
         sync_service = BoardSyncService(session)
         board = await sync_service.get_or_create_board(
             "custom", f"manual_{clean_company.lower()[:20]}"

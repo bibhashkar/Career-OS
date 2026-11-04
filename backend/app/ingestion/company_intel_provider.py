@@ -17,6 +17,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.tools.company_intel import MOCK_DOSSIERS
 from app.ingestion.deterministic_extractor import extract_deterministic_requirements
 from app.ingestion.github_verifier import GitHubOrgVerifier
 from app.ingestion.models import (
@@ -149,8 +150,6 @@ class ProvenanceCompanyIntelProvider(CompanyIntelProviderPort):
             github_data.get("verified_domain") if github_data else None
         )
         # Hermetic fallback for known mock employers in offline/test environments
-        from app.agents.tools.company_intel import MOCK_DOSSIERS
-
         res_business_model = existing.business_model if existing else None
         res_culture = existing.culture_notes if existing else None
 

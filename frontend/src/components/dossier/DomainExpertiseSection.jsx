@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import {
-  Compass,
   Plus,
   ShieldCheck,
   Edit2,
@@ -48,7 +47,6 @@ export function DomainExpertiseSection({
     core_competencies: [],
   });
   const [regInput, setRegInput] = useState("");
-  const [compInput, setCompInput] = useState("");
   const [error, setError] = useState(null);
 
   function openAdd() {
@@ -59,7 +57,6 @@ export function DomainExpertiseSection({
       core_competencies: [],
     });
     setRegInput("");
-    setCompInput("");
     setError(null);
     setEditingIndex(null);
     setIsAdding(true);
@@ -78,7 +75,6 @@ export function DomainExpertiseSection({
         : [],
     });
     setRegInput("");
-    setCompInput("");
     setError(null);
     setEditingIndex(idx);
     setIsAdding(true);
@@ -100,26 +96,6 @@ export function DomainExpertiseSection({
       ...form,
       regulatory_frameworks: form.regulatory_frameworks.filter(
         (f) => f.toLowerCase() !== tag.toLowerCase()
-      ),
-    });
-  }
-
-  function handleAddCompetency() {
-    const clean = compInput.trim();
-    if (clean && !form.core_competencies.some((c) => c.toLowerCase() === clean.toLowerCase())) {
-      setForm({
-        ...form,
-        core_competencies: [...form.core_competencies, clean],
-      });
-      setCompInput("");
-    }
-  }
-
-  function handleRemoveCompetency(tag) {
-    setForm({
-      ...form,
-      core_competencies: form.core_competencies.filter(
-        (c) => c.toLowerCase() !== tag.toLowerCase()
       ),
     });
   }

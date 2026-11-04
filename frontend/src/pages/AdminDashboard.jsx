@@ -26,9 +26,7 @@ import {
   ShieldCheck,
   ChevronDown,
   ChevronUp,
-  FileText,
   PlusCircle,
-  Sparkles,
   Loader2,
 } from "lucide-react";
 import {

@@ -92,8 +92,6 @@ export function JobDetailPanel({
   match,
   searchMode = "cv_grounded",
   profileReady = true,
-  profileStatusReason = "",
-  completeness = null,
   onOpenProfileModal,
   onTailorCV,
   onStartInterview,

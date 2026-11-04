@@ -9,7 +9,6 @@ import {
 } from "react-router-dom";
 import {
   Briefcase,
-  Compass,
   FileText,
   MessageSquare,
   Award,

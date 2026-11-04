@@ -7,7 +7,6 @@ import {
   Trash2,
   AlertCircle,
   X,
-  Award,
 } from "lucide-react";
 
 export function AwardsDistinctionsSection({

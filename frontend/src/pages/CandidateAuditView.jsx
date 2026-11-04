@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { getCandidateAudit } from "../services/api";
 
-export function CandidateAuditView({ onNavigateBack }) {
+export function CandidateAuditView() {
   const [audit, setAudit] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

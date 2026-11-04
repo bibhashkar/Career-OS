@@ -1,18 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  Search,
   MapPin,
-  ChevronDown,
-  ChevronUp,
   ChevronLeft,
   ChevronRight,
-  FileText,
-  MessageSquare,
   AlertCircle,
   Loader2,
   Briefcase,
-  CheckCircle2,
   Sparkles,
   TrendingUp,
   RefreshCw,
@@ -29,7 +23,6 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { getJobMatches } from "../services/api";
-import { JobProvenanceBadge } from "../components/JobProvenanceBadge";
 import { JobDiagnosticModal } from "../components/JobDiagnosticModal";
 import { JobDetailPanel } from "../components/JobDetailPanel";
 import {
@@ -48,7 +41,7 @@ const PAGE_SIZE = 15;
  * Builds an array of page numbers and ellipsis tokens for pagination.
  * e.g. [1, 2, 3] or [1, 2, 3, 4, 5, "...", 12]
  */
-export function generatePaginationPages(currentPage, totalPages, maxVisible = 5) {
+export function generatePaginationPages(currentPage, totalPages, _maxVisible = 5) {
   if (totalPages <= 1) return [1];
   if (totalPages <= 7) {
     return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -132,7 +125,7 @@ export function Dashboard({
   onSelectJob,
   onStartInterview,
   activePersona,
-  defaultTab = "matches",
+  defaultTab: _defaultTab = "matches",
   onOpenProfileModal,
 }) {
   const [searchParams, setSearchParams] = useSearchParams();

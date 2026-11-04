@@ -10,9 +10,7 @@ import {
   ArrowRight,
   ArrowLeft,
   Plus,
-  ShieldCheck,
   Briefcase,
-  Layers,
 } from "lucide-react";
 import {
   parseResumeDocument,
@@ -66,7 +64,7 @@ export function OnboardingWizard() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [visaStatus, setVisaStatus] = useState("Citizen");
-  const [locations, setLocations] = useState(["Remote"]);
+  const [locations] = useState(["Remote"]);
   const [remotePref, setRemotePref] = useState("Remote");
   const [targetRoles, setTargetRoles] = useState([]);
   const [yearsExperience, setYearsExperience] = useState(0);

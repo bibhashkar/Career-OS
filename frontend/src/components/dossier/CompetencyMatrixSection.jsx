@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Tag, Plus, X, Layers, Sparkles } from "lucide-react";
+import { Tag, Plus, X } from "lucide-react";
 
 export const ARCHETYPE_SKILL_CATEGORIES = {
   technology_engineering: [

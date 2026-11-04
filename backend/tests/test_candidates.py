@@ -9,14 +9,16 @@ from collections.abc import AsyncGenerator
 import docx
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.auth import create_access_token
 from app.core.database import get_db
 from app.ingestion.resume_parser import (
+    _extract_deterministic_projects,
     detect_is_linkedin_pdf,
     extract_candidate_name,
     extract_metrics,
+    extract_quantified_metrics,
     extract_skills_from_text,
     extract_text_from_docx,
     parse_linkedin_text,
@@ -24,7 +26,12 @@ from app.ingestion.resume_parser import (
 )
 from app.main import app
 from app.models.user_account import UserAccount
+from app.schemas.candidate_dossier import (
+    normalize_award_record,
+    normalize_institution_tier,
+)
 from app.services.diagnostics import calculate_persona_completeness
+from app.services.matching import calculate_prestige_score
 
 
 def test_extract_skills_from_text() -> None:
@@ -126,8 +133,6 @@ async def test_candidate_onboarding_and_persona_api_flow(
     db_session: AsyncSession,
 ) -> None:
     """Verify complete onboarding API flow, persona switcher, and block CRUD."""
-
-    from sqlalchemy.ext.asyncio import async_sessionmaker
 
     engine = db_session.bind
     session_maker = async_sessionmaker(
@@ -283,8 +288,6 @@ async def test_persona_management_and_uniqueness_flow(
     Verify persona editing, renaming, case-insensitive duplicate guards,
     and Universal Profile rename/delete protections.
     """
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
     engine = db_session.bind
     session_maker = async_sessionmaker(
         bind=engine,
@@ -689,16 +692,6 @@ def test_extract_candidate_name_edge_cases() -> None:
 
 def test_multi_disciplinary_metrics_and_projects() -> None:
     """Verify regex improvements for business, leadership, scale, and project extraction."""
-    from app.ingestion.resume_parser import (
-        _extract_deterministic_projects,
-        extract_quantified_metrics,
-    )
-    from app.schemas.candidate_dossier import (
-        normalize_award_record,
-        normalize_institution_tier,
-    )
-    from app.services.matching import calculate_prestige_score
-
     # 1. Metric extraction tests
     b1 = "Optimized transaction file generation by 42%, reducing request processing to <2 seconds for 1,000+ concurrent dataset"
     m1 = extract_quantified_metrics(b1)

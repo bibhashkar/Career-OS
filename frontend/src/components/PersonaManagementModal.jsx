@@ -19,7 +19,6 @@ import {
   Link as LinkIcon,
   FolderGit2,
   CheckCircle2,
-  TrendingUp,
   Upload,
   FileText,
   ChevronDown,

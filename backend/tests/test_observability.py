@@ -18,7 +18,7 @@ from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 
 from app.agents.graph import route_ats
 from app.agents.state import AgentState
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.core.logging import set_correlation_id
 from app.core.metrics import metrics_registry
 from app.core.tracing import (
@@ -151,8 +151,6 @@ class TestHermeticIsolationAndConfig:
 
     def test_sampling_rate_validation(self) -> None:
         """Sampling rate must be between 0.0 and 1.0."""
-        from app.core.config import Settings
-
         with pytest.raises(ValueError, match="PHOENIX_SAMPLING_RATE"):
             Settings(PHOENIX_SAMPLING_RATE=1.5)
 

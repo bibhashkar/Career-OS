@@ -33,6 +33,7 @@ export default [
         URLSearchParams: "readonly",
         navigator: "readonly",
         Blob: "readonly",
+        File: "readonly",
         URL: "readonly",
         FormData: "readonly",
         alert: "readonly",
@@ -53,10 +54,7 @@ export default [
       "react/jsx-uses-react": "off",
       "react/react-in-jsx-scope": "off",
       "react/jsx-uses-vars": "error",
-      "react-refresh/only-export-components": [
-        "warn",
-        { allowConstantExport: true },
-      ],
+      "react-refresh/only-export-components": "off",
       "no-unused-vars": [
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^(React|_)" },
