@@ -7,14 +7,24 @@ and performs atomic upserts, tracking first_seen_at, last_seen_at, and soft-clos
 jobs absent from consecutive board syncs.
 """
 
-import hashlib
 import logging
-import re
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.fingerprints import (
+    compute_canonical_fingerprint as compute_canonical_fingerprint,
+)
+from app.domain.fingerprints import (
+    compute_content_hash as compute_content_hash,
+)
+from app.domain.fingerprints import (
+    compute_dedupe_fingerprint as compute_dedupe_fingerprint,
+)
+from app.domain.fingerprints import (
+    normalize_job_title as normalize_job_title,
+)
 from app.ingestion.adapters.ats import (
     AshbyAdapter,
     GreenhouseAdapter,
@@ -37,49 +47,6 @@ from app.models.ingestion import ATSBoard, IngestionRun
 from app.models.job_listing import JobListing
 
 logger = logging.getLogger("career_os.ingestion.service")
-
-
-def compute_dedupe_fingerprint(company: str, title: str, location: str) -> str:
-    """
-    Compute cross-source dedupe fingerprint:
-    hash(normalized company, normalized title, normalized location region).
-    """
-    norm_company = re.sub(r"[^a-z0-9]", "", company.lower())
-    norm_title = re.sub(r"[^a-z0-9]", "", title.lower())
-    norm_loc = re.sub(r"[^a-z0-9]", "", location.lower())
-    raw = f"{norm_company}:{norm_title}:{norm_loc}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
-
-
-def compute_content_hash(description: str) -> str:
-    """Compute sha256 hash of job description text for change tracking."""
-    return hashlib.sha256(description.encode("utf-8")).hexdigest()[:32]
-
-
-def normalize_job_title(title: str) -> str:
-    """Normalize job title by lowercasing and stripping trailing geographic markers."""
-    t = title.lower().strip()
-    t = re.sub(
-        r"\s*-\s*(nyc|new york|sf|san francisco|toronto|boston|austin|seattle|chicago|london|berlin|munich|madrid|dublin|bengaluru|singapore|sydney|remote)\b",
-        "",
-        t,
-        flags=re.IGNORECASE,
-    )
-    t = re.sub(
-        r"\s*\((remote\s+[a-z]+|remote|us|usa|emea|apac|latam|canada)\)\s*$",
-        "",
-        t,
-        flags=re.IGNORECASE,
-    )
-    return re.sub(r"[^a-z0-9]", "", t)
-
-
-def compute_canonical_fingerprint(company: str, title: str) -> str:
-    """Compute canonical requisition fingerprint invariant to geographic variants."""
-    norm_company = re.sub(r"[^a-z0-9]", "", company.lower())
-    norm_title = normalize_job_title(title)
-    raw = f"{norm_company}:{norm_title}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
 
 
 class BoardSyncService:

@@ -18,6 +18,7 @@ from typing import Any
 import docx
 import pdfplumber
 
+from app.domain.regex_patterns import RE_CALENDAR_YEAR
 from app.ingestion.router import detect_is_linkedin_pdf as detect_is_linkedin_pdf
 from app.ingestion.router import triage_resume_layout
 from app.ingestion.taxonomy import SKILL_TAXONOMY
@@ -1111,7 +1112,7 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
             continue
         deg_match = RE_DEGREE.search(clean_e)
         maj_match = RE_MAJOR.search(clean_e)
-        yr_match = re.search(r"\b(19\d\d|20\d\d)\b", clean_e)
+        yr_match = RE_CALENDAR_YEAR.search(clean_e)
         tier: InstitutionTier = "standard"
         for top_u in TOP_TECH_UNIVERSITIES:
             if top_u in clean_e.lower():
@@ -1177,7 +1178,7 @@ def parse_generic_resume_text(text: str) -> CandidateProfileDossier:
             clean_a = parts[0]
             org = parts[1] if len(parts) > 1 else None
 
-        yr_m = re.search(r"\b(19\d\d|20\d\d)\b", full_content)
+        yr_m = RE_CALENDAR_YEAR.search(full_content)
         a_date = yr_m.group(1) if yr_m else None
         a_cat = (
             "hackathon"

@@ -18,6 +18,7 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+import uvicorn
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -169,3 +170,13 @@ async def health_check() -> dict[str, str]:
         "environment": settings.APP_ENV,
         "database": db_status,
     }
+
+
+def run() -> None:
+    """Run Career-OS API server using Uvicorn."""
+    uvicorn.run(
+        "app.main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.APP_DEBUG,
+    )

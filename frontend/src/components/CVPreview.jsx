@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Check, Copy, UserCheck, Layers, TrendingUp, Sparkles } from "lucide-react";
+import { slugify } from "../utils/textUtils";
 
 export function CVPreview({ draft }) {
   const [copied, setCopied] = useState(false);
@@ -35,7 +36,7 @@ ${draft.experience_blocks
   };
 
   const handleDownload = (format) => {
-    const filename = `tailored_cv_${(draft.target_company || "draft").toLowerCase().replace(/[^a-z0-9]/g, "_")}.${format === "txt" ? "txt" : "md"}`;
+    const filename = `tailored_cv_${slugify(draft.target_company || "draft")}.${format === "txt" ? "txt" : "md"}`;
     const textContent = format === "txt"
       ? `
 ${(draft.candidate_title || "Software Engineer").toUpperCase()}

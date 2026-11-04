@@ -19,7 +19,7 @@ help:
 	@echo "  make docker-up     Start full stack with Docker Compose using .env"
 	@echo "  make docker-down   Stop Docker Compose services"
 	@echo "  make docker-infra  Start only Postgres and Phoenix infrastructure services"
-	@echo "  make db-migrate    Apply Alembic database migrations"
+	@echo "  make db-migrate    Apply database migrations via db/migrate.py"
 	@echo "  make db-shell      Open interactive psql shell inside the Postgres container"
 	@echo "  make backup-db     Execute backup script for Postgres & pgvector schemas"
 	@echo "  make clean         Remove cache and build artifacts"

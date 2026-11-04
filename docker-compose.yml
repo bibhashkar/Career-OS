@@ -30,6 +30,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend/app:/app/app
+      - ./db:/app/db
     env_file:
       - .env
     environment:
@@ -70,6 +71,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend/app:/app/app
+      - ./db:/app/db
     env_file:
       - .env
     environment:

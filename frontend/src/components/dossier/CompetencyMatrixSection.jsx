@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Tag, Plus, X } from "lucide-react";
+import { slugify } from "../../utils/textUtils";
 
 export const ARCHETYPE_SKILL_CATEGORIES = {
   technology_engineering: [
@@ -124,7 +125,7 @@ export function CompetencyMatrixSection({
     e.preventDefault();
     const clean = customCatName.trim();
     if (!clean) return;
-    const key = clean.toLowerCase().replace(/[^a-z0-9]/g, "_");
+    const key = slugify(clean);
     if (!allCategories.some((c) => c.key === key)) {
       setCustomCategories([...customCategories, { key, label: clean }]);
       setSelectedCategoryKey(key);

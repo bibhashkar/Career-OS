@@ -43,6 +43,7 @@ import {
   updateCVBlock,
   deleteCVBlock,
 } from "../services/api";
+import { normalizeAlphanumeric } from "../utils/textUtils";
 
 const VISA_STATUS_OPTIONS = [
   "Citizen",
@@ -350,11 +351,11 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
     // Merge incoming tenures with existing tenures avoiding duplicates
     const mergedWorkExp = [...dossierForm.work_experience];
     for (const inExp of incomingWorkExp) {
-      const inCompNorm = (inExp.company_name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      const inTitleNorm = (inExp.job_title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const inCompNorm = normalizeAlphanumeric(inExp.company_name);
+      const inTitleNorm = normalizeAlphanumeric(inExp.job_title);
       const existingIdx = mergedWorkExp.findIndex((ex) => {
-        const exCompNorm = (ex.company_name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-        const exTitleNorm = (ex.job_title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const exCompNorm = normalizeAlphanumeric(ex.company_name);
+        const exTitleNorm = normalizeAlphanumeric(ex.job_title);
         const exStart = String(ex.start_date || "").slice(0, 4);
         const inStart = String(inExp.start_date || "").slice(0, 4);
         return (
@@ -512,15 +513,14 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       const updated = await updateCandidatePersona(currentPersona.id, payload);
 
       // Persist any unpersisted blocks and bullets into pgvector CVBlocks
-      const normalizeText = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
       const persistedContentNormSet = new Set(
-        persistedBlocks.map((b) => normalizeText(b.content))
+        persistedBlocks.map((b) => normalizeAlphanumeric(b.content))
       );
 
       // 1. Process staged review blocks if present
       if (stagedReview?.stagedBlocks?.length > 0) {
         for (const block of stagedReview.stagedBlocks) {
-          const bContentNorm = normalizeText(block.content);
+          const bContentNorm = normalizeAlphanumeric(block.content);
           if (persistedContentNormSet.has(bContentNorm)) {
             continue; // Skip duplicate proof point
           }
@@ -545,7 +545,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       for (const exp of (dossierForm.work_experience || [])) {
         for (const bullet of (exp.bullets || [])) {
           const rawText = (bullet.raw_text || "").trim();
-          const rawTextNorm = normalizeText(rawText);
+          const rawTextNorm = normalizeAlphanumeric(rawText);
           if (!rawText || persistedContentNormSet.has(rawTextNorm)) {
             continue;
           }
@@ -1946,20 +1946,19 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
                 // Find matching persisted CV blocks for this tenure:
                 // 1) Blocks whose content matches any bullet in this tenure, OR
                 // 2) Blocks whose title matches this tenure's title and company matches
-                const normalizeText = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
                 const tenureBulletsNormSet = new Set(
-                  (exp.bullets || []).map((b) => normalizeText(b.raw_text))
+                  (exp.bullets || []).map((b) => normalizeAlphanumeric(b.raw_text))
                 );
                 const relatedBlocks = persistedBlocks.filter(
                   (b) =>
-                    tenureBulletsNormSet.has(normalizeText(b.content)) ||
+                    tenureBulletsNormSet.has(normalizeAlphanumeric(b.content)) ||
                     (b.organization &&
                       exp.company_name &&
-                      normalizeText(b.organization).includes(normalizeText(exp.company_name)) &&
+                      normalizeAlphanumeric(b.organization).includes(normalizeAlphanumeric(exp.company_name)) &&
                       b.title &&
                       exp.job_title &&
-                      (normalizeText(b.title).includes(normalizeText(exp.job_title)) ||
-                        normalizeText(exp.job_title).includes(normalizeText(b.title))))
+                      (normalizeAlphanumeric(b.title).includes(normalizeAlphanumeric(exp.job_title)) ||
+                        normalizeAlphanumeric(exp.job_title).includes(normalizeAlphanumeric(b.title))))
                 );
 
                 return (
@@ -2042,10 +2041,10 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
                     <div className="space-y-2 pt-2 border-t border-slate-850">
                       {(() => {
                         const persistedContentNormSet = new Set(
-                          relatedBlocks.map((b) => normalizeText(b.content))
+                          relatedBlocks.map((b) => normalizeAlphanumeric(b.content))
                         );
                         const unpersistedBullets = (exp.bullets || []).filter(
-                          (b) => !persistedContentNormSet.has(normalizeText(b.raw_text))
+                          (b) => !persistedContentNormSet.has(normalizeAlphanumeric(b.raw_text))
                         );
 
                         if (relatedBlocks.length === 0 && unpersistedBullets.length === 0) {

@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 
 import httpx
 
+from app.core.datetime_utils import parse_iso_datetime_safe
 from app.core.http import DEFAULT_TIMEOUT
 from app.ingestion.models import (
     ATSProviderEnum,
@@ -86,14 +87,7 @@ class GreenhouseAdapter(ATSAdapterPort):
             raw_content = item.get("content", "")
             description = _clean_html_to_text(raw_content)
 
-            posted_at: datetime | None = None
-            if item.get("updated_at"):
-                try:
-                    posted_at = datetime.fromisoformat(
-                        item["updated_at"].replace("Z", "+00:00")
-                    )
-                except ValueError:
-                    pass
+            posted_at = parse_iso_datetime_safe(item.get("updated_at"))
 
             loc = LocationNormalizer.normalize(location)
             visa = VisaSponsorshipParser.parse(description)
@@ -355,13 +349,9 @@ class AshbyAdapter(ATSAdapterPort):
                 else sanitize_text(raw_desc)
             )
 
-            posted_at: datetime | None = None
-            date_str = item.get("publishedAt") or item.get("publishedDate")
-            if date_str:
-                try:
-                    posted_at = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                except ValueError:
-                    pass
+            posted_at = parse_iso_datetime_safe(
+                item.get("publishedAt") or item.get("publishedDate")
+            )
 
             loc = LocationNormalizer.normalize(location)
             if item.get("isRemote"):
@@ -518,15 +508,7 @@ class WorkableAdapter(ATSAdapterPort):
                     or f"https://apply.workable.com/{slug}/j/{shortcode}/"
                 )
 
-                posted_at: datetime | None = None
-                date_str = item.get("published")
-                if date_str:
-                    try:
-                        posted_at = datetime.fromisoformat(
-                            date_str.replace("Z", "+00:00")
-                        )
-                    except ValueError:
-                        pass
+                posted_at = parse_iso_datetime_safe(item.get("published"))
 
                 return DiscoveredJobDTO(
                     ats_provider="workable",
@@ -612,15 +594,7 @@ class WorkableAdapter(ATSAdapterPort):
                     or f"https://apply.workable.com/{slug}/j/{job_id}/"
                 )
 
-                posted_at: datetime | None = None
-                date_str = data.get("published")
-                if date_str:
-                    try:
-                        posted_at = datetime.fromisoformat(
-                            date_str.replace("Z", "+00:00")
-                        )
-                    except ValueError:
-                        pass
+                posted_at = parse_iso_datetime_safe(data.get("published"))
 
                 return DiscoveredJobDTO(
                     ats_provider="workable",
@@ -777,15 +751,7 @@ class SmartRecruitersAdapter(ATSAdapterPort):
 
                 visa = VisaSponsorshipParser.parse(description)
 
-                posted_at: datetime | None = None
-                date_str = item.get("releasedDate")
-                if date_str:
-                    try:
-                        posted_at = datetime.fromisoformat(
-                            date_str.replace("Z", "+00:00")
-                        )
-                    except ValueError:
-                        pass
+                posted_at = parse_iso_datetime_safe(item.get("releasedDate"))
 
                 return DiscoveredJobDTO(
                     ats_provider="smartrecruiters",
@@ -879,15 +845,7 @@ class SmartRecruitersAdapter(ATSAdapterPort):
 
                 visa = VisaSponsorshipParser.parse(description)
 
-                posted_at: datetime | None = None
-                date_str = det_data.get("releasedDate")
-                if date_str:
-                    try:
-                        posted_at = datetime.fromisoformat(
-                            date_str.replace("Z", "+00:00")
-                        )
-                    except ValueError:
-                        pass
+                posted_at = parse_iso_datetime_safe(det_data.get("releasedDate"))
 
                 return DiscoveredJobDTO(
                     ats_provider="smartrecruiters",
