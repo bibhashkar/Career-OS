@@ -1442,7 +1442,7 @@ def haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float
 
 def build_stage1_query(
     filters: JobSearchFilterDTO, persona_id: str | None = None
-) -> Select[tuple[JobListing]]:
+) -> Select[JobListing]:
     """
     Construct Stage 1 SQL query enforcing strict null-safety (ADR-008 & Spec v1.0.0).
 
@@ -1450,7 +1450,7 @@ def build_stage1_query(
     Applies Tri-Tier Work Auth, bounding-box commute radius, compensation floor,
     and tokenized entity constraints.
     """
-    query: Select[tuple[JobListing]] = (
+    query: Select[JobListing] = (
         select(JobListing)
         .options(selectinload(JobListing.ats_board))
         .where(JobListing.status == "active")

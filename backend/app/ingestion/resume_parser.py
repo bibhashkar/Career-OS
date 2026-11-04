@@ -18,6 +18,7 @@ from typing import Any
 import docx
 import pdfplumber
 
+from app.ingestion.router import detect_is_linkedin_pdf as detect_is_linkedin_pdf
 from app.ingestion.router import triage_resume_layout
 from app.ingestion.taxonomy import SKILL_TAXONOMY
 from app.schemas.candidate_dossier import (
