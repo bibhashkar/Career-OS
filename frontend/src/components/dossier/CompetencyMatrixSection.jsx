@@ -82,6 +82,8 @@ export function CompetencyMatrixSection({
   const [isAddingCustomCategory, setIsAddingCustomCategory] = useState(false);
   const [customCatName, setCustomCatName] = useState("");
   const [customCategories, setCustomCategories] = useState([]);
+  const [inlineAddCatKey, setInlineAddCatKey] = useState(null);
+  const [inlineSkillInput, setInlineSkillInput] = useState("");
 
   const baseCategories =
     ARCHETYPE_SKILL_CATEGORIES[archetype] ||
@@ -105,13 +107,17 @@ export function CompetencyMatrixSection({
   }
 
   function handleAddInline(catKey) {
-    const inputVal = window.prompt(`Add new skill/competency to "${allCategories.find((c) => c.key === catKey)?.label}":`);
-    if (inputVal && inputVal.trim()) {
-      const clean = inputVal.trim();
-      if (!skills.some((s) => s.toLowerCase() === clean.toLowerCase())) {
-        onAddSkill(clean, catKey);
-      }
+    setInlineAddCatKey(catKey);
+    setInlineSkillInput("");
+  }
+
+  function handleCommitInline(catKey) {
+    const clean = inlineSkillInput.trim();
+    if (clean && !skills.some((s) => s.toLowerCase() === clean.toLowerCase())) {
+      onAddSkill(clean, catKey);
     }
+    setInlineAddCatKey(null);
+    setInlineSkillInput("");
   }
 
   function handleCreateCustomCategory(e) {
@@ -228,16 +234,57 @@ export function CompetencyMatrixSection({
                 <span className="text-[11px] font-semibold text-slate-400">
                   {cat.label} ({catSkills.length})
                 </span>
-                <button
-                  type="button"
-                  onClick={() => handleAddInline(cat.key)}
-                  className="text-[10px] text-slate-500 hover:text-sky-400 inline-flex items-center gap-0.5 cursor-pointer"
-                  title={`Add tag directly to ${cat.label}`}
-                >
-                  <Plus className="w-2.5 h-2.5" />
-                  <span>Add</span>
-                </button>
+                {inlineAddCatKey !== cat.key && (
+                  <button
+                    type="button"
+                    onClick={() => handleAddInline(cat.key)}
+                    className="text-[10px] text-slate-500 hover:text-sky-400 inline-flex items-center gap-0.5 cursor-pointer"
+                    title={`Add tag directly to ${cat.label}`}
+                  >
+                    <Plus className="w-2.5 h-2.5" />
+                    <span>Add</span>
+                  </button>
+                )}
               </div>
+
+              {inlineAddCatKey === cat.key && (
+                <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-slate-950 border border-sky-500/60 animate-in fade-in duration-150">
+                  <input
+                    type="text"
+                    placeholder={`Add tag to ${cat.label}...`}
+                    value={inlineSkillInput}
+                    onChange={(e) => setInlineSkillInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleCommitInline(cat.key);
+                      } else if (e.key === "Escape") {
+                        setInlineAddCatKey(null);
+                        setInlineSkillInput("");
+                      }
+                    }}
+                    className="flex-1 px-2 py-0.5 bg-slate-900 border border-slate-700 rounded text-xs text-white placeholder-slate-500 focus:outline-none"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleCommitInline(cat.key)}
+                    className="px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-semibold cursor-pointer"
+                  >
+                    Add
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInlineAddCatKey(null);
+                      setInlineSkillInput("");
+                    }}
+                    className="p-1 text-slate-400 hover:text-white"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
 
               <div className="flex flex-wrap items-center gap-1.5">
                 {catSkills.length > 0 ? (

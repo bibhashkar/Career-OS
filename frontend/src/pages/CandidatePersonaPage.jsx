@@ -626,9 +626,10 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       await loadData();
       setSelectedPersonaId(newP.id);
       populateFormFromPersona(newP);
+      setSaveSuccessMsg(`Created track "${newP.name}".`);
     } catch (err) {
       console.error("Failed to create specialized persona:", err);
-      alert(err.response?.data?.detail || "Failed to create specialized track.");
+      setSaveErrorMsg(err.response?.data?.detail || "Failed to create specialized track.");
     } finally {
       setLoading(false);
     }
@@ -640,21 +641,26 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
     if (!window.confirm(`Are you sure you want to delete the track "${p.name}"?`)) return;
 
     try {
+      setSaveErrorMsg(null);
       await deleteCandidatePersona(p.id);
       await loadData();
+      setSaveSuccessMsg(`Track "${p.name}" deleted.`);
     } catch (err) {
-      alert("Failed to delete persona track.");
+      console.error("Failed to delete track:", err);
+      setSaveErrorMsg("Failed to delete persona track.");
     }
   }
 
   // 6b. Set Default Persona Track
   async function handleSetDefaultTrack(personaId) {
     try {
+      setSaveErrorMsg(null);
       await setDefaultPersona(personaId);
       await loadData(personaId);
+      setSaveSuccessMsg("Default persona track updated.");
     } catch (err) {
       console.error("Failed to set default track:", err);
-      alert("Failed to set default track.");
+      setSaveErrorMsg("Failed to set default track.");
     }
   }
 
@@ -662,6 +668,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
   async function handleCloneTrack(sourcePersona) {
     try {
       setLoading(true);
+      setSaveErrorMsg(null);
       const cloneName = `${sourcePersona.name || "Track"} (Specialized)`;
       const created = await createCandidatePersona({
         name: cloneName,
@@ -670,9 +677,10 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
         career_intelligence: sourcePersona.career_intelligence || {},
       });
       await loadData(created.id);
+      setSaveSuccessMsg(`Cloned track "${created.name}".`);
     } catch (err) {
       console.error("Failed to clone persona track:", err);
-      alert(err.response?.data?.detail || "Failed to clone persona track.");
+      setSaveErrorMsg(err.response?.data?.detail || "Failed to clone persona track.");
     } finally {
       setLoading(false);
     }
@@ -779,7 +787,7 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
       setEditingBlock(null);
     } catch (err) {
       console.error("Failed to save CV block:", err);
-      alert("Unable to save achievement block.");
+      setSaveErrorMsg("Unable to save achievement block.");
     }
   }
 
@@ -801,8 +809,10 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
           })),
         }));
       }
+      setSaveSuccessMsg("Achievement proof point removed.");
     } catch (err) {
-      alert("Failed to delete block.");
+      console.error("Failed to delete block:", err);
+      setSaveErrorMsg("Failed to delete achievement block.");
     }
   }
 
@@ -2414,6 +2424,28 @@ export function CandidatePersonaPage({ activePersona, onPersonaChange }) {
               />
             </div>
           </section>
+
+          {/* Bottom Save Action Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl">
+            <div>
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                Synchronize Career Dossier
+              </h4>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                All confirmed changes will be indexed into pgvector memory and prioritized for matching.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleSaveDossier}
+              disabled={saveLoading}
+              className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-md shadow-sky-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 shrink-0"
+            >
+              {saveLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              <span>Save Dossier Changes</span>
+            </button>
+          </div>
         </div>
       </div>
 

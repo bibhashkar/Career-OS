@@ -626,13 +626,24 @@ export function PersonaManagementModal({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            data-testid="close-persona-modal-btn"
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <a
+              href="#/profile"
+              onClick={() => onClose && onClose()}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-950/80 hover:bg-sky-900 border border-sky-800/80 text-sky-300 text-xs font-semibold transition-colors cursor-pointer"
+              title="Navigate to full 360° Candidate Dossier"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+              <span>Full Dossier</span>
+            </a>
+            <button
+              onClick={onClose}
+              data-testid="close-persona-modal-btn"
+              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Content Body */}
