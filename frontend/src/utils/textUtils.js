@@ -29,3 +29,4 @@ export function slugify(text, separator = "_") {
     .replace(/[^a-z0-9]+/g, separator)
     .replace(new RegExp(`^\\${separator}+|\\${separator}+$`, "g"), "");
 }
+
