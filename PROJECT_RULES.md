@@ -47,8 +47,15 @@ cd frontend && npm run dev
 
 ## 3. First-Time-Right Implementation Workflow
 
+### Core Standard: Quad-Perspective Planning
+Every technical proposal, architectural plan, and design artifact must rigorously synthesize four perspectives:
+1. **🏛️ Expert Software Architect:** Component boundaries, dependency decoupling, schema constraints, indexing, concurrency guards, and graceful degradation.
+2. **⚙️ DevOps & Platform Engineer:** Container readiness, telemetry & distributed tracing (OTel), zero-downtime migrations, resource limits, and hermetic reproducible builds.
+3. **🎯 Seasoned Product Manager:** User pain points, JTBD, user stories, acceptance criteria, quantifiable business/UX metrics, and phased delivery.
+4. **🎨 Master UI/UX Designer:** Cognitive ergonomics, progressive disclosure, design token adherence, micro-interactions, responsive viewport constraints, accessibility (WCAG AA), and the mandatory 3-state UI contract (loading skeleton, actionable error + retry, zero/empty state).
+
 ### Phase 1: Clarify, Spec & Explore
-- **Understand First:** Never write code immediately. Clarify all acceptance criteria and edge cases.
+- **Understand First:** Never write code immediately. Clarify all acceptance criteria and edge cases using the Quad-Perspective framework.
 - **Explore Baseline:** Inspect existing database models, agent state definitions, and reusable UI components before creating new ones.
 - **Architecture Alignment:** Ensure strict decoupling. The React frontend is purely a presentation layer; all business logic, LLM calls, and state management belong in the FastAPI backend.
 
