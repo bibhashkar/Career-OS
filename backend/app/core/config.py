@@ -108,14 +108,22 @@ class Settings(BaseSettings):
         "Accept",
         "Origin",
     ]
-    CORS_EXPOSE_HEADERS: list[str] = ["X-Correlation-ID"]
+    CORS_EXPOSE_HEADERS: list[str] = [
+        "X-Correlation-ID",
+        "X-Trace-ID",
+        "X-Client-Action",
+    ]
 
-    # ---- Observability & Arize Phoenix (Self-Hosted) ----
+    # ---- Observability, Arize Phoenix & Grafana LGTM ----
     PHOENIX_ENABLED: bool = True
     PHOENIX_COLLECTOR_ENDPOINT: str = "http://localhost:6006/v1/traces"
     PHOENIX_PROJECT_NAME: str = "career-os"
     PHOENIX_SAMPLING_RATE: float = 1.0
     PHOENIX_ANONYMIZE_PII: bool = True
+    OTEL_ENABLED: bool = True
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4318"
+    GRAFANA_URL: str = "http://localhost:3001"
+    PHOENIX_URL: str = "http://localhost:6006"
 
     # ---- External API keys & LLM Provider (optional for mock development) ----
     # The agent nodes and tools implement hermetic offline fallbacks so the full
@@ -228,6 +236,7 @@ class Settings(BaseSettings):
 
         if self.is_testing:
             self.PHOENIX_ENABLED = False
+            self.OTEL_ENABLED = False
 
         if self.APP_ENV == "production":
             if "localhost" in self.DATABASE_URL or "127.0.0.1" in self.DATABASE_URL:

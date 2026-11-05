@@ -19,6 +19,7 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from app.core.database import engine
+from app.core.logging import get_client_action, get_correlation_id, get_current_trace_id
 
 
 class MetricsRegistry:
@@ -33,6 +34,40 @@ class MetricsRegistry:
         self._agent_durations: dict[str, list[float]] = defaultdict(list)
         self._ats_loop_exhausted: int = 0
         self._recent_errors: list[dict[str, Any]] = []
+        self._recent_traces: list[dict[str, Any]] = []
+
+    def record_trace(
+        self,
+        *,
+        method: str,
+        path: str,
+        status_code: int,
+        duration_ms: float,
+        correlation_id: str,
+        trace_id: str | None = None,
+        client_action: str | None = None,
+    ) -> None:
+        """Record an HTTP transaction trace into the circular in-memory buffer."""
+        with self._lock:
+            self._recent_traces.append(
+                {
+                    "timestamp": time.time(),
+                    "method": method,
+                    "path": path,
+                    "status_code": status_code,
+                    "duration_ms": duration_ms,
+                    "correlation_id": correlation_id,
+                    "trace_id": trace_id or correlation_id,
+                    "client_action": client_action or "api_call",
+                }
+            )
+            if len(self._recent_traces) > 100:
+                self._recent_traces = self._recent_traces[-100:]
+
+    def get_recent_traces(self) -> list[dict[str, Any]]:
+        """Return a snapshot of recently recorded HTTP traces."""
+        with self._lock:
+            return list(reversed(self._recent_traces))
 
     def record_error(
         self,
@@ -213,4 +248,13 @@ class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
                 endpoint=path,
                 status_code=status_code,
                 duration_sec=duration,
+            )
+            metrics_registry.record_trace(
+                method=request.method,
+                path=path,
+                status_code=status_code,
+                duration_ms=round(duration * 1000, 2),
+                correlation_id=get_correlation_id(),
+                trace_id=get_current_trace_id(),
+                client_action=get_client_action() or None,
             )

@@ -109,6 +109,21 @@ services:
     networks:
       - default
 
+  otel-lgtm:
+    image: grafana/otel-lgtm:latest
+    container_name: career_os_otel_lgtm
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+      - "4319:4318"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/data
+    networks:
+      - default
+
   frontend:
     build:
       context: ./frontend
@@ -130,5 +145,7 @@ volumes:
   postgres_data:
     driver: local
   phoenix_data:
+    driver: local
+  grafana_data:
     driver: local
 

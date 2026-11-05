@@ -28,6 +28,12 @@ import {
   ChevronUp,
   PlusCircle,
   Loader2,
+  Copy,
+  Check,
+  X,
+  ArrowRight,
+  HardDrive,
+  Terminal,
 } from "lucide-react";
 import {
   getAdminOverview,
@@ -60,13 +66,33 @@ const SAMPLE_KEYWORDS = [
   { label: "Ramp", query: "Ramp" },
 ];
 
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+}
+
 export function AdminDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [actionSuccess, setActionSuccess] = useState(null);
-  const [activeTab, setActiveTab] = useState("crawlers"); // 'crawlers' | 'system' | 'ai' | 'users'
+  const [activeTab, setActiveTab] = useState("crawlers"); // 'crawlers' | 'system' | 'ai' | 'users' | 'traces' | 'storage'
+
+  // 360° Observability trace & drawer state
+  const [selectedTrace, setSelectedTrace] = useState(null);
+  const [copiedTraceId, setCopiedTraceId] = useState(null);
+  const [traceFilter, setTraceFilter] = useState("");
+
+  const handleCopy = (text, id) => {
+    if (!text) return;
+    navigator.clipboard?.writeText(text);
+    setCopiedTraceId(id);
+    setTimeout(() => setCopiedTraceId(null), 2000);
+  };
 
   // New Board Modal state
   const [isAddBoardOpen, setIsAddBoardOpen] = useState(false);
@@ -333,7 +359,21 @@ export function AdminDashboard() {
     catalog_breakdown,
     ai_cost_and_quotas,
     users = [],
+    table_storage = [],
+    recent_traces = [],
   } = data || {};
+
+  const filteredTraces = recent_traces.filter((t) => {
+    if (!traceFilter.trim()) return true;
+    const q = traceFilter.toLowerCase();
+    return (
+      t.path?.toLowerCase().includes(q) ||
+      t.client_action?.toLowerCase().includes(q) ||
+      t.correlation_id?.toLowerCase().includes(q) ||
+      t.trace_id?.toLowerCase().includes(q) ||
+      String(t.status_code).includes(q)
+    );
+  });
 
   const filteredUsers = users.filter((u) => {
     if (!userSearch) return true;
@@ -382,6 +422,18 @@ export function AdminDashboard() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          {system_health?.grafana_url && (
+            <a
+              href={system_health.grafana_url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-300 border border-orange-500/30 text-xs font-medium transition-all"
+            >
+              <Activity className="w-3.5 h-3.5 text-orange-400" />
+              <span>Grafana LGTM</span>
+              <ExternalLink className="w-3 h-3 text-orange-400" />
+            </a>
+          )}
           {system_health?.phoenix_url && (
             <a
               href={system_health.phoenix_url}
@@ -582,6 +634,28 @@ export function AdminDashboard() {
           }`}
         >
           <Search className="w-4 h-4" /> Job Ingestion & ATS Search
+        </button>
+
+        <button
+          onClick={() => setActiveTab("traces")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === "traces"
+              ? "bg-sky-600 text-white shadow-md shadow-sky-600/20"
+              : "text-slate-400 hover:text-white hover:bg-slate-800"
+          }`}
+        >
+          <Layers className="w-4 h-4" /> 360° Trace Stream ({recent_traces.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab("storage")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === "storage"
+              ? "bg-sky-600 text-white shadow-md shadow-sky-600/20"
+              : "text-slate-400 hover:text-white hover:bg-slate-800"
+          }`}
+        >
+          <Database className="w-4 h-4" /> DB & Vector Storage ({table_storage.length})
         </button>
       </div>
 
@@ -1436,6 +1510,274 @@ export function AdminDashboard() {
       )}
 
       {/* ==================================================================== */}
+      {/* TAB: 360° TRACE WATERFALL & LIVE STREAM */}
+      {/* ==================================================================== */}
+      {activeTab === "traces" && (
+        <div className="space-y-6 animate-in fade-in duration-150">
+          {/* Header & Filter Controls */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-850/60 border border-slate-800">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Layers className="w-4 h-4 text-sky-400" />
+                Live 360° Transaction & Execution Stream
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                End-to-end telemetry correlated from frontend UI click across FastAPI, SQLAlchemy queries, and LLM calls.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Filter by action, path, or trace..."
+                  value={traceFilter}
+                  onChange={(e) => setTraceFilter(e.target.value)}
+                  className="pl-8 pr-3 py-1.5 text-xs rounded-xl bg-slate-900 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500 w-64"
+                />
+              </div>
+              <span className="text-[11px] font-mono text-slate-400 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700">
+                {recent_traces.length} traces buffered
+              </span>
+            </div>
+          </div>
+
+          {/* Trace Stream Table */}
+          <div className="rounded-2xl bg-slate-850/60 border border-slate-800 overflow-hidden shadow-md">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-800/60 text-slate-400 uppercase text-[10px] font-semibold tracking-wider border-b border-slate-800">
+                  <tr>
+                    <th className="px-4 py-3">Timestamp</th>
+                    <th className="px-4 py-3">Client UI Action</th>
+                    <th className="px-4 py-3">HTTP Endpoint</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Latency</th>
+                    <th className="px-4 py-3">Correlation / Trace ID</th>
+                    <th className="px-4 py-3 text-right">360° Inspect</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50">
+                  {filteredTraces.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-slate-500 text-xs">
+                        No HTTP traces match the active filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredTraces.map((tr, idx) => {
+                      const isSuccess = tr.status_code >= 200 && tr.status_code < 400;
+                      const isClientErr = tr.status_code >= 400 && tr.status_code < 500;
+                      const timeStr = new Date(tr.timestamp * 1000).toLocaleTimeString();
+                      return (
+                        <tr key={tr.correlation_id || idx} className="hover:bg-slate-800/40 transition-colors">
+                          <td className="px-4 py-3 font-mono text-[11px] text-slate-400 whitespace-nowrap">
+                            {timeStr}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-300 border border-sky-500/20 font-mono text-[11px]">
+                              {tr.client_action || "api_call"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-[11px] text-slate-200">
+                            <span className="text-slate-400 font-bold mr-1.5">{tr.method}</span>
+                            {tr.path}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                                isSuccess
+                                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                  : isClientErr
+                                  ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                  : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                              }`}
+                            >
+                              {tr.status_code}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-[11px]">
+                            <span
+                              className={
+                                tr.duration_ms > 1000
+                                  ? "text-rose-400 font-bold"
+                                  : tr.duration_ms > 200
+                                  ? "text-amber-400"
+                                  : "text-emerald-400"
+                              }
+                            >
+                              {tr.duration_ms} ms
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-[11px] text-slate-400">
+                            <div className="flex items-center gap-1.5">
+                              <span className="truncate max-w-[120px]">{tr.trace_id || tr.correlation_id}</span>
+                              <button
+                                onClick={() => handleCopy(tr.trace_id || tr.correlation_id, tr.correlation_id)}
+                                className="p-1 hover:text-white transition-colors cursor-pointer"
+                                title="Copy ID"
+                              >
+                                {copiedTraceId === tr.correlation_id ? (
+                                  <Check className="w-3 h-3 text-emerald-400" />
+                                ) : (
+                                  <Copy className="w-3 h-3 text-slate-500" />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => setSelectedTrace(tr)}
+                              className="px-2.5 py-1 rounded-lg bg-sky-600/20 hover:bg-sky-600/40 text-sky-300 border border-sky-500/30 text-xs font-medium transition-all cursor-pointer"
+                            >
+                              Details →
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* TAB: DATABASE & VECTOR STORAGE HEATMAP */}
+      {/* ==================================================================== */}
+      {activeTab === "storage" && (
+        <div className="space-y-6 animate-in fade-in duration-150">
+          {/* Storage Aggregates */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 rounded-2xl bg-slate-850/60 border border-slate-800 shadow-md">
+              <div className="text-xs text-slate-400 mb-1 flex items-center gap-1.5">
+                <HardDrive className="w-3.5 h-3.5 text-sky-400" /> Total Database Size
+              </div>
+              <div className="text-2xl font-black text-white">
+                {formatBytes(table_storage.reduce((acc, t) => acc + (t.total_bytes || 0), 0))}
+              </div>
+              <div className="mt-1 text-[11px] text-slate-400">
+                Data + All Primary & Vector Indexes
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-850/60 border border-slate-800 shadow-md">
+              <div className="text-xs text-slate-400 mb-1 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-indigo-400" /> Total Index Footprint
+              </div>
+              <div className="text-2xl font-black text-white">
+                {formatBytes(table_storage.reduce((acc, t) => acc + (t.index_bytes || 0), 0))}
+              </div>
+              <div className="mt-1 text-[11px] text-slate-400">
+                Includes pgvector HNSW cosine embeddings
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-850/60 border border-slate-800 shadow-md">
+              <div className="text-xs text-slate-400 mb-1 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Live Tuples
+              </div>
+              <div className="text-2xl font-black text-white">
+                {table_storage.reduce((acc, t) => acc + (t.live_rows || 0), 0).toLocaleString()}
+              </div>
+              <div className="mt-1 text-[11px] text-emerald-400 font-medium">
+                Active catalog records & sessions
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-850/60 border border-slate-800 shadow-md">
+              <div className="text-xs text-slate-400 mb-1 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" /> Dead Tuples (Bloat)
+              </div>
+              <div className="text-2xl font-black text-white">
+                {table_storage.reduce((acc, t) => acc + (t.dead_rows || 0), 0).toLocaleString()}
+              </div>
+              <div className="mt-1 text-[11px] text-slate-400">
+                Vacuum reclaimed on next cycle
+              </div>
+            </div>
+          </div>
+
+          {/* Tables Storage & Bloat Detail */}
+          <div className="rounded-2xl bg-slate-850/60 border border-slate-800 overflow-hidden shadow-md">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Database className="w-4 h-4 text-sky-400" />
+                PostgreSQL Catalog Tables, Indexes & Row Operations
+              </h3>
+              <span className="text-xs text-slate-400">
+                Introspected from pg_stat_user_tables
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-800/60 text-slate-400 uppercase text-[10px] font-semibold tracking-wider border-b border-slate-800">
+                  <tr>
+                    <th className="px-4 py-3">Table Name</th>
+                    <th className="px-4 py-3">Live Rows</th>
+                    <th className="px-4 py-3">Dead Rows</th>
+                    <th className="px-4 py-3">Table Data Size</th>
+                    <th className="px-4 py-3">Index Size</th>
+                    <th className="px-4 py-3">Total Size</th>
+                    <th className="px-4 py-3">Scan Ratio (Idx / Seq)</th>
+                    <th className="px-4 py-3">Writes (Ins / Upd / Del)</th>
+                    <th className="px-4 py-3 text-right">Health Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50">
+                  {table_storage.map((tbl) => {
+                    const totalRows = (tbl.live_rows || 0) + (tbl.dead_rows || 0);
+                    const isBloated = tbl.dead_rows > 100 && totalRows > 0 && (tbl.dead_rows / totalRows) > 0.2;
+                    return (
+                      <tr key={tbl.table_name} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-white">
+                          {tbl.table_name}
+                        </td>
+                        <td className="px-4 py-3 font-mono">
+                          {(tbl.live_rows || 0).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-400">
+                          {(tbl.dead_rows || 0).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-300">
+                          {formatBytes(tbl.table_bytes)}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-indigo-300">
+                          {formatBytes(tbl.index_bytes)}
+                        </td>
+                        <td className="px-4 py-3 font-mono font-bold text-white">
+                          {formatBytes(tbl.total_bytes)}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-[11px] text-slate-400">
+                          {tbl.idx_scan || 0} / {tbl.seq_scan || 0}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-[11px] text-slate-400">
+                          +{tbl.inserts || 0} / ~{tbl.updates || 0} / -{tbl.deletes || 0}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                              isBloated
+                                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                            }`}
+                          >
+                            {isBloated ? "Vacuum Rec." : "Optimized"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
       {/* MODAL: REGISTER ATS CAREERS PORTAL */}
       {/* ==================================================================== */}
       {isAddBoardOpen && (
@@ -1569,6 +1911,214 @@ export function AdminDashboard() {
         onClose={() => setIsAddJobOpen(false)}
         onJobAdded={handleJobImported}
       />
+
+      {/* ==================================================================== */}
+      {/* SLIDE-OVER EXECUTION DRAWER */}
+      {/* ==================================================================== */}
+      {selectedTrace && (
+        <div className="fixed inset-0 z-50 overflow-hidden">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity cursor-pointer"
+            onClick={() => setSelectedTrace(null)}
+          />
+
+          <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+            <div className="w-screen max-w-xl bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col">
+              {/* Drawer Header */}
+              <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs uppercase font-extrabold px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                      360° Execution Trace
+                    </span>
+                    <span
+                      className={`text-xs font-bold px-2 py-0.5 rounded ${
+                        selectedTrace.status_code >= 200 && selectedTrace.status_code < 400
+                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                          : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                      }`}
+                    >
+                      {selectedTrace.status_code}
+                    </span>
+                  </div>
+                  <h2 className="text-lg font-bold text-white mt-1">
+                    {selectedTrace.client_action || "api_call"}
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setSelectedTrace(null)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Drawer Content */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs text-slate-300">
+                {/* 1. Lifecycle Waterfall Breadcrumbs */}
+                <div>
+                  <h4 className="text-xs uppercase font-bold text-slate-400 tracking-wider mb-3">
+                    Execution Lifecycle Breadcrumb
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="p-3 rounded-xl bg-slate-850 border border-slate-800 flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-xs shrink-0">
+                        1
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-white">Client UI Action</div>
+                        <div className="font-mono text-[11px] text-sky-300 truncate">
+                          {selectedTrace.client_action}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-center text-slate-600">
+                      <ArrowRight className="w-4 h-4 rotate-90" />
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-850 border border-slate-800 flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">
+                        2
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-white">FastAPI Dispatch</div>
+                        <div className="font-mono text-[11px] text-emerald-300">
+                          {selectedTrace.method} {selectedTrace.path} ({selectedTrace.duration_ms}ms)
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-center text-slate-600">
+                      <ArrowRight className="w-4 h-4 rotate-90" />
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-850 border border-slate-800 flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-xs shrink-0">
+                        3
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-white">SQLAlchemy & Storage Introspection</div>
+                        <div className="text-[11px] text-slate-400">
+                          Audited via ORM dirty/new event listener and pg_stat_user_tables
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-center text-slate-600">
+                      <ArrowRight className="w-4 h-4 rotate-90" />
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-850 border border-slate-800 flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs shrink-0">
+                        4
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-white">LangGraph & LLM Callbacks</div>
+                        <div className="text-[11px] text-slate-400">
+                          Token attribution & USD budget ledger entry recorded
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Correlation & Distributed Context */}
+                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 text-[11px]">Trace ID (OTel W3C):</span>
+                    <button
+                      onClick={() => handleCopy(selectedTrace.trace_id, "drawer-trace")}
+                      className="text-sky-400 hover:text-sky-300 flex items-center gap-1 text-[11px] cursor-pointer"
+                    >
+                      {copiedTraceId === "drawer-trace" ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                  <div className="text-white text-[11px] truncate bg-slate-900 p-2 rounded border border-slate-800">
+                    {selectedTrace.trace_id || "N/A"}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <span className="text-slate-400 text-[11px]">Correlation ID:</span>
+                    <button
+                      onClick={() => handleCopy(selectedTrace.correlation_id, "drawer-corr")}
+                      className="text-sky-400 hover:text-sky-300 flex items-center gap-1 text-[11px] cursor-pointer"
+                    >
+                      {copiedTraceId === "drawer-corr" ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                  <div className="text-white text-[11px] truncate bg-slate-900 p-2 rounded border border-slate-800">
+                    {selectedTrace.correlation_id}
+                  </div>
+                </div>
+
+                {/* 3. Deep-Link External Launchpads */}
+                <div>
+                  <h4 className="text-xs uppercase font-bold text-slate-400 tracking-wider mb-3">
+                    External Telemetry Cockpits
+                  </h4>
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {system_health?.grafana_url && (
+                      <>
+                        <a
+                          href={`${system_health.grafana_url}/explore?left=%5B%22now-1h%22,%22now%22,%22tempo%22,%7B%22query%22:%22${selectedTrace.trace_id}%22%7D%5D`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center justify-between p-3 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-orange-500/40 text-slate-200 transition-all group"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <Activity className="w-4 h-4 text-orange-400" />
+                            <div>
+                              <div className="font-semibold text-white">View Waterfall in Grafana Tempo</div>
+                              <div className="text-[11px] text-slate-400">Open distributed span graph</div>
+                            </div>
+                          </div>
+                          <ExternalLink className="w-3.5 h-3.5 text-slate-500 group-hover:text-orange-400 transition-colors" />
+                        </a>
+
+                        <a
+                          href={`${system_health.grafana_url}/explore?left=%5B%22now-1h%22,%22now%22,%22loki%22,%7B%22expr%22:%22%7Bapp%3D%5C%22career-os%5C%22%7D%20%7C%3D%20%5C%22${selectedTrace.correlation_id}%5C%22%22%7D%5D`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center justify-between p-3 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/40 text-slate-200 transition-all group"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <Terminal className="w-4 h-4 text-amber-400" />
+                            <div>
+                              <div className="font-semibold text-white">Search Structured Logs in Grafana Loki</div>
+                              <div className="text-[11px] text-slate-400">Filter by X-Correlation-ID</div>
+                            </div>
+                          </div>
+                          <ExternalLink className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-400 transition-colors" />
+                        </a>
+                      </>
+                    )}
+
+                    {system_health?.phoenix_url && (
+                      <a
+                        href={`${system_health.phoenix_url}/projects`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-between p-3 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/40 text-slate-200 transition-all group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Flame className="w-4 h-4 text-indigo-400" />
+                          <div>
+                            <div className="font-semibold text-white">Inspect Prompts & Evals in Arize Phoenix</div>
+                            <div className="text-[11px] text-slate-400">LLM token spend & hallucinations</div>
+                          </div>
+                        </div>
+                        <ExternalLink className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 transition-colors" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

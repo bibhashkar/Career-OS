@@ -80,7 +80,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if settings.APP_ENV != "test":
         await init_postgres_saver()
 
-    setup_tracing()
+    setup_tracing(app)
 
     yield
 

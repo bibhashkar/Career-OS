@@ -17,12 +17,54 @@ const apiClient = axios.create({
   },
 });
 
-// Attach Bearer token to outgoing requests if authenticated
+let activeClientAction = "UserInteraction";
+
+/**
+ * Update the active client UI action tag propagated on outgoing API calls.
+ * E.g. `Dashboard.TailorCVButton`, `MockInterview.SubmitAnswer`, etc.
+ */
+export function setClientAction(actionName) {
+  if (actionName) {
+    activeClientAction = actionName;
+  }
+}
+
+// Attach Bearer token, W3C traceparent, and X-Client-Action to outgoing requests
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem("career_os_token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
+  // Propagate client action header for 360° observability
+  if (!config.headers["X-Client-Action"]) {
+    config.headers["X-Client-Action"] =
+      config.clientAction ||
+      activeClientAction ||
+      (typeof window !== "undefined" ? window.location.pathname : "AppInteraction");
+  }
+
+  // Generate W3C standard traceparent header if not provided
+  if (!config.headers["traceparent"]) {
+    try {
+      const traceBytes = new Uint8Array(16);
+      const spanBytes = new Uint8Array(8);
+      const cryptoObj = typeof globalThis !== "undefined" ? globalThis.crypto : null;
+      if (cryptoObj && typeof cryptoObj.getRandomValues === "function") {
+        cryptoObj.getRandomValues(traceBytes);
+        cryptoObj.getRandomValues(spanBytes);
+      } else {
+        for (let i = 0; i < 16; i++) traceBytes[i] = Math.floor(Math.random() * 256);
+        for (let i = 0; i < 8; i++) spanBytes[i] = Math.floor(Math.random() * 256);
+      }
+      const traceId = Array.from(traceBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+      const spanId = Array.from(spanBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+      config.headers["traceparent"] = `00-${traceId}-${spanId}-01`;
+    } catch {
+      // Gracefully ignore traceparent generation on older runtimes
+    }
+  }
+
   return config;
 });
 

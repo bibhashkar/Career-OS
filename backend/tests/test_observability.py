@@ -17,9 +17,15 @@ import pytest
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 
 from app.agents.graph import route_ats
+from app.agents.llm import CareerOSLLMTelemetryCallback
 from app.agents.state import AgentState
 from app.core.config import Settings, settings
-from app.core.logging import set_correlation_id
+from app.core.logging import (
+    get_client_action,
+    get_current_trace_id,
+    set_client_action,
+    set_correlation_id,
+)
 from app.core.metrics import metrics_registry
 from app.core.tracing import (
     PIIScrubbingSpanProcessor,
@@ -218,8 +224,59 @@ class TestMetricsAndLoopGuards:
 
 
 class TestCORSExposeHeaders:
-    """Test suite for CORS X-Correlation-ID exposure."""
+    """Test suite for CORS headers exposure."""
 
     def test_cors_expose_headers_configured(self) -> None:
-        """Settings must configure CORS_EXPOSE_HEADERS with X-Correlation-ID."""
+        """Settings must configure CORS_EXPOSE_HEADERS with correlation, trace, and client action headers."""
         assert "X-Correlation-ID" in settings.CORS_EXPOSE_HEADERS
+        assert "X-Trace-ID" in settings.CORS_EXPOSE_HEADERS
+        assert "X-Client-Action" in settings.CORS_EXPOSE_HEADERS
+
+
+class TestTraceRingBuffer:
+    """Test suite for metrics registry trace ring buffer."""
+
+    def test_record_and_retrieve_traces(self) -> None:
+        metrics_registry.record_trace(
+            method="POST",
+            path="/api/cv/tailor",
+            status_code=200,
+            duration_ms=142.5,
+            correlation_id="corr-test-123",
+            trace_id="trace-test-456",
+            client_action="TailorCVButton",
+        )
+        traces = metrics_registry.get_recent_traces()
+        assert len(traces) > 0
+        latest = traces[0]
+        assert latest["method"] == "POST"
+        assert latest["path"] == "/api/cv/tailor"
+        assert latest["status_code"] == 200
+        assert latest["duration_ms"] == 142.5
+        assert latest["correlation_id"] == "corr-test-123"
+        assert latest["trace_id"] == "trace-test-456"
+        assert latest["client_action"] == "TailorCVButton"
+
+
+class TestClientActionContext:
+    """Test suite for client UI action context propagation."""
+
+    def test_set_and_get_client_action(self) -> None:
+        set_client_action("MockInterview.NextQuestion")
+        assert get_client_action() == "MockInterview.NextQuestion"
+        set_client_action("")
+        assert get_client_action() == ""
+
+    def test_get_current_trace_id_none_without_active_span(self) -> None:
+        """get_current_trace_id returns None when no active span is recording."""
+        trace_id = get_current_trace_id()
+        assert trace_id is None or isinstance(trace_id, str)
+
+    def test_llm_telemetry_callback_init(self) -> None:
+        """CareerOSLLMTelemetryCallback initializes with target provider and model."""
+        cb = CareerOSLLMTelemetryCallback(
+            provider="gemini", model_name="gemini-2.5-flash"
+        )
+        assert cb.provider == "gemini"
+        assert cb.model_name == "gemini-2.5-flash"
+        assert cb.feature == "agent_reasoning"

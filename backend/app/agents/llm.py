@@ -17,24 +17,111 @@ without an API key, the factory gracefully falls back to a deterministic
 structured output extraction without hitting external endpoints.
 """
 
+import asyncio
 import json
+import logging
 import os
 from collections.abc import Sequence
 from typing import Any, TypeVar
+from uuid import UUID
 
+from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import BaseMessage
+from langchain_core.outputs import LLMResult
 from langchain_core.runnables import Runnable, RunnableLambda
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, ValidationError
 
 from app.core.config import settings
+from app.core.database import async_session_maker
+from app.ingestion.ledger import PersistentBudgetLedger
+
+logger = logging.getLogger("career_os.llm")
 
 T = TypeVar("T", bound=BaseModel)
 
 # Global test override hook for unit and integration testing
 _test_llm: BaseChatModel | None = None
+
+
+class CareerOSLLMTelemetryCallback(AsyncCallbackHandler):
+    """
+    Async callback handler tracking token consumption, latency, and USD spend.
+    Persists granular LLMUsageEvent and aggregates into ProviderUsage ledger.
+    """
+
+    def __init__(
+        self, provider: str, model_name: str, feature: str = "agent_reasoning"
+    ) -> None:
+        super().__init__()
+        self.provider = provider
+        self.model_name = model_name
+        self.feature = feature
+
+    async def on_llm_end(
+        self,
+        response: LLMResult,
+        *,
+        run_id: UUID,
+        parent_run_id: UUID | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Capture token counts on completion and record to persistent ledger."""
+        input_tokens = 0
+        output_tokens = 0
+
+        llm_output = response.llm_output
+        if isinstance(llm_output, dict):
+            token_usage = llm_output.get("token_usage", {})
+            if isinstance(token_usage, dict):
+                input_tokens = int(
+                    token_usage.get("prompt_tokens", 0)
+                    or token_usage.get("input_tokens", 0)
+                )
+                output_tokens = int(
+                    token_usage.get("completion_tokens", 0)
+                    or token_usage.get("output_tokens", 0)
+                )
+
+        if not input_tokens and not output_tokens:
+            for gen_list in response.generations:
+                for gen in gen_list:
+                    msg = getattr(gen, "message", None)
+                    if msg is not None:
+                        usage = getattr(msg, "usage_metadata", None)
+                        if isinstance(usage, dict):
+                            input_tokens = int(
+                                usage.get("input_tokens", 0) or input_tokens
+                            )
+                            output_tokens = int(
+                                usage.get("output_tokens", 0) or output_tokens
+                            )
+
+        if input_tokens == 0 and output_tokens == 0:
+            return
+
+        async def _persist_usage() -> None:
+            try:
+                async with async_session_maker() as session:
+                    ledger = PersistentBudgetLedger(session)
+                    await ledger.record_llm_usage(
+                        provider=self.provider,
+                        model_name=self.model_name,
+                        feature=self.feature,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                    )
+                    await session.commit()
+            except Exception as exc:
+                logger.debug("Failed to record LLM usage in ledger: %s", exc)
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_persist_usage())
+        except RuntimeError:
+            pass
 
 
 class MockChatModel(FakeListChatModel):
@@ -136,9 +223,10 @@ def get_llm(
     temperature: float = 0.2,
     default_mock_responses: Sequence[str] | None = None,
     force_real: bool = False,
+    callbacks: list[Any] | None = None,
 ) -> BaseChatModel:
     """
-    Resolve and return a configured BaseChatModel instance.
+    Resolve and return a configured BaseChatModel instance with telemetry tracking.
 
     Selection Priority:
       1. Explicit test override (if configured via ``set_test_llm``).
@@ -154,6 +242,7 @@ def get_llm(
         temperature: Sampling temperature for generation randomness (0.0 - 1.0).
         default_mock_responses: Optional predetermined response strings for mock.
         force_real: When True, bypasses test isolation to construct real client.
+        callbacks: Optional list of additional LangChain callback handlers.
 
     Returns:
         Configured BaseChatModel instance.
@@ -175,10 +264,18 @@ def get_llm(
 
     if provider == "gemini" and settings.GEMINI_API_KEY:
         target_model = model_name or settings.GEMINI_MODEL
+        telemetry_callback = CareerOSLLMTelemetryCallback(
+            provider="gemini",
+            model_name=target_model,
+        )
+        active_callbacks = [telemetry_callback]
+        if callbacks:
+            active_callbacks.extend(callbacks)
         return ChatGoogleGenerativeAI(
             model=target_model,
             google_api_key=settings.GEMINI_API_KEY,
             temperature=temperature,
+            callbacks=active_callbacks,
         )
 
     return MockChatModel(responses=responses)

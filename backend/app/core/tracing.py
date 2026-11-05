@@ -21,11 +21,18 @@ from openinference.instrumentation.langchain import LangChainInstrumentor
 from opentelemetry import trace
 from opentelemetry.context import Context
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
+from sqlalchemy import event, inspect
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.database import engine
 from app.core.logging import get_correlation_id
 
 logger = logging.getLogger("career_os.tracing")
@@ -112,19 +119,59 @@ class PIIScrubbingSpanProcessor(SpanProcessor):
                     attrs[k] = _scrub_attribute_value(v)
 
 
-def setup_tracing() -> None:
+@event.listens_for(Session, "after_flush")
+def audit_orm_flush(session: Session, flush_context: Any) -> None:
     """
-    Initialize OpenTelemetry TracerProvider with Phoenix OTLP HTTP exporter
-    and OpenInference LangChain instrumentation.
+    OpenTelemetry event listener auditing database mutations.
+    Attaches modified table names and dirty columns to the active span.
+    """
+    span = trace.get_current_span()
+    if not span.is_recording():
+        return
 
-    Safely degrades if Phoenix is disabled, in test environments, or if
-    the collector endpoint is unreachable.
+    dirty_tables: set[str] = set()
+    modified_cols: list[str] = []
+
+    for obj in session.dirty:
+        table_name = getattr(obj, "__tablename__", type(obj).__name__)
+        dirty_tables.add(table_name)
+        try:
+            state = inspect(obj)
+            if state is not None:
+                for attr in state.attrs:
+                    hist = attr.history
+                    if hist.has_changes():
+                        modified_cols.append(f"{table_name}.{attr.key}")
+        except Exception:
+            pass
+
+    for obj in session.new:
+        table_name = getattr(obj, "__tablename__", type(obj).__name__)
+        dirty_tables.add(table_name)
+        modified_cols.append(f"{table_name}.* (insert)")
+
+    if dirty_tables:
+        span.set_attribute("db.orm.modified_tables", list(dirty_tables))
+    if modified_cols:
+        span.set_attribute("db.orm.modified_columns", modified_cols[:50])
+
+
+def setup_tracing(app: Any | None = None) -> None:
+    """
+    Initialize OpenTelemetry TracerProvider with Phoenix & OTLP HTTP exporters,
+    FastAPI, SQLAlchemy, HTTPX, and OpenInference LangChain instrumentation.
+
+    Safely degrades if tracing is disabled, in test environments, or if
+    the collector endpoints are unreachable.
     """
     global _tracer_provider, _instrumented
-    if not settings.PHOENIX_ENABLED or settings.is_testing:
+    if (
+        not settings.PHOENIX_ENABLED and not settings.OTEL_ENABLED
+    ) or settings.is_testing:
         logger.info(
-            "Phoenix tracing disabled [enabled=%s, is_testing=%s]",
+            "Tracing disabled [phoenix=%s, otel=%s, is_testing=%s]",
             settings.PHOENIX_ENABLED,
+            settings.OTEL_ENABLED,
             settings.is_testing,
         )
         return
@@ -137,31 +184,62 @@ def setup_tracing() -> None:
         provider = TracerProvider(sampler=sampler)
         provider.add_span_processor(PIIScrubbingSpanProcessor())
 
-        exporter = OTLPSpanExporter(
-            endpoint=settings.PHOENIX_COLLECTOR_ENDPOINT,
-            timeout=2,
-        )
-        batch_processor = BatchSpanProcessor(
-            exporter,
-            max_queue_size=2048,
-            export_timeout_millis=2000,
-            schedule_delay_millis=5000,
-        )
-        provider.add_span_processor(batch_processor)
+        if settings.PHOENIX_ENABLED and settings.PHOENIX_COLLECTOR_ENDPOINT:
+            phoenix_exporter = OTLPSpanExporter(
+                endpoint=settings.PHOENIX_COLLECTOR_ENDPOINT,
+                timeout=2,
+            )
+            provider.add_span_processor(
+                BatchSpanProcessor(
+                    phoenix_exporter,
+                    max_queue_size=2048,
+                    export_timeout_millis=2000,
+                    schedule_delay_millis=5000,
+                )
+            )
+
+        if settings.OTEL_ENABLED and settings.OTEL_EXPORTER_OTLP_ENDPOINT:
+            otel_exporter = OTLPSpanExporter(
+                endpoint=f"{settings.OTEL_EXPORTER_OTLP_ENDPOINT}/v1/traces",
+                timeout=2,
+            )
+            provider.add_span_processor(
+                BatchSpanProcessor(
+                    otel_exporter,
+                    max_queue_size=2048,
+                    export_timeout_millis=2000,
+                    schedule_delay_millis=5000,
+                )
+            )
 
         trace.set_tracer_provider(provider)
         LangChainInstrumentor().instrument(tracer_provider=provider)
+        SQLAlchemyInstrumentor().instrument(
+            engine=engine.sync_engine,
+            tracer_provider=provider,
+        )
+        HTTPXClientInstrumentor().instrument(tracer_provider=provider)
+        LoggingInstrumentor().instrument(
+            tracer_provider=provider,
+            set_logging_format=False,
+        )
+        if app is not None:
+            FastAPIInstrumentor.instrument_app(
+                app,
+                tracer_provider=provider,
+                excluded_urls="metrics,health",
+            )
 
         _tracer_provider = provider
         _instrumented = True
         logger.info(
-            "Arize Phoenix OpenTelemetry tracing initialized [endpoint=%s, project=%s]",
+            "360° OpenTelemetry & Arize Phoenix tracing initialized [otel=%s, phoenix=%s]",
+            settings.OTEL_EXPORTER_OTLP_ENDPOINT,
             settings.PHOENIX_COLLECTOR_ENDPOINT,
-            settings.PHOENIX_PROJECT_NAME,
         )
     except Exception as exc:
         logger.warning(
-            "Failed to initialize Arize Phoenix tracing (degraded gracefully): %s",
+            "Failed to initialize tracing (degraded gracefully): %s",
             exc,
             exc_info=True,
         )

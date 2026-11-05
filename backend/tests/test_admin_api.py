@@ -108,6 +108,10 @@ async def test_admin_overview_with_admin_role_success(admin_token: str) -> None:
         assert data["current_operator"]["email"] == "admin@career-os.local"
         assert data["current_operator"]["role"] == "admin"
         assert "system_health" in data
+        assert "grafana_url" in data["system_health"]
+        assert "phoenix_url" in data["system_health"]
+        assert "table_storage" in data
+        assert "recent_traces" in data
         assert "crawler_pipeline" in data
         assert "catalog_breakdown" in data
         assert "ai_cost_and_quotas" in data

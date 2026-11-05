@@ -22,10 +22,13 @@ from contextvars import ContextVar
 from typing import Any
 
 from fastapi import Request, Response
+from opentelemetry import trace
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 # Context variable storing active request correlation ID across async task boundaries
 correlation_id_ctx: ContextVar[str] = ContextVar("correlation_id", default="")
+# Context variable storing active client action tag (e.g. "Dashboard.TailorCVButton")
+client_action_ctx: ContextVar[str] = ContextVar("client_action", default="")
 
 
 def get_correlation_id() -> str:
@@ -36,6 +39,25 @@ def get_correlation_id() -> str:
 def set_correlation_id(cid: str) -> None:
     """Set the correlation ID for the current async task context."""
     correlation_id_ctx.set(cid)
+
+
+def get_client_action() -> str:
+    """Retrieve the current task's client UI action tag or empty string if unset."""
+    return client_action_ctx.get()
+
+
+def set_client_action(action: str) -> None:
+    """Set the client UI action tag for the current async task context."""
+    client_action_ctx.set(action)
+
+
+def get_current_trace_id() -> str | None:
+    """Retrieve the 32-character hexadecimal trace ID from the active OpenTelemetry span."""
+    span = trace.get_current_span()
+    ctx = span.get_span_context()
+    if ctx.is_valid:
+        return format(ctx.trace_id, "032x")
+    return None
 
 
 class StructuredJsonFormatter(logging.Formatter):
@@ -54,6 +76,8 @@ class StructuredJsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
             "correlation_id": get_correlation_id() or None,
+            "trace_id": get_current_trace_id(),
+            "client_action": get_client_action() or None,
             "file": f"{record.filename}:{record.lineno}",
         }
 
@@ -100,6 +124,9 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         correlation_id = request.headers.get("X-Correlation-ID") or uuid.uuid4().hex
         set_correlation_id(correlation_id)
 
+        client_action = request.headers.get("X-Client-Action", "").strip()
+        set_client_action(client_action)
+
         start_time = time.monotonic()
         logger = logging.getLogger("career_os.http")
 
@@ -107,6 +134,12 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             duration_ms = round((time.monotonic() - start_time) * 1000, 2)
             response.headers["X-Correlation-ID"] = correlation_id
+
+            trace_id = get_current_trace_id()
+            if trace_id:
+                response.headers["X-Trace-ID"] = trace_id
+            if client_action:
+                response.headers["X-Client-Action"] = client_action
 
             logger.info(
                 f"{request.method} {request.url.path} "
