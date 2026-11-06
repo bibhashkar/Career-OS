@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from app.core.http import DEFAULT_TIMEOUT
+from app.core.http import DEFAULT_TIMEOUT, resolve_async_client
 from app.ingestion.security import sanitize_text
 
 logger = logging.getLogger("career_os.ingestion.github")
@@ -58,7 +58,7 @@ class GitHubOrgVerifier:
             "User-Agent": "Career-OS-Ingestion/1.0",
         }
 
-        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        async with resolve_async_client(self.client, timeout=DEFAULT_TIMEOUT) as client:
             # 1. Fetch organization details
             org_resp = await client.get(
                 f"{GITHUB_API_BASE}/orgs/{clean_org}", headers=headers

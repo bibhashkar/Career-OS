@@ -146,6 +146,19 @@ export function AdminDashboard() {
     return () => clearInterval(interval);
   }, [fetchOverview]);
 
+  // Close drawer on Escape key for keyboard accessibility (WCAG 2.1.2)
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === "Escape" && selectedTrace) {
+        setSelectedTrace(null);
+      }
+    }
+    if (selectedTrace) {
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [selectedTrace]);
+
   const showNotification = (msg) => {
     setActionSuccess(msg);
     setTimeout(() => setActionSuccess(null), 4000);
@@ -1929,7 +1942,12 @@ export function AdminDashboard() {
       {/* SLIDE-OVER EXECUTION DRAWER */}
       {/* ==================================================================== */}
       {selectedTrace && (
-        <div className="fixed inset-0 z-50 overflow-hidden">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="360 Execution Trace Details"
+          className="fixed inset-0 z-50 overflow-hidden"
+        >
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity cursor-pointer"
@@ -1961,6 +1979,7 @@ export function AdminDashboard() {
                 </div>
                 <button
                   onClick={() => setSelectedTrace(null)}
+                  aria-label="Close execution trace drawer"
                   className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
@@ -2014,7 +2033,7 @@ export function AdminDashboard() {
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-white">SQLAlchemy & Storage Introspection</div>
                         <div className="text-[11px] text-slate-400">
-                          Audited via ORM dirty/new event listener and pg_stat_user_tables
+                          Query execution & transaction hooks (see Tempo for span breakdown)
                         </div>
                       </div>
                     </div>
@@ -2030,7 +2049,7 @@ export function AdminDashboard() {
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-white">LangGraph & LLM Callbacks</div>
                         <div className="text-[11px] text-slate-400">
-                          Token attribution & USD budget ledger entry recorded
+                          Agent node spans & token attribution (if invoked; see Tempo / Phoenix)
                         </div>
                       </div>
                     </div>

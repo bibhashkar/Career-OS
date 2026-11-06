@@ -106,8 +106,8 @@ async def tailor_node(state: AgentState) -> dict[str, Any]:
     style = tone.get("style", "confident")
     brevity = tone.get("brevity", "high")
 
-    target_title = job.get("title", "Senior AI Engineer")
-    target_company = job.get("company_name", "Target Company")
+    target_title = job.get("title") or "Senior AI Engineer"
+    target_company = job.get("company_name") or "Target Company"
 
     if brevity == "high":
         summary_intro = f"Focused, results-driven {target_title}"

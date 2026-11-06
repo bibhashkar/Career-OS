@@ -56,6 +56,18 @@ const mockOverviewData = {
       last_login_at: new Date().toISOString(),
     },
   ],
+  recent_traces: [
+    {
+      correlation_id: "corr-test-drawer",
+      trace_id: "trace-test-drawer-456",
+      method: "POST",
+      path: "/api/cv/generate",
+      status_code: 200,
+      duration_ms: 125,
+      client_action: "TailorCV.Generate",
+      timestamp: "2026-11-06T06:00:00Z",
+    },
+  ],
 };
 
 describe("AdminDashboard Component", () => {
@@ -164,5 +176,34 @@ describe("AdminDashboard Component", () => {
     expect(
       screen.getByRole("button", { name: /Cross-Check/i }),
     ).toBeInTheDocument();
+  });
+
+  it("opens execution trace drawer with role=dialog and closes on Escape key", async () => {
+    render(<AdminDashboard />);
+
+    // Switch to 360° Trace Stream tab
+    const traceTabBtn = await screen.findByRole("button", {
+      name: /360° Trace Stream/i,
+    });
+    fireEvent.click(traceTabBtn);
+
+    // Click "Details →" button for the mock trace
+    const detailsBtn = await screen.findByRole("button", { name: /Details →/i });
+    fireEvent.click(detailsBtn);
+
+    // Verify drawer dialog is open with proper ARIA accessibility attributes
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(screen.getByText("360° Execution Trace")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("TailorCV.Generate").length,
+    ).toBeGreaterThanOrEqual(1);
+
+    // Press Escape to close drawer
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    // Drawer dialog should be removed
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

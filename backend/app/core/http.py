@@ -9,7 +9,8 @@ with bounded retries, exponential backoff, and strict connection and read timeou
 
 import asyncio
 import logging
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncGenerator, Callable, Coroutine
+from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
@@ -17,6 +18,26 @@ import httpx
 logger = logging.getLogger("career_os.http")
 
 DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=3.0)
+
+
+@asynccontextmanager
+async def resolve_async_client(
+    client: httpx.AsyncClient | None = None,
+    timeout: httpx.Timeout = DEFAULT_TIMEOUT,
+    **kwargs: Any,
+) -> AsyncGenerator[httpx.AsyncClient, None]:
+    """
+    Resolve an AsyncClient for a request scope without closing externally-managed clients.
+
+    If an existing client is passed in (e.g. shared application client or mock test client),
+    yields it directly without closing it on exit.
+    If None is passed, constructs a new client with the specified timeout and closes it on exit.
+    """
+    if client is not None:
+        yield client
+    else:
+        async with httpx.AsyncClient(timeout=timeout, **kwargs) as new_client:
+            yield new_client
 
 
 async def execute_with_retry(

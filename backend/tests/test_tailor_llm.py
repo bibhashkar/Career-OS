@@ -70,3 +70,20 @@ async def test_tailor_node_falls_back_on_llm_failure() -> None:
         assert res["cv_draft"]["revision_version"] == 2
     finally:
         reset_test_llm()
+
+
+@pytest.mark.asyncio
+async def test_tailor_node_handles_none_job_fields() -> None:
+    """Verify tailor_node gracefully handles None for title and company_name."""
+    state: AgentState = {
+        "job_details": {
+            "title": None,
+            "company_name": None,
+        },
+        "revision_count": 0,
+    }
+    res = await tailor_node(state)
+    assert res["status"] == "cv_tailored"
+    assert "cv_draft" in res
+    assert res["cv_draft"]["candidate_title"] == "Senior AI Engineer"
+    assert res["cv_draft"]["target_company"] == "Target Company"

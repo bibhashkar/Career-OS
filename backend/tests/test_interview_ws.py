@@ -1,7 +1,9 @@
 """Integration tests for bi-directional WebSocket mock interview endpoint."""
 
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage
 
+from app.api.interview import _extract_latest_message_content
 from app.main import app
 
 
@@ -122,3 +124,18 @@ def test_interview_websocket_plain_text_frame_handled_as_message() -> None:
         assert reply["type"] == "message"
         assert reply["sender"] == "coach"
         assert reply["turn"] >= 2
+
+
+def test_extract_latest_message_content_helper() -> None:
+    """Verify _extract_latest_message_content handles dicts, BaseMessage objects, and empty lists."""
+    # 1. Empty list returns default
+    assert _extract_latest_message_content([], default="fallback") == "fallback"
+    assert _extract_latest_message_content(None, default="fallback") == "fallback"
+
+    # 2. Dict message
+    assert _extract_latest_message_content([{"content": "Dict reply"}]) == "Dict reply"
+    assert _extract_latest_message_content([{"other": "key"}], default="def") == "def"
+
+    # 3. BaseMessage instance
+    ai_msg = AIMessage(content="AIMessage reply")
+    assert _extract_latest_message_content([ai_msg]) == "AIMessage reply"

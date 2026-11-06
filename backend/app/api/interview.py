@@ -27,6 +27,7 @@ import json
 import logging
 import time
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
@@ -43,6 +44,21 @@ from app.core.tracing import build_run_config
 logger = logging.getLogger("career_os.interview")
 
 router = APIRouter(tags=["Interview"])
+
+
+def _extract_latest_message_content(
+    messages: list[Any] | None,
+    default: str = "",
+) -> str:
+    """Extract content from the latest message handling dicts and BaseMessage safely."""
+    if not messages:
+        return default
+    last = messages[-1]
+    if isinstance(last, dict):
+        return str(last.get("content") or default)
+    if hasattr(last, "content"):
+        return str(getattr(last, "content", default) or default)
+    return str(last) if last is not None else default
 
 
 @router.websocket("/api/interview/{thread_id}")
@@ -143,7 +159,10 @@ async def interview_websocket_endpoint(
                 "messages": [],
             }
             res = await interview_app.ainvoke(init_state, config=config)
-            latest_msg = res.get("messages", [])[-1]["content"]
+            latest_msg = _extract_latest_message_content(
+                res.get("messages"),
+                default="Welcome to the interview coaching session.",
+            )
             await websocket.send_json(
                 {
                     "type": "message",
@@ -210,7 +229,10 @@ async def interview_websocket_endpoint(
                     "interview", "error", time.monotonic() - start_time
                 )
                 raise
-            coach_reply = next_state.get("messages", [])[-1]["content"]
+            coach_reply = _extract_latest_message_content(
+                next_state.get("messages"),
+                default="Thank you for sharing your thoughts.",
+            )
 
             await websocket.send_json(
                 {

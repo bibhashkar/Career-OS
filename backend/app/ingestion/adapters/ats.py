@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 import httpx
 
 from app.core.datetime_utils import parse_iso_datetime_safe
-from app.core.http import DEFAULT_TIMEOUT
+from app.core.http import DEFAULT_TIMEOUT, resolve_async_client
 from app.ingestion.models import (
     ATSProviderEnum,
     DataOrigin,
@@ -67,7 +67,7 @@ class GreenhouseAdapter(ATSAdapterPort):
 
     async def fetch_board_jobs(self, slug: str) -> list[DiscoveredJobDTO]:
         url = f"{self.BASE_URL}/{slug}/jobs?content=true"
-        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        async with resolve_async_client(self.client, timeout=DEFAULT_TIMEOUT) as client:
             resp = await client.get(url)
             if resp.status_code == 404:
                 logger.warning("Greenhouse board '%s' not found (404)", slug)
@@ -124,7 +124,7 @@ class GreenhouseAdapter(ATSAdapterPort):
 
     async def fetch_job_detail(self, slug: str, job_id: str) -> DiscoveredJobDTO | None:
         url = f"{self.BASE_URL}/{slug}/jobs/{job_id}"
-        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        async with resolve_async_client(self.client, timeout=DEFAULT_TIMEOUT) as client:
             resp = await client.get(url)
             if resp.status_code == 404:
                 return None
@@ -187,7 +187,7 @@ class LeverAdapter(ATSAdapterPort):
 
     async def fetch_board_jobs(self, slug: str) -> list[DiscoveredJobDTO]:
         url = f"{self.BASE_URL}/{slug}?mode=json"
-        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        async with resolve_async_client(self.client, timeout=DEFAULT_TIMEOUT) as client:
             resp = await client.get(url)
             if resp.status_code == 404:
                 logger.warning("Lever board '%s' not found (404)", slug)
@@ -252,7 +252,7 @@ class LeverAdapter(ATSAdapterPort):
 
     async def fetch_job_detail(self, slug: str, job_id: str) -> DiscoveredJobDTO | None:
         url = f"{self.BASE_URL}/{slug}/{job_id}"
-        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        async with resolve_async_client(self.client, timeout=DEFAULT_TIMEOUT) as client:
             resp = await client.get(url)
             if resp.status_code == 404:
                 return None
@@ -318,7 +318,7 @@ class AshbyAdapter(ATSAdapterPort):
 
     async def fetch_board_jobs(self, slug: str) -> list[DiscoveredJobDTO]:
         url = f"{self.BASE_URL}/{slug}"
-        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        async with resolve_async_client(self.client, timeout=DEFAULT_TIMEOUT) as client:
             resp = await client.get(url)
             if resp.status_code == 404:
                 logger.warning("Ashby board '%s' not found (404)", slug)
@@ -416,7 +416,7 @@ class WorkableAdapter(ATSAdapterPort):
 
     async def fetch_board_jobs(self, slug: str) -> list[DiscoveredJobDTO]:
         url = f"{self.BASE_URL}/{slug}/jobs"
-        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        async with resolve_async_client(self.client, timeout=DEFAULT_TIMEOUT) as client:
             try:
                 resp = await client.post(
                     url,
@@ -543,7 +543,7 @@ class WorkableAdapter(ATSAdapterPort):
 
     async def fetch_job_detail(self, slug: str, job_id: str) -> DiscoveredJobDTO | None:
         url = f"{self.BASE_URL}/{slug}/jobs/{job_id}"
-        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        async with resolve_async_client(self.client, timeout=DEFAULT_TIMEOUT) as client:
             try:
                 resp = await client.get(
                     url,
@@ -645,7 +645,7 @@ class SmartRecruitersAdapter(ATSAdapterPort):
 
     async def fetch_board_jobs(self, slug: str) -> list[DiscoveredJobDTO]:
         url = f"{self.BASE_URL}/{slug}/postings?limit=100"
-        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        async with resolve_async_client(self.client, timeout=DEFAULT_TIMEOUT) as client:
             try:
                 resp = await client.get(
                     url,
@@ -786,7 +786,7 @@ class SmartRecruitersAdapter(ATSAdapterPort):
 
     async def fetch_job_detail(self, slug: str, job_id: str) -> DiscoveredJobDTO | None:
         url = f"{self.BASE_URL}/{slug}/postings/{job_id}"
-        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        async with resolve_async_client(self.client, timeout=DEFAULT_TIMEOUT) as client:
             try:
                 resp = await client.get(
                     url,

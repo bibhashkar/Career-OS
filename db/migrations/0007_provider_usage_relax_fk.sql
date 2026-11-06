@@ -5,3 +5,4 @@
 
 ALTER TABLE provider_usage
     DROP CONSTRAINT IF EXISTS provider_usage_provider_fkey;
+

@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from app.core.http import execute_with_retry
+from app.core.http import execute_with_retry, resolve_async_client
 
 
 @pytest.mark.asyncio
@@ -90,3 +90,28 @@ async def test_execute_with_retry_does_not_retry_client_errors() -> None:
     assert res is not None
     assert res.status_code == 404
     assert attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_resolve_async_client_does_not_close_injected_client() -> None:
+    """Verify an injected AsyncClient is not closed when the context manager exits."""
+    injected = httpx.AsyncClient()
+    try:
+        async with resolve_async_client(injected) as client:
+            assert client is injected
+            assert not client.is_closed
+        # After exiting context, injected client must remain open!
+        assert not injected.is_closed
+    finally:
+        await injected.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resolve_async_client_constructs_and_closes_fresh_client() -> None:
+    """Verify omitting client constructs a new client and closes it upon exit."""
+    constructed_client: httpx.AsyncClient | None = None
+    async with resolve_async_client(None) as client:
+        constructed_client = client
+        assert not client.is_closed
+    assert constructed_client is not None
+    assert constructed_client.is_closed

@@ -38,7 +38,7 @@ async def intel_node(state: AgentState) -> dict[str, Any]:
         Partial state update containing the synthesized company dossier.
     """
     job_details = state.get("job_details") or {}
-    company_name = job_details.get("company_name", "NexusAI Labs")
+    company_name = job_details.get("company_name") or "NexusAI Labs"
     domain = job_details.get("domain")
 
     intel_port = get_default_company_intel()

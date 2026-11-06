@@ -4,6 +4,7 @@ import pytest
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.agents.llm import MockChatModel, reset_test_llm, set_test_llm
+from app.agents.nodes.intel import intel_node
 from app.agents.tools.company_intel import fetch_company_intel
 
 
@@ -53,3 +54,14 @@ async def test_fetch_company_intel_fallback_resilience() -> None:
         assert dossier.get("data_origin") == "inferred"
     finally:
         reset_test_llm()
+
+
+@pytest.mark.asyncio
+async def test_intel_node_handles_none_company_name() -> None:
+    """Verify intel_node defaults gracefully when company_name is None."""
+    state = {
+        "job_details": {"company_name": None},
+    }
+    result = await intel_node(state)
+    assert result["status"] == "intel_gathered"
+    assert result["company_dossier"]["company_name"] == "NexusAI Labs"

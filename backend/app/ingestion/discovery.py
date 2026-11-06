@@ -18,7 +18,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.http import DEFAULT_TIMEOUT
+from app.core.http import DEFAULT_TIMEOUT, resolve_async_client
 from app.ingestion.adapters.ats import AshbyAdapter, GreenhouseAdapter, LeverAdapter
 from app.ingestion.models import ATSProvider
 from app.ingestion.security import parse_ats_url
@@ -200,7 +200,7 @@ class BoardDiscoveryEngine:
         else:
             return False
 
-        async with self.client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        async with resolve_async_client(self.client, timeout=DEFAULT_TIMEOUT) as client:
             resp = await client.get(url)
             if resp.status_code == 200:
                 # Confirm response is valid JSON and contains jobs
