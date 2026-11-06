@@ -1264,10 +1264,23 @@ async def get_job_diagnostics(
     if persona_id and persona_id.strip().lower() != "universal":
         try:
             resolved_persona_id = uuid.UUID(persona_id)
-        except ValueError:
-            resolved_persona_id = None
+        except ValueError as err:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid persona_id UUID format.",
+            ) from err
 
-    if resolved_persona_id:
+        # Verify persona ownership to prevent IDOR
+        persona_owner_stmt = select(CandidatePersona.id).where(
+            CandidatePersona.id == resolved_persona_id,
+            CandidatePersona.user_account_id == user_uuid,
+        )
+        persona_exists = (await db.execute(persona_owner_stmt)).scalars().first()
+        if persona_exists is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Persona not found.",
+            )
         target_persona_id = resolved_persona_id
     else:
         def_stmt = (

@@ -24,7 +24,10 @@ export class InterviewWebSocket {
     if (this.options.jobId) query.set("job_id", this.options.jobId);
     if (this.options.companyName) query.set("company_name", this.options.companyName);
     if (this.options.title) query.set("title", this.options.title);
-    if (this.options.token) query.set("token", this.options.token);
+    const token =
+      this.options.token ||
+      (typeof localStorage !== "undefined" ? localStorage.getItem("career_os_token") : null);
+    if (token) query.set("token", token);
     const queryString = query.toString() ? `?${query.toString()}` : "";
     const wsUrl = `${baseWs}/api/interview/${this.threadId}${queryString}`;
 
@@ -57,10 +60,14 @@ export class InterviewWebSocket {
       if (this.onStatusChange) this.onStatusChange("error");
     };
 
-    this.socket.onclose = () => {
+    this.socket.onclose = (event) => {
       if (this.pingInterval) clearInterval(this.pingInterval);
       if (this.onStatusChange) {
-        this.onStatusChange(this.isManualClose ? "disconnected" : "paused");
+        if (event && event.code === 1008) {
+          this.onStatusChange("unauthorized");
+        } else {
+          this.onStatusChange(this.isManualClose ? "disconnected" : "paused");
+        }
       }
     };
   }

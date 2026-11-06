@@ -222,10 +222,18 @@ async def update_application_status(
             detail="Invalid application UUID format.",
         ) from err
 
+    try:
+        user_uuid = uuid.UUID(user.user_id)
+    except ValueError:
+        user_uuid = uuid.UUID("00000000-0000-0000-0000-000000000001")
+
     query = (
         select(Application, JobListing.title, JobListing.company_name)
         .outerjoin(JobListing, Application.job_listing_id == JobListing.id)
-        .where(Application.id == app_uuid)
+        .where(
+            Application.id == app_uuid,
+            Application.user_profile_id == user_uuid,
+        )
     )
     result = await db.execute(query)
     row = result.first()

@@ -1,11 +1,18 @@
 """Integration tests for Career-OS REST endpoints."""
 
+import uuid
+from collections.abc import AsyncGenerator
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from langchain_core.runnables import RunnableConfig
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.graph import interview_app
+from app.core.auth import create_access_token
+from app.core.database import get_db
 from app.main import app
+from app.models.user_account import CandidatePersona, UserAccount
 
 
 @pytest.mark.asyncio
@@ -99,3 +106,68 @@ async def test_feedback_does_not_pollute_interview_thread_state() -> None:
     assert len(state.values.get("interview_history", [])) == 1
     # Status should remain interview_active, not feedback_reflected
     assert state.values.get("status") == "interview_active"
+
+
+@pytest.mark.asyncio
+async def test_job_diagnostics_invalid_uuid() -> None:
+    """Verify invalid job_id or persona_id UUID format returns HTTP 400."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Invalid job_id
+        res_job = await client.get("/api/jobs/invalid-uuid/diagnostics")
+        assert res_job.status_code == 400
+        assert "job_id" in res_job.json()["detail"]
+
+        # Invalid persona_id
+        valid_job_id = "00000000-0000-0000-0000-000000000001"
+        res_persona = await client.get(
+            f"/api/jobs/{valid_job_id}/diagnostics?persona_id=not-a-uuid"
+        )
+        assert res_persona.status_code == 400
+        assert "persona_id" in res_persona.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_job_diagnostics_unowned_persona_idor_rejected(
+    db_session: AsyncSession,
+) -> None:
+    """Verify User B cannot run diagnostics against User A's persona (HTTP 404)."""
+    user_a_id = uuid.uuid4()
+    user_b_id = uuid.uuid4()
+    job_id = uuid.uuid4()
+    persona_a_id = uuid.uuid4()
+
+    # Create UserAccount A and persona A
+    acc_a = UserAccount(
+        id=user_a_id,
+        email=f"alice-{user_a_id}@career-os.local",
+        full_name="Alice User",
+        visa_status="Citizen",
+    )
+    persona_a = CandidatePersona(
+        id=persona_a_id,
+        user_account_id=user_a_id,
+        name="Alice Backend Persona",
+        is_default=True,
+    )
+    db_session.add(acc_a)
+    db_session.add(persona_a)
+    await db_session.commit()
+
+    token_b = create_access_token(user_id=str(user_b_id))
+
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                f"/api/jobs/{job_id}/diagnostics?persona_id={persona_a_id}",
+                headers={"Authorization": f"Bearer {token_b}"},
+            )
+            assert resp.status_code == 404
+            assert resp.json()["detail"] == "Persona not found."
+    finally:
+        app.dependency_overrides.pop(get_db, None)

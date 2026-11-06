@@ -118,6 +118,7 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
         jobId: job?.id,
         companyName: job?.company_name,
         title: job?.title,
+        token: typeof localStorage !== "undefined" ? localStorage.getItem("career_os_token") : null,
       }
     );
 
@@ -237,6 +238,8 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
                     ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
                     : connectionStatus === "paused"
                     ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                    : connectionStatus === "unauthorized"
+                    ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
                     : "bg-slate-700 text-slate-400 border-slate-600"
                 }`}
               >
@@ -244,6 +247,8 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
                   ? "Live Streaming"
                   : connectionStatus === "paused"
                   ? "Paused (Resumable)"
+                  : connectionStatus === "unauthorized"
+                  ? "Session Expired"
                   : connectionStatus}
               </span>
             </h2>
@@ -356,6 +361,22 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
             <div ref={messagesEndRef} />
           </div>
 
+          {connectionStatus === "unauthorized" && (
+            <div
+              role="alert"
+              className="my-3 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between gap-3"
+            >
+              <span>Authentication required or session expired. Please sign in again.</span>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium text-[11px] transition-colors"
+              >
+                Sign In / Reload
+              </button>
+            </div>
+          )}
+
           {/* Chat Input Bar */}
           <form
             onSubmit={handleSendMessage}
@@ -371,6 +392,8 @@ export function InterviewSimulator({ job, initialThreadId, onBack }) {
               placeholder={
                 connectionStatus === "connected"
                   ? "Type your technical response..."
+                  : connectionStatus === "unauthorized"
+                  ? "Session expired — please log in again to continue."
                   : "Session is paused. Click 'Resume Session' to continue."
               }
               className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent disabled:opacity-50"

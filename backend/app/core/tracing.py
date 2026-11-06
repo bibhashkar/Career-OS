@@ -17,19 +17,39 @@ import uuid
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
-from openinference.instrumentation.langchain import LangChainInstrumentor
 from opentelemetry import trace
 from opentelemetry.context import Context
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from opentelemetry.instrumentation.logging import LoggingInstrumentor
-from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
+
+try:
+    from openinference.instrumentation.langchain import LangChainInstrumentor
+except ImportError:  # pragma: no cover
+    LangChainInstrumentor = None  # type: ignore[assignment,misc]
+
+try:
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+except ImportError:  # pragma: no cover
+    FastAPIInstrumentor = None  # type: ignore[assignment,misc]
+
+try:
+    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+except ImportError:  # pragma: no cover
+    HTTPXClientInstrumentor = None  # type: ignore[assignment,misc]
+
+try:
+    from opentelemetry.instrumentation.logging import LoggingInstrumentor
+except ImportError:  # pragma: no cover
+    LoggingInstrumentor = None  # type: ignore[assignment,misc]
+
+try:
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+except ImportError:  # pragma: no cover
+    SQLAlchemyInstrumentor = None  # type: ignore[assignment,misc]
 
 from app.core.config import settings
 from app.core.database import engine
@@ -213,17 +233,21 @@ def setup_tracing(app: Any | None = None) -> None:
             )
 
         trace.set_tracer_provider(provider)
-        LangChainInstrumentor().instrument(tracer_provider=provider)
-        SQLAlchemyInstrumentor().instrument(
-            engine=engine.sync_engine,
-            tracer_provider=provider,
-        )
-        HTTPXClientInstrumentor().instrument(tracer_provider=provider)
-        LoggingInstrumentor().instrument(
-            tracer_provider=provider,
-            set_logging_format=False,
-        )
-        if app is not None:
+        if LangChainInstrumentor is not None:
+            LangChainInstrumentor().instrument(tracer_provider=provider)
+        if SQLAlchemyInstrumentor is not None:
+            SQLAlchemyInstrumentor().instrument(
+                engine=engine.sync_engine,
+                tracer_provider=provider,
+            )
+        if HTTPXClientInstrumentor is not None:
+            HTTPXClientInstrumentor().instrument(tracer_provider=provider)
+        if LoggingInstrumentor is not None:
+            LoggingInstrumentor().instrument(
+                tracer_provider=provider,
+                set_logging_format=False,
+            )
+        if app is not None and FastAPIInstrumentor is not None:
             FastAPIInstrumentor.instrument_app(
                 app,
                 tracer_provider=provider,

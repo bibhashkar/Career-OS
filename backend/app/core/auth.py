@@ -229,8 +229,14 @@ async def get_current_user(
          - In production: strictly raises 401 Unauthorized.
     """
     if auth and auth.credentials:
-        # Dev mock token support for lightweight testing
+        # Dev mock token support for lightweight testing (forbidden in production)
         if auth.credentials.startswith("dev-token-"):
+            if settings.APP_ENV == "production":
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Development tokens are not permitted in production environment.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
             dev_uid = auth.credentials.removeprefix("dev-token-")
             return UserContext(user_id=dev_uid, email=f"{dev_uid}@career-os.local")
         return decode_access_token(auth.credentials)
@@ -312,6 +318,11 @@ async def authenticate_websocket(
     if raw_token:
         try:
             if raw_token.startswith("dev-token-"):
+                if settings.APP_ENV == "production":
+                    logger.warning(
+                        f"WebSocket connection rejected: dev tokens not allowed in production for thread '{thread_id}'"
+                    )
+                    return None
                 dev_uid = raw_token.removeprefix("dev-token-")
                 user = UserContext(user_id=dev_uid, email=f"{dev_uid}@career-os.local")
             else:

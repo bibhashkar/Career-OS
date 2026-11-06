@@ -105,6 +105,11 @@ class Settings(BaseSettings):
         "Content-Type",
         "Authorization",
         "X-Correlation-ID",
+        "X-Trace-ID",
+        "X-Client-Action",
+        "X-User-Id",
+        "traceparent",
+        "tracestate",
         "Accept",
         "Origin",
     ]

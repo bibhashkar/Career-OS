@@ -54,6 +54,24 @@ def test_cors_preflight_allowed_origin() -> None:
         assert method in allow_methods
 
 
+def test_cors_preflight_allows_observability_headers() -> None:
+    """Verify CORS preflight explicitly allows traceparent, tracestate, and X-Client-Action."""
+    client = TestClient(app)
+    headers = {
+        "Origin": "http://localhost:3000",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "traceparent,tracestate,X-Client-Action,X-Trace-ID",
+    }
+    response = client.options("/health", headers=headers)
+    assert response.status_code == 200
+
+    res_headers = response.headers
+    assert res_headers.get("access-control-allow-origin") == "http://localhost:3000"
+    allow_headers = res_headers.get("access-control-allow-headers", "").lower()
+    for req_header in ["traceparent", "tracestate", "x-client-action", "x-trace-id"]:
+        assert req_header in allow_headers
+
+
 def test_cors_disallows_untrusted_origin() -> None:
     """
     Verify untrusted origins outside CORS_ORIGINS do not receive allow headers.

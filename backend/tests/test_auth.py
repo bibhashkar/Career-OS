@@ -84,6 +84,52 @@ def test_rest_endpoint_with_invalid_bearer_token() -> None:
     assert response.status_code == 401
 
 
+def test_dev_token_permitted_in_development_and_test() -> None:
+    """Verify dev-token-<uid> is accepted when APP_ENV is test/development."""
+    client = TestClient(app)
+    response = client.post(
+        "/api/jobs/search",
+        headers={"Authorization": "Bearer dev-token-developer-42"},
+        json={"query": "AI Engineer"},
+    )
+    assert response.status_code == 200
+
+
+def test_dev_token_rejected_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify dev-token-<uid> is strictly rejected with HTTP 401 in production."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    client = TestClient(app)
+    response = client.post(
+        "/api/jobs/search",
+        headers={"Authorization": "Bearer dev-token-developer-42"},
+        json={"query": "AI Engineer"},
+    )
+    assert response.status_code == 401
+    assert (
+        "Development tokens are not permitted in production"
+        in response.json()["detail"]
+    )
+
+
+def test_websocket_rejects_dev_token_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify WebSocket rejects dev-token with Unauthorized error in production."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    thread_id = "test_ws_auth_dev_token_prod"
+    client = TestClient(app)
+    with client.websocket_connect(
+        f"/api/interview/{thread_id}?token=dev-token-developer-42"
+    ) as ws:
+        err = ws.receive_json()
+        assert err["type"] == "error"
+        assert err["title"] == "Unauthorized"
+
+
 def test_websocket_connects_with_valid_token() -> None:
     """Verify WebSocket endpoint authorizes connection using query param token."""
     token = create_access_token(user_id="usr-ws-owner-1")
