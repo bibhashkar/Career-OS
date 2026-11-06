@@ -17,16 +17,14 @@ const apiClient = axios.create({
   },
 });
 
-let activeClientAction = "UserInteraction";
+let activeClientAction = null;
 
 /**
  * Update the active client UI action tag propagated on outgoing API calls.
  * E.g. `Dashboard.TailorCVButton`, `MockInterview.SubmitAnswer`, etc.
  */
 export function setClientAction(actionName) {
-  if (actionName) {
-    activeClientAction = actionName;
-  }
+  activeClientAction = actionName || null;
 }
 
 // Attach Bearer token, W3C traceparent, and X-Client-Action to outgoing requests
@@ -41,7 +39,9 @@ apiClient.interceptors.request.use((config) => {
     config.headers["X-Client-Action"] =
       config.clientAction ||
       activeClientAction ||
-      (typeof window !== "undefined" ? window.location.pathname : "AppInteraction");
+      (typeof window !== "undefined" && window.location.pathname
+        ? window.location.pathname
+        : "AppInteraction");
   }
 
   // Generate W3C standard traceparent header if not provided
@@ -68,10 +68,14 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Clear token on 401 Unauthorized responses
+// Clear token on 401 Unauthorized responses and reset active client action
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    activeClientAction = null;
+    return response;
+  },
   (error) => {
+    activeClientAction = null;
     if (error.response?.status === 401) {
       localStorage.removeItem("career_os_token");
     }
@@ -166,6 +170,7 @@ export async function crossCheckJob(jobId) {
  * Trigger LangGraph CV tailoring and cyclic ATS evaluation.
  */
 export async function generateCV(jobId, requiredSkills = [], title = "", companyName = "") {
+  setClientAction("TailorCV.Generate");
   const response = await apiClient.post("/cv/generate", {
     job_id: jobId,
     required_skills: requiredSkills,
@@ -179,6 +184,7 @@ export async function generateCV(jobId, requiredSkills = [], title = "", company
  * Submit interview review feedback to Reflector agent.
  */
 export async function submitFeedback(threadId, userFeedback) {
+  setClientAction("MockInterview.TuneWeights");
   const response = await apiClient.post("/feedback", {
     thread_id: threadId,
     user_feedback: userFeedback,
@@ -246,6 +252,7 @@ export async function getCandidatePersonas() {
  * Set a persona as active default on candidate login.
  */
 export async function setDefaultPersona(personaId) {
+  setClientAction("Persona.SetDefault");
   const response = await apiClient.put(`/candidates/personas/${personaId}/default`);
   return response.data;
 }
@@ -278,6 +285,7 @@ export async function deleteCandidatePersona(personaId) {
  * Parse an uploaded resume (PDF, DOCX, LinkedIn PDF) into staged blocks.
  */
 export async function parseResumeDocument(file) {
+  setClientAction("Onboarding.ParseDocument");
   const formData = new FormData();
   formData.append("file", file);
   const response = await apiClient.post("/candidates/parse-document", formData, {
@@ -290,6 +298,7 @@ export async function parseResumeDocument(file) {
  * Parse pasted resume or LinkedIn text into staged blocks.
  */
 export async function parseResumeText(text) {
+  setClientAction("Onboarding.ParseText");
   const response = await apiClient.post("/candidates/parse-text", { text });
   return response.data;
 }
@@ -298,6 +307,7 @@ export async function parseResumeText(text) {
  * Submit verified candidate onboarding data with personas and blocks.
  */
 export async function onboardCandidate(payload) {
+  setClientAction("Onboarding.SubmitVerified");
   const response = await apiClient.post("/candidates/onboard", payload);
   return response.data;
 }

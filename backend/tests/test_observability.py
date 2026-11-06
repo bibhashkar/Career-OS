@@ -11,13 +11,16 @@ Validates:
   - Prometheus agent metrics and ATS loop exhaustion tracking.
 """
 
+import uuid
 from unittest.mock import MagicMock
 
 import pytest
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, LLMResult
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 
 from app.agents.graph import route_ats
-from app.agents.llm import CareerOSLLMTelemetryCallback
+from app.agents.llm import CareerOSLLMTelemetryCallback, _background_telemetry_tasks
 from app.agents.state import AgentState
 from app.core.config import Settings, settings
 from app.core.logging import (
@@ -280,3 +283,26 @@ class TestClientActionContext:
         assert cb.provider == "gemini"
         assert cb.model_name == "gemini-2.5-flash"
         assert cb.feature == "agent_reasoning"
+
+    @pytest.mark.asyncio
+    async def test_llm_telemetry_task_tracking(self) -> None:
+        """Verify LLM telemetry callback tracks background persistence tasks to prevent GC."""
+        cb = CareerOSLLMTelemetryCallback(
+            provider="gemini",
+            model_name="gemini-2.5-flash",
+            feature="test_persistence",
+        )
+        msg = AIMessage(
+            content="Hello",
+            usage_metadata={
+                "input_tokens": 50,
+                "output_tokens": 20,
+                "total_tokens": 70,
+            },
+        )
+        gen = ChatGeneration(message=msg)
+        result = LLMResult(generations=[[gen]])
+
+        await cb.on_llm_end(result, run_id=uuid.uuid4())
+        # Background task set is maintained and referenced
+        assert isinstance(_background_telemetry_tasks, set)

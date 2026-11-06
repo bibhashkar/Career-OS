@@ -335,62 +335,7 @@ async def get_admin_overview(
         except Exception as exc:
             logger.warning("Could not query pg_stat_user_tables: %s", exc)
 
-    if not table_storage:
-        # Fallback for SQLite / hermetic test runs
-        table_storage = [
-            {
-                "table_name": "job_listing",
-                "live_rows": active_jobs_cnt + closed_jobs_cnt,
-                "dead_rows": 0,
-                "total_bytes": 1048576,
-                "table_bytes": 524288,
-                "index_bytes": 524288,
-                "seq_scan": 12,
-                "idx_scan": 140,
-                "inserts": active_jobs_cnt + closed_jobs_cnt,
-                "updates": 0,
-                "deletes": 0,
-            },
-            {
-                "table_name": "cv_block",
-                "live_rows": 0,
-                "dead_rows": 0,
-                "total_bytes": 524288,
-                "table_bytes": 262144,
-                "index_bytes": 262144,
-                "seq_scan": 4,
-                "idx_scan": 28,
-                "inserts": 0,
-                "updates": 0,
-                "deletes": 0,
-            },
-            {
-                "table_name": "company_dossier",
-                "live_rows": total_dossiers_cnt,
-                "dead_rows": 0,
-                "total_bytes": 262144,
-                "table_bytes": 131072,
-                "index_bytes": 131072,
-                "seq_scan": 2,
-                "idx_scan": 16,
-                "inserts": total_dossiers_cnt,
-                "updates": 0,
-                "deletes": 0,
-            },
-            {
-                "table_name": "user_account",
-                "live_rows": len(user_list),
-                "dead_rows": 0,
-                "total_bytes": 131072,
-                "table_bytes": 65536,
-                "index_bytes": 65536,
-                "seq_scan": 1,
-                "idx_scan": 45,
-                "inserts": len(user_list),
-                "updates": 0,
-                "deletes": 0,
-            },
-        ]
+    storage_source = "postgresql" if table_storage else "unavailable"
 
     # 9. Recent HTTP & Transaction Traces
     recent_traces = metrics_registry.get_recent_traces()
@@ -410,6 +355,7 @@ async def get_admin_overview(
             "phoenix_url": settings.PHOENIX_URL
             or settings.PHOENIX_COLLECTOR_ENDPOINT.replace("/v1/traces", ""),
             "grafana_url": settings.GRAFANA_URL,
+            "storage_source": storage_source,
         },
         "table_storage": table_storage,
         "recent_traces": recent_traces,

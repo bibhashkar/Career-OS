@@ -36,6 +36,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.core.config import settings
 from app.core.database import async_session_maker
+from app.core.metrics import metrics_registry
 from app.ingestion.ledger import PersistentBudgetLedger
 
 logger = logging.getLogger("career_os.llm")
@@ -44,6 +45,9 @@ T = TypeVar("T", bound=BaseModel)
 
 # Global test override hook for unit and integration testing
 _test_llm: BaseChatModel | None = None
+
+# Referenced task registry preventing Garbage Collection of in-flight persistence tasks
+_background_telemetry_tasks: set[asyncio.Task[None]] = set()
 
 
 class CareerOSLLMTelemetryCallback(AsyncCallbackHandler):
@@ -115,11 +119,17 @@ class CareerOSLLMTelemetryCallback(AsyncCallbackHandler):
                     )
                     await session.commit()
             except Exception as exc:
-                logger.debug("Failed to record LLM usage in ledger: %s", exc)
+                logger.warning("Failed to record LLM usage in ledger: %s", exc)
+                metrics_registry.record_unhandled_exception(
+                    endpoint="llm_telemetry_persist",
+                    exception_type=type(exc).__name__,
+                )
 
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(_persist_usage())
+            task = loop.create_task(_persist_usage())
+            _background_telemetry_tasks.add(task)
+            task.add_done_callback(_background_telemetry_tasks.discard)
         except RuntimeError:
             pass
 

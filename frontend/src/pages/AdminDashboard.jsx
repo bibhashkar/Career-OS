@@ -33,7 +33,6 @@ import {
   X,
   ArrowRight,
   HardDrive,
-  Terminal,
 } from "lucide-react";
 import {
   getAdminOverview,
@@ -1727,49 +1726,63 @@ export function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/50">
-                  {table_storage.map((tbl) => {
-                    const totalRows = (tbl.live_rows || 0) + (tbl.dead_rows || 0);
-                    const isBloated = tbl.dead_rows > 100 && totalRows > 0 && (tbl.dead_rows / totalRows) > 0.2;
-                    return (
-                      <tr key={tbl.table_name} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="px-4 py-3 font-mono font-bold text-white">
-                          {tbl.table_name}
-                        </td>
-                        <td className="px-4 py-3 font-mono">
-                          {(tbl.live_rows || 0).toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-slate-400">
-                          {(tbl.dead_rows || 0).toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-slate-300">
-                          {formatBytes(tbl.table_bytes)}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-indigo-300">
-                          {formatBytes(tbl.index_bytes)}
-                        </td>
-                        <td className="px-4 py-3 font-mono font-bold text-white">
-                          {formatBytes(tbl.total_bytes)}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-[11px] text-slate-400">
-                          {tbl.idx_scan || 0} / {tbl.seq_scan || 0}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-[11px] text-slate-400">
-                          +{tbl.inserts || 0} / ~{tbl.updates || 0} / -{tbl.deletes || 0}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
-                              isBloated
-                                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                                : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                            }`}
-                          >
-                            {isBloated ? "Vacuum Rec." : "Optimized"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {table_storage.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
+                        <Database className="w-8 h-8 text-slate-500 mx-auto mb-2" />
+                        <p className="font-medium text-sm text-slate-300">
+                          PostgreSQL storage metrics unavailable
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Physical table sizes and bloat stats require an active PostgreSQL connection with pg_stat_user_tables privileges.
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    table_storage.map((tbl) => {
+                      const totalRows = (tbl.live_rows || 0) + (tbl.dead_rows || 0);
+                      const isBloated = tbl.dead_rows > 100 && totalRows > 0 && (tbl.dead_rows / totalRows) > 0.2;
+                      return (
+                        <tr key={tbl.table_name} className="hover:bg-slate-800/40 transition-colors">
+                          <td className="px-4 py-3 font-mono font-bold text-white">
+                            {tbl.table_name}
+                          </td>
+                          <td className="px-4 py-3 font-mono">
+                            {(tbl.live_rows || 0).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-slate-400">
+                            {(tbl.dead_rows || 0).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-slate-300">
+                            {formatBytes(tbl.table_bytes)}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-indigo-300">
+                            {formatBytes(tbl.index_bytes)}
+                          </td>
+                          <td className="px-4 py-3 font-mono font-bold text-white">
+                            {formatBytes(tbl.total_bytes)}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-[11px] text-slate-400">
+                            {tbl.idx_scan || 0} / {tbl.seq_scan || 0}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-[11px] text-slate-400">
+                            +{tbl.inserts || 0} / ~{tbl.updates || 0} / -{tbl.deletes || 0}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                                isBloated
+                                  ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                  : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                              }`}
+                            >
+                              {isBloated ? "Vacuum Rec." : "Optimized"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -2075,22 +2088,6 @@ export function AdminDashboard() {
                             </div>
                           </div>
                           <ExternalLink className="w-3.5 h-3.5 text-slate-500 group-hover:text-orange-400 transition-colors" />
-                        </a>
-
-                        <a
-                          href={`${system_health.grafana_url}/explore?left=%5B%22now-1h%22,%22now%22,%22loki%22,%7B%22expr%22:%22%7Bapp%3D%5C%22career-os%5C%22%7D%20%7C%3D%20%5C%22${selectedTrace.correlation_id}%5C%22%22%7D%5D`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center justify-between p-3 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/40 text-slate-200 transition-all group"
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <Terminal className="w-4 h-4 text-amber-400" />
-                            <div>
-                              <div className="font-semibold text-white">Search Structured Logs in Grafana Loki</div>
-                              <div className="text-[11px] text-slate-400">Filter by X-Correlation-ID</div>
-                            </div>
-                          </div>
-                          <ExternalLink className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-400 transition-colors" />
                         </a>
                       </>
                     )}

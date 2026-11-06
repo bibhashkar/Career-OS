@@ -110,7 +110,9 @@ async def test_admin_overview_with_admin_role_success(admin_token: str) -> None:
         assert "system_health" in data
         assert "grafana_url" in data["system_health"]
         assert "phoenix_url" in data["system_health"]
+        assert data["system_health"]["storage_source"] == "unavailable"
         assert "table_storage" in data
+        assert data["table_storage"] == []
         assert "recent_traces" in data
         assert "crawler_pipeline" in data
         assert "catalog_breakdown" in data
