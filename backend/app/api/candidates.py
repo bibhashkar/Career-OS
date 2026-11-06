@@ -30,6 +30,7 @@ from sqlalchemy.orm import selectinload
 from app.agents.tools.embeddings import embed_text, embed_texts
 from app.core.auth import DEFAULT_DEV_USER_ID, CurrentUser
 from app.core.database import get_db
+from app.core.helpers import parse_uuid_or_400
 from app.ingestion.resume_parser import (
     ParsedCandidateData,
     extract_quantified_metrics,
@@ -744,13 +745,7 @@ async def update_persona(
       - Case-insensitive uniqueness for persona names per candidate account.
     """
     user_uuid = _get_user_uuid(current_user)
-    try:
-        p_uuid = uuid.UUID(persona_id)
-    except ValueError as err:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid persona_id UUID format.",
-        ) from err
+    p_uuid = parse_uuid_or_400(persona_id, "persona_id")
 
     stmt = (
         select(CandidatePersona)
@@ -1035,7 +1030,19 @@ async def set_default_persona(
     Designate a persona as the primary active default on candidate login.
     """
     user_uuid = _get_user_uuid(current_user)
-    p_uuid = uuid.UUID(persona_id)
+    p_uuid = parse_uuid_or_400(persona_id, "persona_id")
+
+    # Verify persona exists and belongs to user before modifying default state
+    exists_stmt = select(CandidatePersona.id).where(
+        CandidatePersona.id == p_uuid,
+        CandidatePersona.user_account_id == user_uuid,
+    )
+    exists = (await db.execute(exists_stmt)).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Persona not found or access denied.",
+        )
 
     # Reset all personas to not default
     await db.execute(
@@ -1055,7 +1062,7 @@ async def set_default_persona(
     )
     await db.commit()
 
-    return {"status": "success", "default_persona_id": persona_id}
+    return {"status": "success", "default_persona_id": str(p_uuid)}
 
 
 @router.delete(
@@ -1075,13 +1082,7 @@ async def delete_persona(
       - If deleting the default persona, falls back to the Universal Profile.
     """
     user_uuid = _get_user_uuid(current_user)
-    try:
-        p_uuid = uuid.UUID(persona_id)
-    except ValueError as err:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid persona_id UUID format.",
-        ) from err
+    p_uuid = parse_uuid_or_400(persona_id, "persona_id")
 
     stmt = select(CandidatePersona).where(
         CandidatePersona.id == p_uuid,
@@ -1162,13 +1163,7 @@ async def get_persona_benchmark(
     """
     Tier 2: Return macro-level market benchmarks and skill gaps for target persona.
     """
-    try:
-        p_uuid = uuid.UUID(persona_id)
-    except ValueError as err:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid persona_id UUID format.",
-        ) from err
+    p_uuid = parse_uuid_or_400(persona_id, "persona_id")
 
     try:
         return await generate_persona_market_benchmark(db, p_uuid)
@@ -1195,7 +1190,7 @@ async def list_cv_blocks(
     user_uuid = _get_user_uuid(current_user)
 
     if persona_id:
-        p_uuid = uuid.UUID(persona_id)
+        p_uuid = parse_uuid_or_400(persona_id, "persona_id")
         stmt = (
             select(CVBlock)
             .join(PersonaCVBlockRel, PersonaCVBlockRel.cv_block_id == CVBlock.id)
@@ -1252,7 +1247,9 @@ async def create_cv_block(
     # 1. Target persona resolution
     target_persona_uuids: list[uuid.UUID] = []
     if req.persona_ids:
-        target_persona_uuids = [uuid.UUID(pid) for pid in req.persona_ids]
+        target_persona_uuids = [
+            parse_uuid_or_400(pid, "persona_id") for pid in req.persona_ids
+        ]
     else:
         # Default to Universal Persona
         u_stmt = select(CandidatePersona.id).where(
@@ -1367,13 +1364,7 @@ async def update_cv_block(
     """
     user_uuid = _get_user_uuid(current_user)
     account = await _get_or_create_account(db, user_uuid, current_user.email)
-    try:
-        b_uuid = uuid.UUID(block_id)
-    except ValueError as err:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid block_id UUID format.",
-        ) from err
+    b_uuid = parse_uuid_or_400(block_id, "block_id")
 
     stmt = select(CVBlock).where(
         CVBlock.id == b_uuid,
@@ -1433,7 +1424,7 @@ async def delete_cv_block(
     Delete a CV block and its persona junction links.
     """
     user_uuid = _get_user_uuid(current_user)
-    b_uuid = uuid.UUID(block_id)
+    b_uuid = parse_uuid_or_400(block_id, "block_id")
 
     # Verify block exists and belongs to user
     b_stmt = select(CVBlock).where(

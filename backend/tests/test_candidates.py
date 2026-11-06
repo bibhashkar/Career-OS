@@ -22,7 +22,7 @@ from app.ingestion.resume_parser import (
     parse_linkedin_text,
     parse_resume_bytes,
 )
-from app.models.user_account import UserAccount
+from app.models.user_account import CandidatePersona, UserAccount
 from app.schemas.candidate_dossier import (
     normalize_award_record,
     normalize_institution_tier,
@@ -682,3 +682,84 @@ def test_multi_disciplinary_metrics_and_projects() -> None:
         [], education_records=[{"institution_tier": "tier_2_state_flagship"}]
     )
     assert score_tier2 == 0.8
+
+
+@pytest.mark.asyncio
+async def test_set_default_persona_guards(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Verify set_default_persona rejects invalid UUIDs with 400 and unowned personas with 404 without corrupting defaults."""
+    user_id = "22222222-3333-4444-5555-666666666666"
+    token = create_access_token(user_id=user_id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Create account and a default persona
+    u_acc = UserAccount(
+        id=uuid.UUID(user_id),
+        email="guard_test@example.com",
+        full_name="Guard Test",
+        visa_status="Citizen",
+    )
+    p_default = CandidatePersona(
+        id=uuid.uuid4(),
+        user_account_id=u_acc.id,
+        name="Universal Persona",
+        is_default=True,
+        is_common_persona=True,
+    )
+    db_session.add(u_acc)
+    db_session.add(p_default)
+    await db_session.commit()
+
+    # 1. Invalid UUID format -> 400
+    res_bad = await async_client.put(
+        "/api/candidates/personas/not-a-valid-uuid/default",
+        headers=headers,
+    )
+    assert res_bad.status_code == 400
+    assert "persona_id" in res_bad.json()["detail"]
+
+    # 2. Unowned or non-existent persona -> 404
+    random_uuid = str(uuid.uuid4())
+    res_404 = await async_client.put(
+        f"/api/candidates/personas/{random_uuid}/default",
+        headers=headers,
+    )
+    assert res_404.status_code == 404
+
+    # 3. Verify original persona is STILL the default (not corrupted by failed switch)
+    await db_session.refresh(p_default)
+    assert p_default.is_default is True
+
+
+@pytest.mark.asyncio
+async def test_cv_block_uuid_validation_guards(
+    async_client: AsyncClient,
+) -> None:
+    """Verify CV block endpoints reject malformed UUIDs with 400."""
+    token = create_access_token(user_id="33333333-4444-5555-6666-777777777777")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Delete block with invalid UUID -> 400
+    res_del = await async_client.delete(
+        "/api/candidates/blocks/malformed-block-uuid",
+        headers=headers,
+    )
+    assert res_del.status_code == 400
+    assert "block_id" in res_del.json()["detail"]
+
+    # Add block with invalid persona_id in list -> 400
+    res_add = await async_client.post(
+        "/api/candidates/blocks",
+        headers=headers,
+        json={
+            "category": "project",
+            "title": "Bad Persona Link Project",
+            "organization": "Org",
+            "content": "Content",
+            "persona_ids": ["invalid-persona-uuid"],
+        },
+    )
+    assert res_add.status_code == 400
+    assert "persona_id" in res_add.json()["detail"]

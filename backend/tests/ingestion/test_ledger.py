@@ -63,3 +63,22 @@ async def test_circuit_breaker_trips_and_recovers(db_session: AsyncSession) -> N
     assert await breaker.is_available(provider) is True
     assert state.failure_count == 0
     assert state.is_circuit_open is False
+
+
+@pytest.mark.asyncio
+async def test_budget_ledger_records_llm_usage_non_ats_provider(
+    db_session: AsyncSession,
+) -> None:
+    """Verify recording LLM usage for 'gemini' persists without foreign key errors."""
+    ledger = PersistentBudgetLedger(db_session)
+    cost = await ledger.record_llm_usage(
+        provider="gemini",
+        model_name="gemini-1.5-flash",
+        feature="interview_coaching",
+        input_tokens=150,
+        output_tokens=75,
+    )
+    assert cost > 0.0
+    usage = await ledger.get_usage("gemini")
+    assert usage["token_count"] == 225
+    assert usage["estimated_cost_usd"] > 0.0

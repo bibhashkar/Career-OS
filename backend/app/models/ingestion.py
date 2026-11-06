@@ -172,7 +172,6 @@ class ProviderUsage(Base, UUIDMixin, TimestampMixin):
 
     provider: Mapped[str] = mapped_column(
         String(50),
-        ForeignKey("ats_provider.code", ondelete="RESTRICT"),
         index=True,
         nullable=False,
     )

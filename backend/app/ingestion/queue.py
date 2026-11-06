@@ -9,7 +9,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ingestion.models import IngestionTaskStatus, IngestionTaskType
@@ -37,21 +37,39 @@ class IngestionQueue:
     ) -> IngestionTask | None:
         """
         Enqueue a new ingestion task. If dedupe_key already exists in pending
-        or processing state, skips creation to prevent duplicate runs.
+        or processing state with an active lease, skips creation. Reclaims
+        tasks stuck in processing whose lease expired.
         """
+        now = datetime.now(UTC)
         stmt = select(IngestionTask).where(IngestionTask.dedupe_key == dedupe_key)
         existing = (await self.session.execute(stmt)).scalar_one_or_none()
 
         if existing:
-            if existing.status in (
-                IngestionTaskStatus.PENDING,
-                IngestionTaskStatus.PROCESSING,
-            ):
+            if existing.status == IngestionTaskStatus.PENDING:
                 logger.info(
-                    "Task dedupe_key '%s' is already %s; skipping.",
+                    "Task dedupe_key '%s' is already pending; skipping.",
                     dedupe_key,
-                    existing.status,
                 )
+                return existing
+            if existing.status == IngestionTaskStatus.PROCESSING:
+                if existing.locked_until and existing.locked_until > now:
+                    logger.info(
+                        "Task dedupe_key '%s' is actively processing under valid lease; skipping.",
+                        dedupe_key,
+                    )
+                    return existing
+                # Expired lease: reclaim the orphaned task
+                logger.warning(
+                    "Task dedupe_key '%s' has expired lease (locked_until=%s); resetting to pending.",
+                    dedupe_key,
+                    existing.locked_until,
+                )
+                existing.status = IngestionTaskStatus.PENDING
+                existing.locked_until = None
+                existing.scheduled_for = scheduled_for or now
+                existing.payload = payload
+                existing.priority = priority
+                await self.session.flush()
                 return existing
 
         task = IngestionTask(
@@ -60,7 +78,7 @@ class IngestionQueue:
             payload=payload,
             priority=priority,
             status=IngestionTaskStatus.PENDING,
-            scheduled_for=scheduled_for or datetime.now(UTC),
+            scheduled_for=scheduled_for or now,
         )
         self.session.add(task)
         await self.session.flush()
@@ -70,14 +88,24 @@ class IngestionQueue:
         self, lock_duration_seconds: int = 600
     ) -> IngestionTask | None:
         """
-        Fetch the highest-priority pending task and lock it with SKIP LOCKED.
+        Fetch the highest-priority pending task or reclaim orphaned processing
+        tasks whose lease expired, locking with SKIP LOCKED.
         """
         now = datetime.now(UTC)
         stmt = (
             select(IngestionTask)
             .where(
-                IngestionTask.status == IngestionTaskStatus.PENDING,
-                IngestionTask.scheduled_for <= now,
+                or_(
+                    and_(
+                        IngestionTask.status == IngestionTaskStatus.PENDING,
+                        IngestionTask.scheduled_for <= now,
+                    ),
+                    and_(
+                        IngestionTask.status == IngestionTaskStatus.PROCESSING,
+                        IngestionTask.locked_until.isnot(None),
+                        IngestionTask.locked_until <= now,
+                    ),
+                )
             )
             .order_by(IngestionTask.priority.desc(), IngestionTask.scheduled_for.asc())
             .limit(1)
@@ -87,6 +115,21 @@ class IngestionQueue:
         task = result.scalar_one_or_none()
 
         if task:
+            if task.status == IngestionTaskStatus.PROCESSING:
+                task.retry_count += 1
+                logger.warning(
+                    "Reclaiming orphaned task %s (retry %d/%d) whose lease expired at %s",
+                    task.id,
+                    task.retry_count,
+                    task.max_retries,
+                    task.locked_until,
+                )
+                if task.retry_count >= task.max_retries:
+                    task.status = IngestionTaskStatus.FAILED
+                    task.error_message = f"Task lease expired and exceeded max retries ({task.max_retries})."
+                    task.locked_until = None
+                    await self.session.flush()
+                    return None
             task.status = IngestionTaskStatus.PROCESSING
             task.locked_until = now + timedelta(seconds=lock_duration_seconds)
             await self.session.flush()

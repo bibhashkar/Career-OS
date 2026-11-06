@@ -182,11 +182,19 @@ class PersistentBudgetLedger(BudgetLedgerPort):
         usage = result.scalar_one_or_none()
         limit = self._get_provider_limit(provider)
         current = usage.call_count if usage else 0
+        token_count = usage.token_count if usage else 0
+        input_tokens = usage.input_tokens if usage else 0
+        output_tokens = usage.output_tokens if usage else 0
+        cost_usd = usage.estimated_cost_usd if usage else 0.0
 
         return {
             "provider": provider,
             "period_key": period_key,
             "current_calls": current,
+            "token_count": token_count,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "estimated_cost_usd": cost_usd,
             "max_calls": limit,
             "remaining": max(0, limit - current),
             "is_exhausted": current >= limit,
